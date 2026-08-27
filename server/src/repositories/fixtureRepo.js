@@ -1,0 +1,142 @@
+// fixtureRepo — كل تعامل جدولي fixtures و fixture_events مع القاعدة.
+const db = require('../config/db');
+
+// جملة SELECT مشتركة لكل استعلامات المباريات: نضم جدول الفرق مرتين
+// (مرة للمضيف ومرة للضيف) بأسماء مستعارة ht و at، مع التدهور اللطيف
+// للاسم العربي عبر COALESCE.
+const FIXTURE_SELECT = `
+  SELECT f.id, f.league_id, f.season, f.round, f.kickoff_at, f.status,
+         f.goals_home, f.goals_away,
+         f.home_team_id,
+         COALESCE(ht.name_ar, ht.name_en) AS home_team_name,
+         ht.logo_url AS home_team_logo,
+         f.away_team_id,
+         COALESCE(at.name_ar, at.name_en) AS away_team_name,
+         at.logo_url AS away_team_logo
+  FROM fixtures f
+  JOIN teams ht ON ht.id = f.home_team_id
+  JOIN teams at ON at.id = f.away_team_id
+`;
+
+async function upsertMany(fixtures) {
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const f of fixtures) {
+      await client.query(
+        `INSERT INTO fixtures
+           (id, league_id, season, home_team_id, away_team_id,
+            kickoff_at, status, goals_home, goals_away, round, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+         ON CONFLICT (id) DO UPDATE SET
+           kickoff_at = EXCLUDED.kickoff_at,  -- قد تتأجل المباراة لموعد جديد
+           status     = EXCLUDED.status,
+           goals_home = EXCLUDED.goals_home,
+           goals_away = EXCLUDED.goals_away,
+           round      = EXCLUDED.round,
+           updated_at = now()`,
+        [f.id, f.league_id, f.season, f.home_team_id, f.away_team_id,
+         f.kickoff_at, f.status, f.goals_home, f.goals_away, f.round]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// مباريات يوم معيّن.
+//
+// نقطة مهمة: kickoff_at مخزّن بتوقيت UTC، لكن المستخدم السعودي حين
+// يسأل عن "مباريات اليوم" يقصد اليوم بتوقيت الرياض. مباراة الساعة
+// 00:30 فجر السبت بتوقيت الرياض هي مساء الجمعة بتوقيت UTC —
+// المقارنة بـ UTC سترجعها في اليوم الخطأ. لذلك نحوّل للمنطقة
+// الزمنية Asia/Riyadh قبل قصّ التاريخ.
+async function findByDate(date) {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT}
+     WHERE (f.kickoff_at AT TIME ZONE 'Asia/Riyadh')::date = $1
+     ORDER BY f.kickoff_at`,
+    [date]
+  );
+  return rows;
+}
+
+// المباريات القادمة: المجدولة التي لم يحن موعدها بعد.
+async function findUpcoming(limit = 20) {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT}
+     WHERE f.status = 'scheduled' AND f.kickoff_at >= now()
+     ORDER BY f.kickoff_at
+     LIMIT $1`,
+    [limit]
+  );
+  return rows;
+}
+
+async function findById(id) {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT} WHERE f.id = $1`,
+    [id]
+  );
+  return rows[0] ?? null; // null أوضح من undefined للمستدعي
+}
+
+// استبدال أحداث مباراة بالكامل (حذف ثم إدخال).
+//
+// لماذا الاستبدال وليس UPSERT؟ المزود لا يعطي الأحداث معرّفات،
+// فلا نستطيع معرفة "هذا الحدث موجود عندنا مسبقاً". كما أن الحدث قد
+// يُلغى (هدف ملغى بالـ VAR يختفي من القائمة). أبسط طريقة صحيحة:
+// قائمة المزود هي الحقيقة الكاملة، نستبدل ما عندنا بها كل مرة.
+async function replaceEvents(fixtureId, events) {
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM fixture_events WHERE fixture_id = $1', [fixtureId]);
+    for (const e of events) {
+      await client.query(
+        `INSERT INTO fixture_events
+           (fixture_id, type, detail, minute, player_id, assist_id, team_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [e.fixture_id, e.type, e.detail, e.minute, e.player_id, e.assist_id, e.team_id]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function findEvents(fixtureId) {
+  // LEFT JOIN وليس JOIN: الحدث قد يخص فريقاً/لاعباً لم نخزنه بعد،
+  // ويجب أن يظهر الحدث رغم ذلك (باسم فريق NULL) بدل أن يختفي.
+  const { rows } = await db.query(
+    // e.id::int — عمود BIGSERIAL نوعه bigint، ومكتبة pg ترجعه نصاً
+    // ("1" بدل 1) لأن bigint قد يتجاوز أرقام JavaScript الآمنة.
+    // أعداد الأحداث لن تقترب من ذلك الحد، فنحوّله لرقم عادي.
+    `SELECT e.id::int AS id, e.type, e.detail, e.minute,
+            e.player_id, e.assist_id, e.team_id,
+            COALESCE(t.name_ar, t.name_en) AS team_name
+     FROM fixture_events e
+     LEFT JOIN teams t ON t.id = e.team_id
+     WHERE e.fixture_id = $1
+     ORDER BY e.minute, e.id`,
+    [fixtureId]
+  );
+  return rows;
+}
+
+module.exports = {
+  upsertMany,
+  findByDate,
+  findUpcoming,
+  findById,
+  replaceEvents,
+  findEvents,
+};
