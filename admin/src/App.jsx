@@ -22,6 +22,9 @@ import Groups from './pages/Groups';
 import Leaderboard from './pages/Leaderboard';
 import Scoring from './pages/Scoring';
 import Profile from './pages/Profile';
+import SiteContent from './pages/SiteContent';
+import SiteSettings from './pages/SiteSettings';
+import Messages from './pages/Messages';
 import './theme.css';
 
 // مجموعة الأقسام: المحتوى (ما يراه المستخدم) ثم الناس ثم الإعدادات.
@@ -45,6 +48,14 @@ const NAV = [
       { to: '/users', label: 'المستخدمون', icon: Icon.users },
       { to: '/groups', label: 'المجموعات', icon: Icon.group },
       { to: '/leaderboard', label: 'العرش', icon: Icon.trophy },
+    ],
+  },
+  {
+    section: 'الموقع العام',
+    items: [
+      { to: '/site/content', label: 'محتوى الصفحات', icon: Icon.page },
+      { to: '/site/settings', label: 'إعدادات الموقع', icon: Icon.globe },
+      { to: '/site/messages', label: 'الرسائل', icon: Icon.mail },
     ],
   },
   {
@@ -73,13 +84,17 @@ function Shell({ onLogout }) {
   // إنه تنبيه يجب أن يراه الأدمن وهو في أي صفحة، لا حين يزور
   // الرئيسية فقط.
   const [pending, setPending] = useState(0);
+  const [unread, setUnread] = useState(0);
   const [me, setMe] = useState(null);
 
   useEffect(() => {
     api.get('/auth/me').then(({ data }) => setMe(data.user)).catch(() => {});
     const load = () =>
       api.get('/admin/stats')
-        .then(({ data }) => setPending(data.pending_settlement ?? 0))
+        .then(({ data }) => {
+          setPending(data.pending_settlement ?? 0);
+          setUnread(data.unread_messages ?? 0);
+        })
         .catch(() => {});
     load();
     const t = setInterval(load, 60000);
@@ -108,6 +123,11 @@ function Shell({ onLogout }) {
                   {item.to === '/scoring' && pending > 0 && (
                     <span className="nav-badge" title="توقعات تنتظر الاحتساب">
                       {pending}
+                    </span>
+                  )}
+                  {item.to === '/site/messages' && unread > 0 && (
+                    <span className="nav-badge" title="رسائل لم تُقرأ">
+                      {unread}
                     </span>
                   )}
                 </NavLink>
@@ -145,6 +165,9 @@ function Shell({ onLogout }) {
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/scoring" element={<Scoring />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/site/content" element={<SiteContent />} />
+          <Route path="/site/settings" element={<SiteSettings />} />
+          <Route path="/site/messages" element={<Messages />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

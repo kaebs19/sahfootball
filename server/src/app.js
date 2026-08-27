@@ -41,6 +41,10 @@ app.use('/api/predictions', require('./routes/predictions'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/groups', require('./routes/groups'));
 app.use('/api/profile', require('./routes/profile'));
+// محتوى الموقع التعريفي: عام بلا مصادقة عمداً — صفحة سياسة
+// الخصوصية يجب أن تُفتح برابط مباشر بلا حساب (مراجعة App Store
+// تفتحها هكذا).
+app.use('/api/site', require('./routes/site'));
 
 // الصور المرفوعة تُقدَّم كملفات ثابتة. maxAge: اسم الملف عشوائي
 // ويتغير مع كل رفع، فيجوز للمتصفح تخزينه طويلاً بأمان.
@@ -60,6 +64,37 @@ app.use(
   })
 );
 app.use('/api/admin', require('./routes/admin'));
+
+// ── الموقع العام ────────────────────────────────────────────────
+//
+// يأتي بعد كل مسارات /api عمداً: راوتر الصفحات يلتقط /:slug على
+// الجذر، ولو سبقها لابتلع مسارات لا تخصه.
+//
+// ملفات التصميم من مجلد web/ خارج السيرفر — الموقع أصوله (CSS،
+// أيقونة) ثابتة، والسيرفر يصنع الـ HTML وحده. immutable في
+// Cache-Control غير مناسب هنا لأن اسم الملف لا يحمل بصمة تتغير
+// مع محتواه، فنكتفي بيوم واحد.
+app.use(
+  '/assets',
+  require('express').static(require('path').join(__dirname, '..', '..', 'web', 'assets'), {
+    maxAge: '1d',
+  })
+);
+app.use('/', require('./routes/pages'));
+
+// أي مسار لم يلتقطه أحد: صفحة 404 بهوية الموقع للمتصفح، وJSON
+// لمن يطلب JSON. بدون هذا يرد Express بصفحة HTML بيضاء افتراضية
+// لا تشبه المنتج في شيء.
+app.use(async (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'المسار غير موجود' });
+  }
+  const settings = await require('./services/siteSettings').get().catch(() => null);
+  res
+    .status(404)
+    .type('html')
+    .send(require('./services/siteRenderer').renderNotFound(settings ?? {}));
+});
 
 // معالج أخطاء مركزي: أي خطأ يُرمى داخل مسار يصل هنا،
 // فلا نكرر try/catch في كل مسار. (الوسائط الأربعة مطلوبة

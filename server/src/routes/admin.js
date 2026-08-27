@@ -11,6 +11,8 @@ const userRepo = require('../repositories/userRepo');
 const refreshTokenRepo = require('../repositories/refreshTokenRepo');
 const { deleteAvatarFile } = require('../utils/avatarFile');
 const leagueRepo = require('../repositories/leagueRepo');
+const siteRepo = require('../repositories/siteRepo');
+const siteSettings = require('../services/siteSettings');
 const footballProvider = require('../services/footballProvider');
 const standingsService = require('../services/standingsService');
 const rateLimiter = require('../utils/rateLimiter');
@@ -59,7 +61,12 @@ router.get('/stats', async (req, res) => {
         (SELECT COUNT(*) FROM leagues)::int                                AS leagues_total,
         (SELECT COUNT(*) FILTER (WHERE status = 'scheduled') FROM fixtures)::int AS fixtures_scheduled,
         (SELECT COUNT(*) FILTER (WHERE status = 'live')      FROM fixtures)::int AS fixtures_live,
-        (SELECT COUNT(*) FILTER (WHERE status = 'finished')  FROM fixtures)::int AS fixtures_finished
+        (SELECT COUNT(*) FILTER (WHERE status = 'finished')  FROM fixtures)::int AS fixtures_finished,
+        -- شارة صندوق الوارد في الشريط الجانبي. مكانها هنا وليس في
+        -- طلب مستقل: اللوحة تجلب /stats عند كل فتح أصلاً، ورسالة
+        -- تنتظر أسبوعاً لأن أحداً لم يفتح صفحة الرسائل هي بالضبط
+        -- ما تمنعه الشارة.
+        (SELECT COUNT(*) FROM contact_messages WHERE read_at IS NULL)::int AS unread_messages
     `),
 
     // 2) توقعات آخر 14 يوماً للرسم البياني.
@@ -626,6 +633,112 @@ router.put('/settings/scoring', async (req, res) => {
   const scoring = { exact, diff, outcome };
   await settingsRepo.set('scoring', scoring);
   res.json({ scoring });
+});
+
+// ---------------------------------------------------------------
+// محتوى الموقع العام: الصفحات، الإعدادات، صندوق الرسائل
+// ---------------------------------------------------------------
+
+// GET /api/admin/site/pages — فهرس الصفحات (بلا نصوصها)
+router.get('/site/pages', async (req, res) => {
+  const pages = await siteRepo.listPages();
+  res.json({ pages });
+});
+
+// GET /api/admin/site/pages/:slug — نص الصفحة للتحرير.
+//
+// نرجع body الخام فقط بلا body_html: هذا مسار المحرّر، وما يوضع
+// في مربع النص هو المصدر لا الناتج. (الموقع العام هو من يحتاج
+// المُصيَّر، وهو يطلبه من /api/site/pages/:slug.)
+router.get('/site/pages/:slug', async (req, res) => {
+  const page = await siteRepo.getPage(String(req.params.slug));
+  if (!page) return res.status(404).json({ error: 'الصفحة غير موجودة' });
+  res.json({ page });
+});
+
+// PUT /api/admin/site/pages/:slug — { title, body }
+//
+// تعديل فقط، بلا إنشاء: الصفحات مجموعة مغلقة يعرفها الموقع
+// بمساراتها الثابتة، وصفحة جديدة في القاعدة لا يوجد ما يعرضها.
+// إضافة slug جديد قرار يمر بهجرة وبتعديل الموقع معاً.
+router.put('/site/pages/:slug', async (req, res) => {
+  const { title, body } = req.body || {};
+
+  const cleanTitle = typeof title === 'string' ? title.trim() : '';
+  // body لا يُقصّ بـ trim كاملاً: المسافات في بداية السطور جزء من
+  // بنية Markdown. نكتفي بفحص أنه ليس فارغاً.
+  const cleanBody = typeof body === 'string' ? body : '';
+
+  if (!cleanTitle) {
+    return res.status(400).json({ error: 'عنوان الصفحة مطلوب' });
+  }
+  if (cleanTitle.length > 120) {
+    return res.status(400).json({ error: 'العنوان أطول من المسموح' });
+  }
+  if (!cleanBody.trim()) {
+    return res.status(400).json({ error: 'محتوى الصفحة مطلوب' });
+  }
+  // 100 ألف حرف: أطول بكثير من أي سياسة خصوصية، وقصير بما يكفي
+  // ليمنع لصق ملف كامل في المحرّر بالخطأ.
+  if (cleanBody.length > 100000) {
+    return res.status(400).json({ error: 'المحتوى أطول من المسموح' });
+  }
+
+  const page = await siteRepo.updatePage(String(req.params.slug), {
+    title: cleanTitle,
+    body: cleanBody,
+  });
+  if (!page) return res.status(404).json({ error: 'الصفحة غير موجودة' });
+  res.json({ page });
+});
+
+// GET /api/admin/site/settings
+router.get('/site/settings', async (req, res) => {
+  const settings = await siteSettings.get();
+  res.json({ settings });
+});
+
+// PUT /api/admin/site/settings — الشكل في services/siteSettings.js
+router.put('/site/settings', async (req, res) => {
+  const result = await siteSettings.update(req.body);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ settings: result.value });
+});
+
+// GET /api/admin/site/messages?unread=1
+router.get('/site/messages', async (req, res) => {
+  const unreadOnly = String(req.query.unread || '') === '1';
+  const messages = await siteRepo.listMessages({ unreadOnly });
+  // العدّاد مع القائمة: اللوحة تحدّث الشارة بعد كل قراءة أو حذف
+  // بلا طلب ثانٍ لـ /stats.
+  res.json({ messages, unread: await siteRepo.countUnread() });
+});
+
+// معرّفات الرسائل BIGSERIAL. نفحص الشكل قبل القاعدة لنفس سبب
+// UUID_RE أعلاه: معرّف غير رقمي يرمي خطأ نوع من PostgreSQL
+// فيظهر 500 "خطأ داخلي" بدل 400 مفهوم.
+const BIGINT_RE = /^[0-9]{1,18}$/;
+
+// PUT /api/admin/site/messages/:id/read
+router.put('/site/messages/:id/read', async (req, res) => {
+  if (!BIGINT_RE.test(req.params.id)) {
+    return res.status(400).json({ error: 'معرّف الرسالة غير صالح' });
+  }
+  const message = await siteRepo.markRead(req.params.id);
+  if (!message) return res.status(404).json({ error: 'الرسالة غير موجودة' });
+  res.json({ message, unread: await siteRepo.countUnread() });
+});
+
+// DELETE /api/admin/site/messages/:id — حذف نهائي.
+// لا "سلة محذوفات": الرسائل تصل من نموذج عام، ومعظم ما يُحذف منها
+// إغراق — أرشفته تعني الاحتفاظ بالنفاية إلى الأبد.
+router.delete('/site/messages/:id', async (req, res) => {
+  if (!BIGINT_RE.test(req.params.id)) {
+    return res.status(400).json({ error: 'معرّف الرسالة غير صالح' });
+  }
+  const removed = await siteRepo.deleteMessage(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'الرسالة غير موجودة' });
+  res.status(204).end();
 });
 
 // POST /api/admin/settle — تشغيل الاحتساب يدوياً الآن.

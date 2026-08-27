@@ -1,0 +1,382 @@
+// siteRenderer — بناء صفحات الموقع العام كنص HTML.
+//
+// لماذا يُصنع الموقع في السيرفر بدل صفحة ثابتة تجلب المحتوى
+// بـ JavaScript؟
+//
+// سياسة الخصوصية شرط في مراجعة App Store، والمراجع يفتح الرابط
+// وقد يقرأه آلياً. صفحة تصل فارغة ثم تملأ نفسها بعد نداء شبكة
+// تظهر لأدوات القراءة الآلية — وللزائر على شبكة بطيئة — بلا
+// محتوى. الشروط والخصوصية وثائق قانونية: يجب أن تصل مكتوبة في
+// أول بايت، لا أن يعتمد ظهورها على نجاح طلب ثانٍ.
+//
+// ولماذا بلا محرك قوالب (ejs/pug)؟ خمس صفحات لا تبرر تبعية جديدة
+// وطبقة تعلّم. دوال تعيد نصاً تكفي، والهروب من HTML صريح في
+// esc() بدل أن يكون سلوكاً ضمنياً في محرك قد نظنه يفعله.
+
+const { render: renderMarkdown } = require('../utils/safeMarkdown');
+
+// الهروب من HTML لكل قيمة تدخل الصفحة.
+//
+// كل نص هنا مصدره قاعدة البيانات (أي: لوحة التحكم)، ولا نص منها
+// موثوق بحكم مصدره. لو أفلتنا اسم الموقع بلا هروب لصار حقل نص في
+// اللوحة ثغرة XSS على كل زائر.
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// روابط التواصل: نسمح بـ http/https فقط.
+//
+// href غير مفلتر ثغرة قائمة بذاتها حتى مع هروب HTML الكامل:
+// javascript:alert(1) نص بريء الشكل لكنه ينفَّذ عند الضغط.
+function safeUrl(url) {
+  const value = String(url ?? '').trim();
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    return ['http:', 'https:'].includes(parsed.protocol) ? value : null;
+  } catch {
+    return null; // ليس رابطاً مكتمل الشكل
+  }
+}
+
+function safeMailto(email) {
+  const value = String(email ?? '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : null;
+}
+
+// شعار العلامة. نفس هندسة ملف الهوية (مربع 512).
+// `carve` لون الحفر ويجب أن يساوي لون السطح خلف الدرع — لا لون
+// ثالث داخل العلامة أبداً. و`full` يحمل قاعدة "تحت 64 بكسل تُحذف
+// الدرجات": الشرط في مكان واحد فلا يُنسى في استدعاء.
+function brandMark(size = 28, carve = '#101e17') {
+  const full = size >= 64;
+  const steps = full
+    ? `<g fill="${carve}">
+         <rect x="140" y="300" width="58" height="104" rx="10"/>
+         <rect x="227" y="250" width="58" height="154" rx="10"/>
+         <rect x="314" y="284" width="58" height="120" rx="10"/>
+       </g>`
+    : '';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 512 512" fill="none" aria-hidden="true">
+    <path d="M256 40l192 68v168c0 80-88 152-192 192C152 428 64 356 64 276V108z" fill="#F2C14E"/>
+    ${steps}
+    <path d="M212 236v-40l22 14 22-24 22 24 22-14v40z" fill="${carve}"/>
+  </svg>`;
+}
+
+const SOCIAL = [
+  { key: 'x', label: 'X', icon: 'M18.9 2H22l-7.2 8.3L23 22h-6.6l-5.2-6.8L5.3 22H2.2l7.7-8.8L1.7 2h6.8l4.7 6.2zm-1.1 18h1.8L7.3 3.8H5.4z' },
+  { key: 'instagram', label: 'إنستقرام', icon: 'M12 2.2c3.2 0 3.6 0 4.8.07 3.3.15 4.8 1.7 5 5 .06 1.2.07 1.6.07 4.7s0 3.6-.07 4.8c-.15 3.2-1.7 4.8-5 5-1.2.06-1.6.07-4.8.07s-3.6 0-4.8-.07c-3.3-.15-4.8-1.7-5-5C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.8c.15-3.3 1.7-4.8 5-5C8.4 2.2 8.8 2.2 12 2.2zm0 3.4a6.4 6.4 0 100 12.8 6.4 6.4 0 000-12.8zm0 10.5a4.1 4.1 0 110-8.2 4.1 4.1 0 010 8.2zm6.6-10.8a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z' },
+  { key: 'tiktok', label: 'تيك توك', icon: 'M16.6 5.8a4.8 4.8 0 01-1-2.8h-3.2v12.8a2.6 2.6 0 11-2.6-2.6c.27 0 .53.04.78.12V9.9a5.9 5.9 0 00-.78-.05 5.9 5.9 0 105.9 5.9V9.2a8 8 0 004.7 1.5V7.4a4.8 4.8 0 01-3.8-1.6z' },
+  { key: 'youtube', label: 'يوتيوب', icon: 'M21.6 7.2a2.5 2.5 0 00-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 002.4 7.2 26 26 0 002 12a26 26 0 00.4 4.8 2.5 2.5 0 001.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 001.8-1.8A26 26 0 0022 12a26 26 0 00-.4-4.8zM10 15V9l5.2 3z' },
+  { key: 'snapchat', label: 'سناب شات', icon: 'M12 2c2.8 0 4.7 2 4.8 4.8v1.9c.5.2 1-.3 1.5-.3.4 0 .9.3.9.8 0 .7-1.2 1-1.8 1.3-.3.2-.5.3-.4.7.4 1.4 2 2.9 3.3 3.2.4.1.6.3.6.6 0 .7-1.6 1-2.2 1.1-.2.3-.1 1-.5 1.1-.4.1-1.1-.1-1.9-.1-1.1 0-1.6.2-2.4.8-.7.5-1.3.9-2.4.9s-1.7-.4-2.4-.9c-.8-.6-1.3-.8-2.4-.8-.8 0-1.5.2-1.9.1-.4-.1-.3-.8-.5-1.1-.6-.1-2.2-.4-2.2-1.1 0-.3.2-.5.6-.6 1.3-.3 2.9-1.8 3.3-3.2.1-.4-.1-.5-.4-.7C4.4 10.2 3.2 9.9 3.2 9.2c0-.5.5-.8.9-.8.5 0 1 .5 1.5.3V6.8C5.7 4 7.6 2 10.4 2z' },
+  { key: 'linkedin', label: 'لينكدإن', icon: 'M4.98 3.5a2.5 2.5 0 11-.02 5 2.5 2.5 0 01.02-5zM3 9h4v12H3zM10 9h3.8v1.7h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1V21h-4v-5.4c0-1.3 0-2.96-1.8-2.96s-2.08 1.4-2.08 2.86V21h-4z' },
+];
+
+function socialLinks(settings) {
+  const items = SOCIAL.map(({ key, label, icon }) => {
+    const url = safeUrl(settings?.social?.[key]);
+    if (!url) return ''; // حساب غير مضبوط = لا نعرض أيقونة ميتة
+    return `<a href="${esc(url)}" title="${esc(label)}" aria-label="${esc(label)}"
+               target="_blank" rel="noopener noreferrer">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="${icon}"/></svg>
+    </a>`;
+  }).filter(Boolean);
+
+  return items.length ? `<div class="social">${items.join('')}</div>` : '';
+}
+
+const NAV = [
+  { href: '/', label: 'الرئيسية' },
+  { href: '/about', label: 'حول الموقع' },
+  { href: '/contact', label: 'اتصل بنا' },
+  { href: '/privacy', label: 'الخصوصية' },
+  { href: '/terms', label: 'الشروط' },
+];
+
+/** التخطيط المشترك: ترويسة وتذييل حول أي محتوى. */
+function layout({ title, description, body, settings, active, canonicalPath }) {
+  const siteName = settings?.siteName || 'ملك التوقعات';
+  const fullTitle = title && title !== siteName ? `${title} — ${siteName}` : siteName;
+  const contact = safeMailto(settings?.contactEmail);
+  const support = safeMailto(settings?.supportEmail);
+  const appStore = safeUrl(settings?.appStoreUrl);
+  const play = safeUrl(settings?.googlePlayUrl);
+  const year = new Date().getFullYear();
+
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(fullTitle)}</title>
+<meta name="description" content="${esc(description || settings?.description || '')}">
+<meta name="theme-color" content="#080f0c">
+<meta property="og:title" content="${esc(fullTitle)}">
+<meta property="og:description" content="${esc(description || settings?.description || '')}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ar_SA">
+${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/">${brandMark(28, '#080f0c')}<span>${esc(siteName)}</span></a>
+    <nav class="topnav">
+      ${NAV.map((n) =>
+        `<a href="${n.href}"${n.href === active ? ' class="active"' : ''}>${esc(n.label)}</a>`
+      ).join('')}
+    </nav>
+  </div>
+</header>
+
+<main>${body}</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div class="about">
+        <a class="brand" href="/">${brandMark(26, '#080f0c')}<span>${esc(siteName)}</span></a>
+        <p>${esc(settings?.description || settings?.tagline || '')}</p>
+        ${socialLinks(settings)}
+      </div>
+
+      <div class="foot-links">
+        <div class="foot-col">
+          <h4>الموقع</h4>
+          <a href="/">الرئيسية</a>
+          <a href="/about">حول الموقع</a>
+          <a href="/contact">اتصل بنا</a>
+        </div>
+        <div class="foot-col">
+          <h4>قانوني</h4>
+          <a href="/privacy">سياسة الخصوصية</a>
+          <a href="/terms">شروط الاستخدام</a>
+        </div>
+        <div class="foot-col">
+          <h4>تواصل</h4>
+          ${contact ? `<a href="mailto:${esc(contact)}" dir="ltr">${esc(contact)}</a>` : ''}
+          ${support && support !== contact
+            ? `<a href="mailto:${esc(support)}" dir="ltr">${esc(support)}</a>`
+            : ''}
+          ${!contact && !support ? '<span>لم يُضبط بريد بعد</span>' : ''}
+        </div>
+        ${appStore || play ? `<div class="foot-col">
+          <h4>التطبيق</h4>
+          ${appStore ? `<a href="${esc(appStore)}" target="_blank" rel="noopener noreferrer">App Store</a>` : ''}
+          ${play ? `<a href="${esc(play)}" target="_blank" rel="noopener noreferrer">Google Play</a>` : ''}
+        </div>` : ''}
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <span>© ${year} ${esc(siteName)}. جميع الحقوق محفوظة.</span>
+      <span>صُنع في السعودية</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>`;
+}
+
+// مزايا المنتج ورتبه.
+//
+// هذه نصوص تسويقية ثابتة في القالب لا في القاعدة، بعكس صفحات
+// الخصوصية والشروط وحول الموقع. السبب أنها مقترنة ببنية بصرية
+// (بطاقة لكل ميزة، شبكة للرتب) لا يعبّر عنها نص Markdown حر —
+// ولأنها تصف ما يفعله التطبيق فعلاً، فتغييرها يرافق تغييره لا
+// تحرير نص. لو احتاجها المالك قابلة للتحرير فالخطوة الواضحة
+// جدول مستقل بحقول (عنوان، وصف، تصنيف) لا صفحة Markdown.
+const FEATURES = [
+  ['ذكاء', 'مستشار التوقّع', 'قراءة مختصرة قبل كل مباراة: الفورمة والغيابات وسلوك الفريق في نفس التوقيت، مع نسبة ثقة صريحة.'],
+  ['مخاطرة', 'مضاعِف ×2', 'استخدم مضاعِفاً على مباراة واحدة كل جولة. التوقّع ضد الأغلبية يفتح مضاعِفاً إضافياً.'],
+  ['حماية', 'درع السلسلة', 'توقّع خاطئ واحد لا يكسر سلسلتك إذا كان الدرع مفعّلاً — يُكتسب كل خمسة توقّعات صحيحة.'],
+  ['لحظي', 'توقّع الدقيقة', 'أثناء المباراة: من يسجّل التالي؟ نوافذ قصيرة بنقاط لحظية لا تؤثر على السلسلة.'],
+  ['اجتماعي', 'دوريات خاصة', 'دوري بكود دعوة حتى خمسين لاعباً، بجدول مستقل ورسائل داخل الدوري بعد كل جولة.'],
+  ['منافسة', 'تحدّي ١ ضد ١', 'واجه صاحبك على جولة كاملة. الفائز يأخذ نقاط تاج ووساماً، والخاسر يفقد جزءاً من رتبته.'],
+];
+
+const RANKS = [
+  ['مشجّع', '0 — 500', 'توقّع أساسي وترتيب عام'],
+  ['لاعب', '500 — 1,500', 'دوري خاص واحد'],
+  ['فارس', '1,500 — 3,000', 'مضاعِف ودرع السلسلة'],
+  ['أمير', '3,000 — 5,000', 'تحديات مفتوحة وإحصاءات موسّعة'],
+  ['الملك', '5,000+', 'تاج على الاسم وصدارة الموسم'],
+];
+
+/** الصفحة الرئيسية. */
+function renderHome(settings) {
+  const appStore = safeUrl(settings?.appStoreUrl);
+  const play = safeUrl(settings?.googlePlayUrl);
+
+  const storeButtons = [
+    appStore && `<a class="btn btn-primary" href="${esc(appStore)}" target="_blank" rel="noopener noreferrer">حمّل من App Store</a>`,
+    play && `<a class="btn btn-ghost" href="${esc(play)}" target="_blank" rel="noopener noreferrer">حمّل من Google Play</a>`,
+  ].filter(Boolean).join('');
+
+  const body = `
+<div class="hero">
+  <div class="wrap">
+    <div class="hero-badge">${brandMark(60, '#101e17')}</div>
+    <h1>${esc(settings?.siteName || 'ملك التوقعات')}</h1>
+    <p class="tagline">${esc(settings?.tagline || '')}</p>
+    <p class="lede">${esc(settings?.description || '')}</p>
+    <div class="cta-row">
+      ${storeButtons || '<a class="btn btn-ghost" href="/contact">التطبيق قادم قريباً — تواصل معنا</a>'}
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <div class="section-label">المزايا</div>
+    <h2 class="section-title">ليست مجرد توقّعات</h2>
+    <p class="section-sub">كل ميزة هنا مبنية على سؤال واحد: ما الذي يجعل المنافسة بينك وبين أصحابك تستمر طوال الموسم؟</p>
+    <div class="cards">
+      ${FEATURES.map(([kicker, title, text]) => `
+        <div class="card">
+          <span class="kicker">${esc(kicker)}</span>
+          <h3>${esc(title)}</h3>
+          <p>${esc(text)}</p>
+        </div>`).join('')}
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-label">سلّم الرتب</div>
+    <h2 class="section-title">من مشجّع إلى ملك</h2>
+    <p class="section-sub">خمس رتب موسمية بصعود وهبوط أسبوعي، تحفظ التنافس متوازناً ولا تترك المتصدّر بلا منافس.</p>
+    <div class="ranks">
+      ${RANKS.map(([name, range, perk], i) => `
+        <div class="rank${i === RANKS.length - 1 ? ' king' : ''}">
+          <div class="name">${esc(name)}</div>
+          <div class="range num">${esc(range)}</div>
+          <div class="perk">${esc(perk)}</div>
+        </div>`).join('')}
+    </div>
+  </div>
+</section>`;
+
+  return layout({
+    title: settings?.siteName || 'ملك التوقعات',
+    description: settings?.description,
+    body,
+    settings,
+    active: '/',
+  });
+}
+
+/** صفحة محتوى (الخصوصية، الشروط، حول الموقع). */
+function renderPage(page, settings) {
+  const updated = page.updated_at
+    ? new Date(page.updated_at).toLocaleDateString('ar-SA', {
+        year: 'numeric', month: 'long', day: 'numeric',
+      })
+    : null;
+
+  const body = `
+<div class="page">
+  <div class="wrap">
+    <h1>${esc(page.title)}</h1>
+    ${updated ? `<p class="updated">آخر تحديث: ${esc(updated)}</p>` : ''}
+    <div class="prose">${renderMarkdown(page.body)}</div>
+  </div>
+</div>`;
+
+  return layout({
+    title: page.title,
+    body,
+    settings,
+    active: `/${page.slug}`,
+  });
+}
+
+/** صفحة اتصل بنا: نموذج + بيانات التواصل.
+ *
+ * النموذج HTML خالص يرسل POST عادياً — لا JavaScript. الصفحة يجب
+ * أن تعمل حتى لو تعطّل السكربت أو حجبه المتصفح، فقناة التواصل
+ * آخر ما يجوز أن ينكسر.
+ */
+function renderContact(page, settings, { sent, error, values } = {}) {
+  const contact = safeMailto(settings?.contactEmail);
+  const support = safeMailto(settings?.supportEmail);
+  const v = values || {};
+
+  const body = `
+<div class="page">
+  <div class="wrap">
+    <h1>${esc(page?.title || 'اتصل بنا')}</h1>
+    ${page?.body ? `<div class="prose">${renderMarkdown(page.body)}</div>` : ''}
+
+    <div class="contact-grid">
+      <div class="card">
+        ${sent ? '<div class="note ok">وصلتنا رسالتك. سنرد عليك في أقرب وقت.</div>' : ''}
+        ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+        <form method="post" action="/contact">
+          <div class="field">
+            <label for="name">الاسم</label>
+            <input id="name" name="name" maxlength="80" value="${esc(v.name)}" required>
+          </div>
+          <div class="field">
+            <label for="email">البريد الإلكتروني</label>
+            <input id="email" name="email" type="email" dir="ltr" maxlength="160"
+                   value="${esc(v.email)}" required>
+          </div>
+          <div class="field">
+            <label for="subject">الموضوع</label>
+            <input id="subject" name="subject" maxlength="140" value="${esc(v.subject)}">
+          </div>
+          <div class="field">
+            <label for="message">الرسالة</label>
+            <textarea id="message" name="message" maxlength="4000" required>${esc(v.message)}</textarea>
+          </div>
+          <button class="btn btn-primary" type="submit">إرسال</button>
+        </form>
+      </div>
+
+      <div class="card contact-side">
+        <h3 style="margin-bottom:8px">قنوات أخرى</h3>
+        ${contact ? `<div class="row"><span class="k">البريد</span>
+          <a href="mailto:${esc(contact)}" dir="ltr">${esc(contact)}</a></div>` : ''}
+        ${support && support !== contact ? `<div class="row"><span class="k">الدعم</span>
+          <a href="mailto:${esc(support)}" dir="ltr">${esc(support)}</a></div>` : ''}
+        ${!contact && !support ? '<div class="row"><span class="k">البريد</span><span>لم يُضبط بعد</span></div>' : ''}
+        ${socialLinks(settings)}
+      </div>
+    </div>
+  </div>
+</div>`;
+
+  return layout({ title: page?.title || 'اتصل بنا', body, settings, active: '/contact' });
+}
+
+/** صفحة 404 بنفس هوية الموقع بدل صفحة Express البيضاء. */
+function renderNotFound(settings) {
+  const body = `
+<div class="page">
+  <div class="wrap" style="text-align:center;padding:70px 0">
+    <h1>الصفحة غير موجودة</h1>
+    <p class="section-sub" style="margin:12px auto 26px">
+      الرابط الذي فتحته لا يقود إلى شيء. ربما تغيّر أو كُتب خطأً.
+    </p>
+    <a class="btn btn-primary" href="/">العودة للرئيسية</a>
+  </div>
+</div>`;
+  return layout({ title: 'الصفحة غير موجودة', body, settings, active: null });
+}
+
+module.exports = { renderHome, renderPage, renderContact, renderNotFound, esc };

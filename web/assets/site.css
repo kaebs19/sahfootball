@@ -1,0 +1,605 @@
+/* موقع "ملك التوقعات" العام.
+ *
+ * نفس رموز الهوية المستعملة في التطبيق (mobile/lib/brand.dart)
+ * ولوحة التحكم (admin/src/theme.css) — لون واحد وخط واحد وقواعد
+ * واحدة في المنتج كله. زائر الموقع ثم مستخدم التطبيق يجب أن يشعر
+ * أنه في المكان نفسه.
+ *
+ * قواعد الاستعمال الثلاث كما في ملف الهوية:
+ *  1. الذهبي للتاج والنقاط والرتب فقط — لا للأزرار ولا كخلفية واسعة.
+ *  2. الأخضر للصح والتأكيد فقط، ولا يتشارك مع الذهبي في بطاقة واحدة.
+ *  3. لا لون ثالث داخل العلامة: الحفر بلون السطح الذي تجلس عليه.
+ */
+
+:root {
+  --night: #080f0c;
+  --surface: #101e17;
+  --crown: #f2c14e;
+  --correct: #12e07e;
+  --wrong: #ff5a4e;
+  --text: #edf4ef;
+  --text-muted: #98b0a3;
+  --text-faint: #5a7265;
+  --on-accent: #0b140f;
+
+  --fill: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
+  --crown-wash: rgba(242, 193, 78, 0.13);
+  --crown-line: rgba(242, 193, 78, 0.3);
+
+  --font-display: 'Readex Pro', system-ui, -apple-system, sans-serif;
+  --font-body: 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
+
+  --wrap: 1080px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--night);
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--night);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* الأرقام جدولية حيثما ظهرت في سياق مقارنة */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+a {
+  color: var(--correct);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+.wrap {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 22px;
+}
+
+/* ============================ الترويسة ============================ */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(8, 15, 12, 0.86);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 66px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.topnav {
+  display: flex;
+  gap: 4px;
+  margin-inline-start: auto;
+  flex-wrap: wrap;
+}
+
+.topnav a {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border-radius: 999px;
+}
+
+.topnav a:hover {
+  color: var(--text);
+  background: var(--fill);
+  text-decoration: none;
+}
+
+.topnav a.active {
+  color: var(--crown);
+  background: var(--crown-wash);
+}
+
+/* ============================ الواجهة ============================ */
+
+.hero {
+  padding: 76px 0 60px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* توهّج ذهبي خافت خلف العلامة. مسموح لأنه ليس خلفية مصمتة واسعة
+ * بل إضاءة تحت الشعار مباشرة — نفس ما يفعله ملف الهوية. */
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -180px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 620px;
+  height: 420px;
+  background: radial-gradient(closest-side, rgba(242, 193, 78, 0.16), transparent);
+  pointer-events: none;
+}
+
+.hero-badge {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 22px;
+  border-radius: 27px;
+  background: var(--surface);
+  border: 1px solid var(--crown-line);
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.hero h1 {
+  font-size: clamp(30px, 6vw, 46px);
+  letter-spacing: -0.01em;
+}
+
+.hero .tagline {
+  color: var(--crown);
+  font-family: var(--font-display);
+  font-size: clamp(15px, 2.4vw, 18px);
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.hero .lede {
+  color: var(--text-muted);
+  max-width: 620px;
+  margin: 16px auto 0;
+  font-size: 16px;
+}
+
+.cta-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 30px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  padding: 13px 26px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+}
+
+/* الزر الأساسي أخضر لا ذهبي — تطبيقاً لقاعدة الهوية */
+.btn-primary {
+  background: var(--correct);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+  text-decoration: none;
+}
+
+.btn-ghost {
+  border-color: var(--border);
+  color: var(--text);
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--fill);
+  text-decoration: none;
+}
+
+/* ============================ الأقسام ============================ */
+
+section {
+  padding: 56px 0;
+}
+
+.section-label {
+  color: var(--crown);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: clamp(22px, 4vw, 30px);
+  margin-bottom: 8px;
+}
+
+.section-sub {
+  color: var(--text-muted);
+  max-width: 620px;
+  margin-bottom: 30px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+}
+
+.card h3 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.card p {
+  color: var(--text-muted);
+  font-size: 14.5px;
+}
+
+.card .kicker {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--correct);
+  background: rgba(18, 224, 126, 0.13);
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-bottom: 11px;
+}
+
+/* سلّم الرتب — الذهبي هنا في محله: الرتب هي ما تحجزه الهوية له */
+.ranks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 12px;
+}
+
+.rank {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  text-align: center;
+}
+
+.rank.king {
+  border-color: var(--crown-line);
+  background: linear-gradient(180deg, var(--crown-wash), var(--surface) 70%);
+}
+
+.rank .name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--crown);
+}
+
+.rank .range {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank .perk {
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-top: 7px;
+}
+
+/* ============================ صفحات المحتوى ============================ */
+
+.page {
+  padding: 46px 0 20px;
+}
+
+.page h1 {
+  font-size: clamp(26px, 5vw, 36px);
+}
+
+.page .updated {
+  color: var(--text-faint);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* المحتوى الآتي من لوحة التحكم. مساحته محدودة بـ 46rem لأن السطر
+ * الطويل يتعب العين — والقاعدة أوضح في العربية حيث لا حروف كبيرة
+ * تساعد على تتبّع بداية السطر التالي. */
+.prose {
+  max-width: 46rem;
+  margin-top: 26px;
+  font-size: 16px;
+}
+
+.prose h2 {
+  font-size: 21px;
+  margin: 32px 0 10px;
+}
+
+.prose h3 {
+  font-size: 17px;
+  margin: 24px 0 8px;
+  color: var(--crown);
+}
+
+.prose p {
+  margin-bottom: 15px;
+  color: var(--text-muted);
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 16px;
+  padding-inline-start: 22px;
+  color: var(--text-muted);
+}
+
+.prose li {
+  margin-bottom: 7px;
+}
+
+.prose strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 28px 0;
+}
+
+.prose a {
+  text-decoration: underline;
+}
+
+/* ============================ اتصل بنا ============================ */
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 18px;
+  align-items: start;
+  margin-top: 26px;
+}
+
+.field {
+  margin-bottom: 13px;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+input,
+textarea {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 15px;
+  background: var(--night);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 11px 13px;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--correct);
+}
+
+textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+button.btn {
+  cursor: pointer;
+  font-size: 14.5px;
+}
+
+.note {
+  padding: 12px 15px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+
+.note.ok {
+  background: rgba(18, 224, 126, 0.12);
+  color: var(--correct);
+}
+
+.note.bad {
+  background: rgba(255, 90, 78, 0.12);
+  color: var(--wrong);
+}
+
+.contact-side .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14.5px;
+}
+
+.contact-side .row:last-child {
+  border-bottom: none;
+}
+
+.contact-side .row .k {
+  color: var(--text-faint);
+  font-size: 13px;
+  min-width: 74px;
+}
+
+/* ============================ التذييل ============================ */
+
+.footer {
+  border-top: 1px solid var(--border);
+  margin-top: 40px;
+  padding: 38px 0 46px;
+}
+
+.footer-top {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.footer .about {
+  max-width: 330px;
+}
+
+.footer .about p {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.foot-links {
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.foot-col h4 {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.foot-col a,
+.foot-col span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 3px 0;
+}
+
+.foot-col a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.social {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.social a {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--fill);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.social a:hover {
+  background: var(--crown-wash);
+  color: var(--crown);
+}
+
+.footer-bottom {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* ============================ الشاشات الضيقة ============================ */
+
+@media (max-width: 760px) {
+  .contact-grid {
+    grid-template-columns: 1fr;
+  }
+  .topbar .wrap {
+    height: auto;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .topnav {
+    margin-inline-start: 0;
+    justify-content: center;
+  }
+  .hero {
+    padding: 48px 0 40px;
+  }
+  section {
+    padding: 42px 0;
+  }
+}
