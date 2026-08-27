@@ -8,7 +8,8 @@
     "dev": "nodemon src/app.js",
     "migrate": "node scripts/migrate.js",
     "sync": "node src/jobs/syncFixtures.js",
-    "deploy": "npm run migrate && node src/app.js"
+    "deploy": "npm run migrate && node src/app.js",
+    "check-plan": "node scripts/checkPlan.js"
   },
   "keywords": [],
   "author": "",

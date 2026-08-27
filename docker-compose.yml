@@ -58,6 +58,7 @@ services:
       FOOTBALL_API_URL: ${FOOTBALL_API_URL:-https://v3.football.api-sports.io}
       LEAGUE_ID: ${LEAGUE_ID:-307}
       SEASON: ${SEASON:-2024}
+      FOOTBALL_DAILY_LIMIT: ${FOOTBALL_DAILY_LIMIT:-100}
       USE_SAMPLES: 'false'
       MAIL_DRIVER: ${MAIL_DRIVER:-console}
       APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-com.sahfootball.app}
