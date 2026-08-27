@@ -1,22 +1,36 @@
 // fixtureRepo — كل تعامل جدولي fixtures و fixture_events مع القاعدة.
 const db = require('../config/db');
 
-// جملة SELECT مشتركة لكل استعلامات المباريات: نضم جدول الفرق مرتين
-// (مرة للمضيف ومرة للضيف) بأسماء مستعارة ht و at، مع التدهور اللطيف
-// للاسم العربي عبر COALESCE.
-const FIXTURE_SELECT = `
-  SELECT f.id, f.league_id, f.season, f.round, f.kickoff_at, f.status,
-         f.goals_home, f.goals_away,
-         f.home_team_id,
-         COALESCE(ht.name_ar, ht.name_en) AS home_team_name,
-         ht.logo_url AS home_team_logo,
-         f.away_team_id,
-         COALESCE(at.name_ar, at.name_en) AS away_team_name,
-         at.logo_url AS away_team_logo
+// أعمدة المباراة المشتركة لكل الاستعلامات.
+const FIXTURE_COLUMNS = `
+  f.id, f.league_id, f.season, f.round, f.kickoff_at, f.status,
+  f.goals_home, f.goals_away,
+  f.home_team_id,
+  COALESCE(ht.name_ar, ht.name_en) AS home_team_name,
+  ht.logo_url AS home_team_logo,
+  f.away_team_id,
+  COALESCE(at.name_ar, at.name_en) AS away_team_name,
+  at.logo_url AS away_team_logo
+`;
+
+// نضم جدول الفرق مرتين (مرة للمضيف ومرة للضيف) بأسماء مستعارة
+// ht و at، مع التدهور اللطيف للاسم العربي عبر COALESCE أعلاه.
+const FIXTURE_FROM = `
   FROM fixtures f
   JOIN teams ht ON ht.id = f.home_team_id
   JOIN teams at ON at.id = f.away_team_id
 `;
+
+const FIXTURE_SELECT = `SELECT ${FIXTURE_COLUMNS} ${FIXTURE_FROM}`;
+
+// نفس الشكل زائد الدقيقة، لاستعلامات تبويب "مباشر" وحده.
+//
+// لماذا شكلان بدل إضافة elapsed لـ FIXTURE_SELECT مباشرة؟
+// شكل /api/fixtures يستهلكه التطبيق الآن، وتوسيعه لأجل حقل لا
+// يعني قائمة المباريات في شيء (دقيقة اللعب معناها الوحيد أثناء
+// اللعب) تغيير عقد قائم بلا مقابل. والفصل هنا لا يكرر شيئاً:
+// الأعمدة والـ JOIN مصدرهما ثابت واحد، فلا يمكن أن ينحرف الشكلان.
+const FIXTURE_SELECT_LIVE = `SELECT ${FIXTURE_COLUMNS}, f.elapsed ${FIXTURE_FROM}`;
 
 async function upsertMany(fixtures) {
   const client = await db.pool.connect();
@@ -26,17 +40,23 @@ async function upsertMany(fixtures) {
       await client.query(
         `INSERT INTO fixtures
            (id, league_id, season, home_team_id, away_team_id,
-            kickoff_at, status, goals_home, goals_away, round, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+            kickoff_at, status, goals_home, goals_away, elapsed, round, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
          ON CONFLICT (id) DO UPDATE SET
            kickoff_at = EXCLUDED.kickoff_at,  -- قد تتأجل المباراة لموعد جديد
            status     = EXCLUDED.status,
            goals_home = EXCLUDED.goals_home,
            goals_away = EXCLUDED.goals_away,
+           -- الدقيقة في جهة UPDATE وليست في INSERT فقط: هذا الصف
+           -- يُدخَل مرة واحدة (قبل الموسم، بلا دقيقة) ثم يُحدَّث في
+           -- كل نبضة مباشرة. لو نسيناها هنا لتجمّد العداد على 0'
+           -- طوال المباراة — وهو أسوأ من ألا نعرض دقيقة أصلاً،
+           -- لأن الخطأ يبدو كمعلومة صحيحة.
+           elapsed    = EXCLUDED.elapsed,
            round      = EXCLUDED.round,
            updated_at = now()`,
         [f.id, f.league_id, f.season, f.home_team_id, f.away_team_id,
-         f.kickoff_at, f.status, f.goals_home, f.goals_away, f.round]
+         f.kickoff_at, f.status, f.goals_home, f.goals_away, f.elapsed ?? null, f.round]
       );
     }
     await client.query('COMMIT');
@@ -73,6 +93,52 @@ async function findUpcoming(limit = 20) {
      ORDER BY f.kickoff_at
      LIMIT $1`,
     [limit]
+  );
+  return rows;
+}
+
+// ── استعلامات تبويب "مباشر" ─────────────────────────────────────
+
+// المباريات الجارية الآن.
+async function findLive() {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT_LIVE}
+     WHERE f.status = 'live'
+     ORDER BY f.kickoff_at`
+  );
+  return rows;
+}
+
+// أقرب مباراة قادمة — واحدة فقط.
+//
+// وجودها في تبويب "مباشر" ليس حشواً: المباريات تُلعب ساعات معدودة
+// في الأسبوع، فالتبويب فارغ في أغلب الأوقات. "لا شيء الآن، والقادم
+// بعد ١٧ ساعة" جواب مفيد، أما الشاشة الفارغة فتبدو عطلاً.
+async function findNextKickoff() {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT_LIVE}
+     WHERE f.status = 'scheduled' AND f.kickoff_at > now()
+     ORDER BY f.kickoff_at
+     LIMIT 1`
+  );
+  return rows[0] ?? null;
+}
+
+// مباريات انتهت اليوم — نتائج الأمس القريب التي ما زالت حديثاً.
+//
+// "اليوم" هنا يوم الرياض لا يوم UTC، لنفس السبب المشروح في
+// findByDate: مباراة الساعة 00:30 بتوقيت الرياض ما زالت "مباراة
+// الليلة" عند المستخدم بينما UTC نقلها ليوم آخر.
+// والتصفية على kickoff_at وليست على وقت انتهاء (لا نخزّنه): فارق
+// الساعتين بين الانطلاق والنهاية لا يغيّر اليوم إلا في حالة نادرة
+// جداً، وتخزين عمود ثالث لأجلها مبالغة.
+async function findFinishedToday() {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT_LIVE}
+     WHERE f.status = 'finished'
+       AND (f.kickoff_at AT TIME ZONE 'Asia/Riyadh')::date
+         = (now() AT TIME ZONE 'Asia/Riyadh')::date
+     ORDER BY f.kickoff_at`
   );
   return rows;
 }
@@ -136,6 +202,9 @@ module.exports = {
   upsertMany,
   findByDate,
   findUpcoming,
+  findLive,
+  findNextKickoff,
+  findFinishedToday,
   findById,
   replaceEvents,
   findEvents,

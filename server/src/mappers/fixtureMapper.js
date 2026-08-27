@@ -10,7 +10,7 @@
 //
 // شكل عنصر المباراة عند API-Football (مبسّطاً):
 // {
-//   fixture: { id, date, status: { short: 'NS' | '1H' | 'FT' ... } },
+//   fixture: { id, date, status: { short: 'NS' | '1H' | 'FT' ..., elapsed: 67 } },
 //   league:  { id, season, round },
 //   teams:   { home: { id, name, logo }, away: { ... } },
 //   goals:   { home: 2, away: 1 }
@@ -19,8 +19,8 @@
 // المزود يستخدم ~20 رمز حالة تفصيلياً. تطبيقنا لا يحتاج التمييز بين
 // "الشوط الأول" و"استراحة" و"وقت إضافي" في مستوى قاعدة البيانات —
 // يحتاج فقط: هل المباراة لم تبدأ، جارية، انتهت، مؤجلة، أو ملغاة؟
-// نختزل الرموز لخمس حالات خاصة بنا. التفاصيل الدقيقة (دقيقة اللعب)
-// يمكن جلبها لاحقاً من الأحداث المباشرة عند الحاجة.
+// نختزل الرموز لخمس حالات خاصة بنا. أما دقيقة اللعب فنأخذها كما هي
+// من status.elapsed (انظر أسفل mapFixture) — تبويب "مباشر" يحتاجها.
 const STATUS_MAP = {
   // لم تبدأ
   TBD: 'scheduled', // موعدها غير مؤكد بعد
@@ -75,6 +75,10 @@ function mapFixture(apiItem) {
     // لو أرسل المزود undefined.
     goals_home: goals.home ?? null,
     goals_away: goals.away ?? null,
+    // دقيقة اللعب الرسمية. المزود يرسلها null قبل الانطلاق وبعد
+    // النهاية، ونمررها null كما هي — العمود nullable لهذا السبب
+    // بالضبط (انظر migrations/010).
+    elapsed: fixture.status?.elapsed ?? null,
     round: league.round ?? null,
   };
 }

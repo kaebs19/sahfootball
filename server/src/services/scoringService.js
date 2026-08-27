@@ -14,16 +14,38 @@ const logger = require('../utils/logger');
 // القيم الاحتياطية لو غاب صف الإعدادات لأي سبب — النظام لا يتوقف.
 const DEFAULT_SCORING = { exact: 5, diff: 3, outcome: 2 };
 
-// دالة صافية (pure): مدخلات → رقم، بلا قاعدة بيانات ولا حالة.
-// عمداً — أسهل شيء للاختبار والفهم.
-function computePoints(pred, actual, cfg) {
-  if (pred.home === actual.home && pred.away === actual.away) return cfg.exact;
-  if (pred.home - pred.away === actual.home - actual.away) return cfg.diff;
+// تصنيف التوقع مقابل نتيجة: 'exact' | 'diff' | 'outcome' | 'none'.
+//
+// هذه هي المقارنة الوحيدة في النظام كله، وكل من يحتاجها يمر بها.
+// السبب عملي: تبويب "مباشر" يعرض شارة ("نتيجة مضبوطة!") بينما
+// المباراة جارية، والاحتساب النهائي يمنح النقاط بعد الصافرة. لو
+// كتبنا المقارنة مرة هنا ومرة في الـ route لصار التطابق بينهما
+// مسألة انضباط بشري: أي تعديل مستقبلي على القاعدة (احتساب ركلات
+// الترجيح مثلاً) يُطبَّق في نسخة وينسى في الأخرى، فيرى المستخدم
+// شارة "مضبوطة" طوال المباراة ثم نقاط اتجاه فقط عند النهاية —
+// وهو تناقض يقرأه كسرقة نقاط، لا كخلل برمجي.
+// دالة واحدة تجعل التناقض مستحيلاً لا مستبعداً.
+//
+// صافية (pure): مدخلات → نص، بلا قاعدة بيانات ولا حالة.
+//
+// الترتيب من الأدق للأعم مقصود: تساوي الفارق يتضمن صحة الاتجاه
+// تلقائياً، والنتيجة المضبوطة تتضمن الاثنين.
+function computeState(pred, actual) {
+  if (pred.home === actual.home && pred.away === actual.away) return 'exact';
+  if (pred.home - pred.away === actual.home - actual.away) return 'diff';
 
   const sign = (n) => (n > 0 ? 1 : n < 0 ? -1 : 0);
-  if (sign(pred.home - pred.away) === sign(actual.home - actual.away)) return cfg.outcome;
+  if (sign(pred.home - pred.away) === sign(actual.home - actual.away)) return 'outcome';
 
-  return 0;
+  return 'none';
+}
+
+// النقاط = سعر التصنيف حسب الإعدادات.
+// أسماء حالات computeState هي نفسها مفاتيح cfg عمداً — الربط
+// بينهما يصبح بحثاً في كائن بدل سلسلة شروط ثانية تقول نفس الشيء.
+function computePoints(pred, actual, cfg) {
+  const state = computeState(pred, actual);
+  return state === 'none' ? 0 : cfg[state];
 }
 
 // احتساب كل التوقعات المعلقة لمباريات انتهت.
@@ -48,4 +70,4 @@ async function settleFinished() {
   return pending.length;
 }
 
-module.exports = { computePoints, settleFinished, DEFAULT_SCORING };
+module.exports = { computePoints, computeState, settleFinished, DEFAULT_SCORING };

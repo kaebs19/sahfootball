@@ -38,6 +38,25 @@ async function findMine(userId) {
   return rows;
 }
 
+// توقعات مستخدم واحد لمجموعة مباريات محددة.
+//
+// استعلام واحد بـ ANY بدل استعلام لكل مباراة: تبويب "مباشر" يجمع
+// المباريات الجارية والقادمة والمنتهية اليوم في رد واحد، وسؤال
+// القاعدة مرة لكل صف هو مشكلة N+1 الكلاسيكية — تظهر سريعة على
+// مباراتين وتخنق السيرفر في جولة كاملة.
+// ANY وليس IN (...) المبنية بالنصوص: عدد المعرّفات متغير، وبناء
+// جملة SQL بحلقة هو الباب الذي يدخل منه حقن SQL.
+async function findByUserAndFixtures(userId, fixtureIds) {
+  if (fixtureIds.length === 0) return []; // لا داعي لجولة إلى القاعدة
+  const { rows } = await db.query(
+    `SELECT fixture_id, pred_home, pred_away
+     FROM predictions
+     WHERE user_id = $1 AND fixture_id = ANY($2::int[])`,
+    [userId, fixtureIds]
+  );
+  return rows;
+}
+
 // كل التوقعات غير المحتسبة لمباريات انتهت — مدخلات الاحتساب.
 async function findUnsettled() {
   const { rows } = await db.query(
@@ -84,4 +103,11 @@ async function leaderboard(limit = 50) {
   return rows;
 }
 
-module.exports = { upsert, findMine, findUnsettled, settle, leaderboard };
+module.exports = {
+  upsert,
+  findMine,
+  findByUserAndFixtures,
+  findUnsettled,
+  settle,
+  leaderboard,
+};

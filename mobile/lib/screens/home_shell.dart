@@ -14,6 +14,7 @@ import '../brand.dart';
 import '../state/session.dart';
 import '../widgets/brand_mark.dart';
 import 'leaderboard_screen.dart';
+import 'live_screen.dart';
 import 'matches_screen.dart';
 import 'my_predictions_screen.dart';
 
@@ -27,7 +28,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['المباريات', 'توقعاتي', 'العرش'];
+  static const _titles = ['المباريات', 'مباشر', 'توقعاتي', 'العرش'];
 
   Future<void> _confirmLogout() async {
     final session = context.read<Session>();
@@ -88,6 +89,7 @@ class _HomeShellState extends State<HomeShell> {
         index: _index,
         children: const [
           MatchesScreen(),
+          LiveScreen(),
           MyPredictionsScreen(),
           LeaderboardScreen(),
         ],
@@ -106,6 +108,10 @@ class _HomeShellState extends State<HomeShell> {
                 icon: Icon(Icons.sports_soccer_outlined),
                 selectedIcon: Icon(Icons.sports_soccer),
                 label: 'المباريات'),
+            NavigationDestination(
+                icon: Icon(Icons.sensors),
+                selectedIcon: Icon(Icons.sensors),
+                label: 'مباشر'),
             NavigationDestination(
                 icon: Icon(Icons.fact_check_outlined),
                 selectedIcon: Icon(Icons.fact_check),

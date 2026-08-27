@@ -19,6 +19,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
 import '../models/fixture.dart';
 import '../models/leaderboard_entry.dart';
+import '../models/live_fixture.dart';
 import '../models/prediction.dart';
 import '../models/user.dart';
 
@@ -278,6 +279,20 @@ class ApiClient {
       return (res.data['fixtures'] as List)
           .map((j) => Fixture.fromJson(j as Map<String, dynamic>))
           .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// حالة تبويب "مباشر": الجاري الآن، والمباراة القادمة، ونتائج اليوم.
+  ///
+  /// طلب واحد لا ثلاثة: الشاشة تُحدَّث كل عشرين ثانية، وثلاثة طلبات
+  /// في كل دورة تضاعف الحمل بلا سبب — الأجزاء الثلاثة تُقرأ معاً
+  /// دائماً ولا معنى لتحديث أحدها دون الآخر.
+  Future<LiveState> liveState() async {
+    try {
+      final res = await _dio.get('/api/fixtures/live');
+      return LiveState.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {
       _throwReadable(e);
     }
