@@ -6,3 +6,4 @@ build/
 samples/
 *.log
 .DS_Store
+uploads/
