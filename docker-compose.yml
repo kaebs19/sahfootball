@@ -1,0 +1,82 @@
+# تشغيل ملك التوقعات كاملاً: السيرفر وقاعدة البيانات و Redis.
+#
+#   cp server/.env.example .env  ثم املأه، ثم:
+#   docker compose up -d --build
+#
+# الهجرات تعمل تلقائياً عند إقلاع الحاوية (command أدناه) — نسيان
+# تشغيلها يدوياً بعد النشر خطأ متكرر يظهر كأعطال SQL غامضة.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sahfootball}
+      POSTGRES_USER: ${POSTGRES_USER:-malik}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD في .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # لا نفتح منفذ القاعدة للخارج: التطبيق يصلها عبر شبكة compose
+    # الداخلية، وفتحها على الإنترنت أشهر طرق اختراق قواعد البيانات.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-malik}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # appendonly: عدّاد حصة API وحدود السبام تعيش هنا. فقدانها عند
+    # إعادة التشغيل يصفّر العدّاد فنتجاوز حصة المزوّد دون أن ندري.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    # ننتظر جاهزية القاعدة لا مجرد إقلاع حاويتها: postgres يستغرق
+    # ثواني قبل قبول الاتصالات، وبدون هذا يموت التطبيق عند أول هجرة.
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-malik}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sahfootball}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?ولّده بـ openssl rand -hex 32}
+      FOOTBALL_API_KEY: ${FOOTBALL_API_KEY}
+      FOOTBALL_API_URL: ${FOOTBALL_API_URL:-https://v3.football.api-sports.io}
+      LEAGUE_ID: ${LEAGUE_ID:-307}
+      SEASON: ${SEASON:-2024}
+      USE_SAMPLES: 'false'
+      MAIL_DRIVER: ${MAIL_DRIVER:-console}
+      APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-com.sahfootball.app}
+      ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-true}
+      SYNC_FULL_HOURS: ${SYNC_FULL_HOURS:-6}
+      SYNC_LIVE_SECONDS: ${SYNC_LIVE_SECONDS:-300}
+      # 1 = بروكسي واحد أمام الحاوية (nginx أو Caddy على المضيف).
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    volumes:
+      # صور المستخدمين على قرص دائم — بدونه تختفي مع كل إعادة بناء.
+      - uploads:/data/uploads
+    ports:
+      # 127.0.0.1 فقط: البروكسي على المضيف هو من يواجه الإنترنت
+      # ويتولى TLS. ربطه بـ 0.0.0.0 يكشف التطبيق بلا تشفير.
+      - '127.0.0.1:3000:3000'
+    command: sh -c "npm run migrate && node src/app.js"
+
+volumes:
+  db-data:
+  redis-data:
+  uploads:

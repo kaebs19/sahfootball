@@ -1,13 +1,14 @@
 {
-  "name": "server",
+  "name": "malik-altawaquat-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "خادم ملك التوقعات — API والموقع العام",
   "main": "index.js",
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "migrate": "node scripts/migrate.js",
-    "sync": "node src/jobs/syncFixtures.js"
+    "sync": "node src/jobs/syncFixtures.js",
+    "deploy": "npm run migrate && node src/app.js"
   },
   "keywords": [],
   "author": "",
@@ -27,5 +28,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

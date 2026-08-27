@@ -1,0 +1,116 @@
+// env — التحقق من الإعدادات قبل أن يبدأ السيرفر باستقبال الطلبات.
+//
+// لماذا نوقف الإقلاع بدل أن نكتفي بتحذير؟ لأن أخطاء الإعداد في
+// الإنتاج صامتة وخطيرة معاً. سيرفر يقلع بـ JWT_SECRET الافتراضي
+// يعمل تماماً: يسجّل الدخول ويصدر التوكنات ولا شيء يبدو معطّلاً —
+// بينما أي شخص يعرف القيمة الافتراضية يستطيع تزوير توكن لأي حساب،
+// ولن تكتشف ذلك أبداً من اللوق. الانهيار عند الإقلاع صاخب ويُصلَح
+// في دقيقة؛ الثغرة الصامتة تبقى شهوراً.
+//
+// القاعدة هنا: ما يكسر الأمان أو يفقد البيانات = توقف. وما يعطّل
+// ميزة واحدة = تحذير مكتوب في اللوق كي يبقى مرئياً.
+const logger = require('../utils/logger');
+
+const isProduction = () => process.env.NODE_ENV === 'production';
+
+// قيم .env.example — وجودها في الإنتاج يعني أن أحداً نسخ الملف
+// ولم يملأه.
+const PLACEHOLDERS = [
+  'change-me',
+  'user:pass@localhost',
+  'your-key-here',
+];
+
+function looksLikePlaceholder(value) {
+  const v = String(value || '').toLowerCase();
+  return PLACEHOLDERS.some((p) => v.includes(p));
+}
+
+function check() {
+  const errors = [];
+  const warnings = [];
+  const prod = isProduction();
+
+  // ── ما يوقف الإقلاع ──────────────────────────────────────────
+
+  if (!process.env.DATABASE_URL) {
+    errors.push('DATABASE_URL مفقود — لا اتصال بقاعدة البيانات.');
+  } else if (prod && looksLikePlaceholder(process.env.DATABASE_URL)) {
+    errors.push('DATABASE_URL ما زال قيمة المثال — املأه ببيانات قاعدتك.');
+  }
+
+  const secret = process.env.JWT_SECRET || '';
+  if (!secret) {
+    errors.push('JWT_SECRET مفقود — لا يمكن توقيع توكنات الدخول.');
+  } else if (prod && (looksLikePlaceholder(secret) || secret.length < 32)) {
+    errors.push(
+      'JWT_SECRET ضعيف أو ما زال قيمة المثال. ولّد واحداً جديداً:\n' +
+      '        openssl rand -hex 32'
+    );
+  }
+
+  // مفتاح المزوّد مطلوب إلا في وضع العينات (بيانات محلية للتجربة).
+  const useSamples = process.env.USE_SAMPLES === 'true';
+  if (!useSamples && !process.env.FOOTBALL_API_KEY) {
+    errors.push(
+      'FOOTBALL_API_KEY مفقود. اضبطه، أو شغّل بـ USE_SAMPLES=true للتجربة بلا مزوّد.'
+    );
+  }
+
+  if (prod && useSamples) {
+    errors.push(
+      'USE_SAMPLES=true في الإنتاج — سيخدم المستخدمين بيانات تجريبية ثابتة بدل المباريات الحقيقية.'
+    );
+  }
+
+  // ── ما يستحق تحذيراً فقط ──────────────────────────────────────
+
+  if (prod && (process.env.MAIL_DRIVER || 'console') === 'console') {
+    warnings.push(
+      'MAIL_DRIVER=console: رموز استعادة كلمة المرور تُطبع في اللوق ولا تصل لأحد. ' +
+      'من ينسى كلمته يفقد حسابه.'
+    );
+  }
+
+  if (prod && !process.env.CORS_ORIGINS) {
+    warnings.push(
+      'CORS_ORIGINS غير مضبوط — الـ API مفتوح لأي أصل. اضبطه بنطاقاتك ' +
+      'إن كانت لوحة التحكم تعمل على نطاق منفصل.'
+    );
+  }
+
+  if (prod && !process.env.TRUST_PROXY) {
+    warnings.push(
+      'TRUST_PROXY غير مضبوط. خلف بروكسي أو موازن أحمال ستبدو كل الطلبات ' +
+      'قادمة من عنوان واحد، فينهار حد سبام نموذج التواصل.'
+    );
+  }
+
+  if (prod && !process.env.UPLOADS_DIR) {
+    warnings.push(
+      'UPLOADS_DIR غير مضبوط: الصور تُحفظ داخل مجلد المشروع. على منصات ' +
+      'القرص المؤقت تختفي صور المستخدمين مع كل نشر — وجّهه لقرص دائم.'
+    );
+  }
+
+  return { errors, warnings };
+}
+
+/** تُستدعى قبل app.listen. ترمي لو كان الإعداد غير صالح. */
+function assertValid() {
+  const { errors, warnings } = check();
+
+  for (const w of warnings) logger.warn('[config]', w);
+
+  if (errors.length) {
+    logger.error('[config] الإعداد غير صالح — لن يبدأ السيرفر:');
+    errors.forEach((e, i) => logger.error(`  ${i + 1}. ${e}`));
+    // رمز خروج غير صفري كي تعرف أدوات النشر (systemd، Docker) أن
+    // الإقلاع فشل فلا تبقي حاوية ميتة تبدو حية.
+    process.exit(1);
+  }
+
+  logger.info(`[config] البيئة: ${process.env.NODE_ENV || 'development'}`);
+}
+
+module.exports = { assertValid, check, isProduction };

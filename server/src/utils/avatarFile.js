@@ -8,7 +8,15 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
+// مجلد الصور المرفوعة.
+//
+// قابل للتوجيه عبر UPLOADS_DIR لأن الافتراضي (داخل المشروع) لا
+// يصلح للإنتاج: معظم منصات الاستضافة تعطي قرصاً مؤقتاً يُمسح مع
+// كل نشر، فتختفي صور المستخدمين بينما تبقى مساراتها في القاعدة —
+// أعطال صور بلا سبب ظاهر. في الإنتاج وجّهه لقرص دائم (volume).
+const UPLOADS_DIR = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.join(__dirname, '..', '..', 'uploads');
 
 // حذف ملف صورة من القرص. أخطاؤه تُبتلع عمداً: ملف مفقود أصلاً
 // لا يجب أن يفشل عملية المستخدم أو الأدمن الحالية.

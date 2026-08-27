@@ -73,7 +73,10 @@ export default function App() {
   if (!loggedIn) return <Login onSuccess={() => setLoggedIn(true)} />;
 
   return (
-    <BrowserRouter>
+    // basename: اللوحة تعيش تحت /admin على السيرفر، فيجب أن يعرف
+    // الراوتر أن هذا الجزء ليس من مساراته — وإلا حسب /admin/users
+    // مساراً اسمه "/admin/users" ولم يطابق أي صفحة.
+    <BrowserRouter basename="/admin">
       <Shell onLogout={() => { store.clear(); setLoggedIn(false); }} />
     </BrowserRouter>
   );
