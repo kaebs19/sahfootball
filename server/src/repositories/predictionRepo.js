@@ -93,7 +93,12 @@ async function leaderboard(limit = 50) {
             COALESCE(SUM(p.points), 0)::int AS total_points,
             COUNT(p.points)::int AS settled_predictions
      FROM users u
-     JOIN predictions p ON p.user_id = u.id
+     -- settled_at IS NOT NULL في شرط الضم لا في WHERE:
+     -- من له توقعات لم تُحتسب بعد يجب ألا يظهر في العرش أصلاً، لا أن
+     -- يظهر بصفر نقطة. وهذا نفس تعريف "المتنافس" في profileStats —
+     -- ولولا توحيدهما لقال العرش إن المستخدم في المركز الرابع بينما
+     -- يقول ملفه إنه لم ينافس بعد. رقمان لحقيقة واحدة.
+     JOIN predictions p ON p.user_id = u.id AND p.settled_at IS NOT NULL
      LEFT JOIN teams ft ON ft.id = u.favorite_team_id
      GROUP BY u.id, ft.logo_url
      ORDER BY total_points DESC, settled_predictions ASC
@@ -103,6 +108,194 @@ async function leaderboard(limit = 50) {
   return rows;
 }
 
+// السلسلتان من قائمة مرتبة زمنياً: أطول سلسلة إصابات متتالية،
+// والسلسلة الجارية الآن.
+//
+// لماذا في JavaScript وليس في SQL؟ الحل في SQL هو نمط
+// "gaps and islands": ترقيمان متداخلان بـ ROW_NUMBER يُطرح أحدهما
+// من الآخر لتوليد معرّف مجموعة، ثم تجميع فوق تجميع. يعمل، لكنه
+// استعلام لا يُقرأ إلا بمن كتبه — وصاحب هذا المشروع يعود إليه بعد
+// نصف سنة. الحلقة أدناه يفهمها أي أحد من أول قراءة، والمدخلات
+// عشرات أو مئات الصفوف لمستخدم واحد لا ملايين، فلا فرق في الأداء.
+//
+// القائمة مرتبة من الأقدم للأحدث، ولذلك قيمة run بعد انتهاء الحلقة
+// هي بالضبط السلسلة الجارية: مرور واحد يعطي الرقمين معاً.
+function computeStreaks(hits) {
+  let longest = 0;
+  let run = 0;
+  for (const hit of hits) {
+    run = hit ? run + 1 : 0; // أي توقع بلا نقاط يقطع السلسلة
+    if (run > longest) longest = run;
+  }
+  return { longest_streak: longest, current_streak: run };
+}
+
+// إحصاءات شاشة "ملفي" كاملة في رد واحد.
+//
+// خمسة استعلامات متوازية بدل واحد عملاق: كل سؤال هنا مختلف الشكل
+// (صف واحد، قائمة توزيع، قائمة جولات، عمود منطقي مرتب)، وحشرها
+// معاً بـ json_agg متداخلة يجعل الاستعلام غير قابل للقراءة بلا
+// مكسب — نفس القرار المشروح في userRepo.adminDetail. Promise.all
+// تشغّلها معاً فتصل كلها بزمن أبطأها لا بمجموعها.
+async function profileStats(userId) {
+  const [standing, profile, distribution, form, streakRows] = await Promise.all([
+    // 1) المركز وعدد المتنافسين.
+    //
+    // RANK() OVER يحسب المركز داخل القاعدة فوق كل المستخدمين. لا
+    // يمكن اشتقاقه من leaderboard() أدناه: تلك محدودة بـ LIMIT 50،
+    // ومن ترتيبه 51 لا يجد نفسه في القائمة فيبقى بلا مركز إطلاقاً.
+    //
+    // ORDER BY داخل النافذة نسخة حرفية من ORDER BY في leaderboard()،
+    // وهذا شرط لا زينة: الرقم في ملف المستخدم والرقم في قائمة العرش
+    // يجب ألا يختلفا أبداً. أي تعديل على ترتيب إحداهما يجب أن ينزل
+    // على الأخرى في نفس اللحظة — ولهذا الدالتان متجاورتان في هذا
+    // الملف عمداً، لا في وحدتين متباعدتين تنسى إحداهما الأخرى.
+    //
+    // RANK وليس ROW_NUMBER: المتساويان في النقاط وفي عدد التوقعات
+    // المحتسبة متساويان في المركز فعلاً، وترقيمهما 4 و5 اعتباطاً
+    // يجعل مركز المستخدم يتأرجح بين تحديث وآخر بلا سبب يفسره له.
+    //
+    // WHERE settled_at IS NOT NULL: المتنافس من لعب فعلاً. من سجّل
+    // ولم يُحتسب له توقع واحد ليس "الأخير" — هو خارج المنافسة أصلاً،
+    // فيرجع rank = NULL ويعرض له التطبيق حالة "لم تنافس بعد" بدل
+    // مركز مهين بلا معنى. (فارق مقصود عن leaderboard() التي تضم
+    // بـ JOIN كل من له توقع ولو لم يُحتسب؛ صاحب صفر محتسب يظهر هناك
+    // بصفر نقطة ولا يُعدّ متنافساً هنا.)
+    db.query(
+      `WITH ranked AS (
+         SELECT p.user_id,
+                COALESCE(SUM(p.points), 0)::int AS total_points,
+                COUNT(p.points)::int            AS settled_predictions,
+                RANK() OVER (ORDER BY COALESCE(SUM(p.points), 0) DESC,
+                                      COUNT(p.points) ASC)::int AS rank
+           FROM predictions p
+          WHERE p.settled_at IS NOT NULL
+          GROUP BY p.user_id
+       )
+       -- LEFT JOIN من صف العدّ: يرجع صفاً واحداً دائماً، حتى لمن
+       -- ليس في ranked — فيصل total_competitors ومعه rank فارغ.
+       SELECT (SELECT COUNT(*) FROM ranked)::int AS total_competitors,
+              r.rank, r.total_points, r.settled_predictions
+         FROM (SELECT 1) AS always_one_row
+         LEFT JOIN ranked r ON r.user_id = $1`,
+      [userId]
+    ),
+
+    // 2) صف المستخدم: العدّاد الكلي، الدقة، والفريق المفضل.
+    //
+    // predictions_count يشمل غير المحتسب أيضاً (توقعات على مباريات
+    // لم تُلعب بعد) — الرقم يقول "كم لعبتَ"، والمحتسب يأتي من (1).
+    //
+    // الدقة: مقامها المحتسبة وحدها، فتوقع على مباراة قادمة ليس خطأً
+    // وحسابه ضمن النسبة يعاقب النشِط على نشاطه. NULLIF يمنع القسمة
+    // على صفر، والنتيجة NULL لمن لا محتسب له — والتطبيق يفرّق بين
+    // "لا بيانات" و"صفر بالمئة" بشاشتين مختلفتين، فلا نحوّل NULL
+    // إلى صفر هنا إكراماً لنوع البيانات.
+    db.query(
+      `SELECT (SELECT COUNT(*) FROM predictions p
+                WHERE p.user_id = u.id)::int AS predictions_count,
+              (SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE p.points > 0)
+                            / NULLIF(COUNT(*), 0))
+                 FROM predictions p
+                WHERE p.user_id = u.id AND p.settled_at IS NOT NULL)::int AS accuracy,
+              u.favorite_team_id,
+              COALESCE(ft.name_ar, ft.name_en) AS favorite_team_name,
+              ft.logo_url                      AS favorite_team_logo
+         FROM users u
+         LEFT JOIN teams ft ON ft.id = u.favorite_team_id
+        WHERE u.id = $1`,
+      [userId]
+    ),
+
+    // 3) توزيع النقاط: كم مرة أخذ 7، كم مرة 3، كم مرة صفر.
+    // لا نثبّت القيم (7/3/2/0) في الاستعلام: الأدمن يعدّلها من
+    // app_settings، وأي قائمة مكتوبة هنا تصير كذباً بعد أول تعديل.
+    // نسأل القاعدة عمّا حدث فعلاً فتأتي القيم الصحيحة دائماً.
+    db.query(
+      `SELECT points, COUNT(*)::int AS count
+         FROM predictions
+        WHERE user_id = $1 AND settled_at IS NOT NULL
+        GROUP BY points
+        ORDER BY points DESC`,
+      [userId]
+    ),
+
+    // 4) شكل الأداء في آخر ٨ جولات — التطبيق يرسمها أعمدة صغيرة.
+    //
+    // الترتيب بـ MIN(kickoff_at) وليس بـ round: الجولة نص، و"Regular
+    // Season - 10" يسبق "Regular Season - 2" أبجدياً فتخرج الأعمدة
+    // بترتيب مقلوب بلا خطأ ظاهر. التاريخ هو الترتيب الحقيقي الوحيد.
+    //
+    // نأخذ آخر ٨ (DESC + LIMIT) ثم نعكس الترتيب في الغلاف الخارجي:
+    // LIMIT يحتاج الأحدث أولاً ليعرف ما يقتطع، والعميل يحتاج الأقدم
+    // أولاً ليرسم خط تطور يتقدم للأمام.
+    // COUNT(*) في المقام لا يكون صفراً أبداً (كل مجموعة فيها صف
+    // واحد على الأقل) فلا accuracy فارغة داخل القائمة، وهو شرط
+    // العميل: قائمة فارغة مقبولة، وقيمة NULL داخلها ليست كذلك.
+    db.query(
+      `SELECT round, season, accuracy, settled
+         FROM (
+           SELECT f.round, f.season,
+                  ROUND(100.0 * COUNT(*) FILTER (WHERE p.points > 0)
+                        / COUNT(*))::int AS accuracy,
+                  COUNT(*)::int          AS settled,
+                  MIN(f.kickoff_at)      AS started_at
+             FROM predictions p
+             JOIN fixtures f ON f.id = p.fixture_id
+            WHERE p.user_id = $1 AND p.settled_at IS NOT NULL AND f.round IS NOT NULL
+            -- التجميع بالموسم مع الجولة، لا بالجولة وحدها: نص
+            -- "Regular Season - 3" يتكرر حرفياً في كل موسم، وتجميعه
+            -- وحده يدمج جولة هذا الموسم بجولة الموسم الماضي في عمود
+            -- واحد بدقة مغلوطة — خطأ صامت لأن الناتج يبدو سليماً.
+            -- والموسم يخرج للعميل مع الاسم: عند حدود الموسم تعود
+            -- "الجولة 1" مرتين في نفس الرسم، وبلا الموسم يبدو ذلك
+            -- خللاً لا حقيقة. العميل يميّزها به عند الحاجة فقط.
+            GROUP BY f.season, f.round
+            ORDER BY started_at DESC
+            LIMIT 8
+         ) recent
+        ORDER BY started_at ASC`,
+      [userId]
+    ),
+
+    // 5) مدخلات السلسلتين: أصاب أم لا، بترتيب انطلاق المباريات.
+    // الترتيب بموعد المباراة لا بموعد كتابة التوقع: السلسلة تصف
+    // أداءه في المباريات كما جرت، ومن يكتب توقعاته دفعة واحدة
+    // مقدماً ليس له ترتيب آخر. fixture_id فاصل ثانوي حتى يكون
+    // الترتيب قاطعاً لمباراتين تنطلقان في اللحظة نفسها.
+    db.query(
+      `SELECT (p.points > 0) AS hit
+         FROM predictions p
+         JOIN fixtures f ON f.id = p.fixture_id
+        WHERE p.user_id = $1 AND p.settled_at IS NOT NULL
+        ORDER BY f.kickoff_at ASC, p.fixture_id ASC`,
+      [userId]
+    ),
+  ]);
+
+  const s = standing.rows[0];
+  const u = profile.rows[0];
+  if (!u) return null; // الحساب اختفى بين الحارس وهذه اللحظة
+
+  // الأصفار الحقيقية للمستخدم الجديد: التطبيق يعرض "0 توقع" بثقة،
+  // ولا يحتاج التعامل مع null في كل حقل. الاستثناءان الوحيدان هما
+  // rank و accuracy — وغيابهما معلومة مقصودة لا نقص بيانات.
+  return {
+    rank: s.rank ?? null,
+    total_competitors: s.total_competitors,
+    total_points: s.total_points ?? 0,
+    predictions_count: u.predictions_count,
+    settled_predictions: s.settled_predictions ?? 0,
+    accuracy: u.accuracy ?? null,
+    ...computeStreaks(streakRows.rows.map((r) => r.hit)),
+    points_distribution: distribution.rows,
+    recent_form: form.rows,
+    favorite_team: u.favorite_team_id
+      ? { id: u.favorite_team_id, name: u.favorite_team_name, logo_url: u.favorite_team_logo }
+      : null,
+  };
+}
+
 module.exports = {
   upsert,
   findMine,
@@ -110,4 +303,5 @@ module.exports = {
   findUnsettled,
   settle,
   leaderboard,
+  profileStats,
 };

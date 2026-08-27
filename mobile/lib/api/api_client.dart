@@ -21,6 +21,7 @@ import '../models/fixture.dart';
 import '../models/leaderboard_entry.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
+import '../models/profile_stats.dart';
 import '../models/user.dart';
 
 /// خطأ موجه للعرض: message جاهزة بالعربية (السيرفر يرسل أخطاءه
@@ -320,6 +321,16 @@ class ApiClient {
         'home': home,
         'away': away,
       });
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// إحصاءات ملفي: الرتبة والدقة والسلسلة وشكل الأداء الأخير.
+  Future<ProfileStats> profileStats() async {
+    try {
+      final res = await _dio.get('/api/profile/stats');
+      return ProfileStats.fromJson(res.data['stats'] as Map<String, dynamic>);
     } on DioException catch (e) {
       _throwReadable(e);
     }

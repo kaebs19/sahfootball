@@ -6,6 +6,7 @@ const express = require('express');
 const multer = require('multer');
 const requireAuth = require('../middleware/requireAuth');
 const userRepo = require('../repositories/userRepo');
+const predictionRepo = require('../repositories/predictionRepo');
 const { UPLOADS_DIR, deleteAvatarFile } = require('../utils/avatarFile');
 const db = require('../config/db');
 
@@ -69,6 +70,17 @@ router.put('/', async (req, res) => {
   await userRepo.updateProfile(req.userId, changes);
   const user = await userRepo.findById(req.userId);
   res.json({ user });
+});
+
+// GET /api/profile/stats — أرقام تبويب "ملفي": المركز في العرش،
+// النقاط، الدقة، السلاسل، وشكل الأداء في آخر الجولات.
+//
+// المعرّف من req.userId (أي من التوكن) ولا يقبل معرّفاً في المسار:
+// هذه إحصاءات المستخدم عن نفسه، وفتح الباب لقراءة إحصاءات غيره
+// قرار منتج مستقل لا أثر جانبي لمسار.
+router.get('/stats', async (req, res) => {
+  const stats = await predictionRepo.profileStats(req.userId);
+  res.json({ stats });
 });
 
 // POST /api/profile/avatar — multipart برفع حقل اسمه "avatar"

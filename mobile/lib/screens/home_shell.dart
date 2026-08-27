@@ -16,7 +16,7 @@ import '../widgets/brand_mark.dart';
 import 'leaderboard_screen.dart';
 import 'live_screen.dart';
 import 'matches_screen.dart';
-import 'my_predictions_screen.dart';
+import 'profile_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -28,29 +28,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['المباريات', 'مباشر', 'توقعاتي', 'العرش'];
-
-  Future<void> _confirmLogout() async {
-    final session = context.read<Session>();
-    final yes = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تسجيل الخروج'),
-        content: const Text('متأكد تبي تسجل خروج؟'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Brand.wrong),
-            child: const Text('خروج'),
-          ),
-        ],
-      ),
-    );
-    if (yes == true) await session.logout();
-  }
+  static const _titles = ['المباريات', 'مباشر', 'ملفي', 'العرش'];
 
   @override
   Widget build(BuildContext context) {
@@ -69,20 +47,18 @@ class _HomeShellState extends State<HomeShell> {
         ),
         actions: [
           if (user != null)
-            Center(
-              child: Text(
-                user.nameOrFallback,
-                style: const TextStyle(
-                    color: Brand.textMuted,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 16),
+              child: Center(
+                child: Text(
+                  user.nameOrFallback,
+                  style: const TextStyle(
+                      color: Brand.textMuted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600),
+                ),
               ),
             ),
-          IconButton(
-            tooltip: 'تسجيل الخروج',
-            icon: const Icon(Icons.logout, size: 20, color: Brand.textMuted),
-            onPressed: _confirmLogout,
-          ),
         ],
       ),
       body: IndexedStack(
@@ -90,7 +66,7 @@ class _HomeShellState extends State<HomeShell> {
         children: const [
           MatchesScreen(),
           LiveScreen(),
-          MyPredictionsScreen(),
+          ProfileScreen(),
           LeaderboardScreen(),
         ],
       ),
@@ -113,9 +89,9 @@ class _HomeShellState extends State<HomeShell> {
                 selectedIcon: Icon(Icons.sensors),
                 label: 'مباشر'),
             NavigationDestination(
-                icon: Icon(Icons.fact_check_outlined),
-                selectedIcon: Icon(Icons.fact_check),
-                label: 'توقعاتي'),
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: 'ملفي'),
             NavigationDestination(
                 icon: Icon(Icons.workspace_premium_outlined),
                 selectedIcon: Icon(Icons.workspace_premium),
