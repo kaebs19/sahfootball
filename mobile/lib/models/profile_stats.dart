@@ -59,6 +59,37 @@ class FavoriteTeam {
       );
 }
 
+/// وسام — إنجاز يُكتسب مرة ولا يُفقد.
+///
+/// غير المكتسب يصل من السيرفر أيضاً ولا يُخفى: رؤية ما لم تنله بعد
+/// هي نصف الفائدة. لذلك [requirement] موجود دائماً — تحت الوسام
+/// المطفأ يقول كيف يُنال، وتحت المضيء لا يُعرض.
+class Badge {
+  final String key;
+  final String title;
+  final String requirement;
+  final bool earned;
+  final DateTime? earnedAt;
+
+  const Badge({
+    required this.key,
+    required this.title,
+    required this.requirement,
+    required this.earned,
+    this.earnedAt,
+  });
+
+  factory Badge.fromJson(Map<String, dynamic> j) => Badge(
+        key: (j['key'] ?? '') as String,
+        title: (j['title'] ?? '') as String,
+        requirement: (j['requirement'] ?? '') as String,
+        earned: j['earned'] == true,
+        earnedAt: j['earned_at'] != null
+            ? DateTime.parse(j['earned_at'] as String).toLocal()
+            : null,
+      );
+}
+
 class ProfileStats {
   /// null = لم يشارك بعد. ليست صفراً ولا آخر مركز: من لم يلعب ليس
   /// خاسراً، والفرق بينهما يجب أن يظهر في الشاشة لا أن يُطمس.
@@ -78,6 +109,7 @@ class ProfileStats {
   final List<PointsBucket> pointsDistribution;
   final List<RoundForm> recentForm;
   final FavoriteTeam? favoriteTeam;
+  final List<Badge> badges;
 
   const ProfileStats({
     this.rank,
@@ -91,6 +123,7 @@ class ProfileStats {
     required this.pointsDistribution,
     required this.recentForm,
     this.favoriteTeam,
+    this.badges = const [],
   });
 
   bool get hasPlayed => settledPredictions > 0;
@@ -113,5 +146,8 @@ class ProfileStats {
         favoriteTeam: j['favorite_team'] != null
             ? FavoriteTeam.fromJson(j['favorite_team'] as Map<String, dynamic>)
             : null,
+        badges: (j['badges'] as List? ?? [])
+            .map((e) => Badge.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }

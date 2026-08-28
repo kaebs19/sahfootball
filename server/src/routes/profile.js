@@ -7,6 +7,7 @@ const multer = require('multer');
 const requireAuth = require('../middleware/requireAuth');
 const userRepo = require('../repositories/userRepo');
 const predictionRepo = require('../repositories/predictionRepo');
+const badgeService = require('../services/badgeService');
 const { UPLOADS_DIR, deleteAvatarFile } = require('../utils/avatarFile');
 const db = require('../config/db');
 
@@ -73,14 +74,33 @@ router.put('/', async (req, res) => {
 });
 
 // GET /api/profile/stats — أرقام تبويب "ملفي": المركز في العرش،
-// النقاط، الدقة، السلاسل، وشكل الأداء في آخر الجولات.
+// النقاط، الدقة، السلاسل، وشكل الأداء في آخر الجولات، والأوسمة.
 //
 // المعرّف من req.userId (أي من التوكن) ولا يقبل معرّفاً في المسار:
 // هذه إحصاءات المستخدم عن نفسه، وفتح الباب لقراءة إحصاءات غيره
 // قرار منتج مستقل لا أثر جانبي لمسار.
+//
+// الأوسمة في نفس الرد لا في مسار ثانٍ: الشاشة واحدة وتُرسم دفعة
+// واحدة، ومسار منفصل يعني طلبين ودورتي شبكة لرسم صفحة واحدة.
 router.get('/stats', async (req, res) => {
-  const stats = await predictionRepo.profileStats(req.userId);
-  res.json({ stats });
+  // مصارحة: هذا GET يكتب في القاعدة.
+  //
+  // المكسب أن من استحق وسماً قبل وجود هذه الميزة (أو بين احتسابين)
+  // يراه لحظة فتح الشاشة، لا بعد انتظار احتساب الجولة القادمة —
+  // وبلا سكربت تعبئة يعمل بعد كل نشر. الكتابة آمنة التكرار ومقصورة
+  // على مستخدم واحد هو صاحب الطلب.
+  // والثمن حقيقي ويجب ألا يُنسى: القراءة لم تعد مجانية، فلا تصلح
+  // للتخزين المؤقت (cache) ولا لقارئ من نسخة قراءة فقط لو فصلناها
+  // يوماً. عندها ينتقل هذا السطر إلى وظيفة دورية ويبقى المسار قراءة
+  // خالصة. اليوم: مستخدم واحد، جولتان، ولا وظيفة إضافية تُصان.
+  await badgeService.evaluateQuietly(req.userId);
+
+  const [stats, badges] = await Promise.all([
+    predictionRepo.profileStats(req.userId),
+    badgeService.forUser(req.userId),
+  ]);
+
+  res.json({ stats: stats ? { ...stats, badges } : null });
 });
 
 // POST /api/profile/avatar — multipart برفع حقل اسمه "avatar"

@@ -9,6 +9,7 @@
 // لذلك يكفي فحص الشروط بالترتيب من الأدق للأعم.
 const settingsRepo = require('../repositories/settingsRepo');
 const predictionRepo = require('../repositories/predictionRepo');
+const badgeService = require('./badgeService');
 const logger = require('../utils/logger');
 
 // القيم الاحتياطية لو غاب صف الإعدادات لأي سبب — النظام لا يتوقف.
@@ -55,6 +56,7 @@ async function settleFinished() {
   const cfg = (await settingsRepo.get('scoring')) ?? DEFAULT_SCORING;
   const pending = await predictionRepo.findUnsettled();
 
+  const touchedUsers = new Set();
   for (const p of pending) {
     const points = computePoints(
       { home: p.pred_home, away: p.pred_away },
@@ -62,11 +64,30 @@ async function settleFinished() {
       cfg
     );
     await predictionRepo.settle(p.id, points);
+    touchedUsers.add(p.user_id); // Set لأن للمستخدم توقعات كثيرة في الدورة الواحدة
   }
 
   if (pending.length > 0) {
     logger.info(`[scoring] settled ${pending.length} predictions`);
   }
+
+  // الأوسمة بعد الاحتساب كله، لا داخل الحلقة: الوسام يُقاس على حالة
+  // مكتملة. تقييم المستخدم بعد توقعه الأول مباشرة يرى سلسلة تنتهي
+  // عند مباراة لم تُحتسب بعد رغم أنها انتهت في نفس الدقيقة، فيمنع
+  // وسام سلسلة يستحقه — ثم يناله عند الاحتساب التالي بلا سبب ظاهر له.
+  //
+  // ولمن مسّه الاحتساب فقط: الاحتساب هو اللحظة الوحيدة التي تتغير
+  // فيها وقائع المستخدم، ومن لم يُحتسب له شيء الآن لم يتغير شيء عنده.
+  // المرور على كل المستخدمين في كل دورة عمل بلا نتيجة.
+  //
+  // evaluateQuietly لا evaluate: النقاط هي المنتج والأوسمة زينة.
+  // خطأ في استعلام وسام يجب ألا يُسقط الاحتساب ولا المزامنة التي
+  // استدعته — التوقعات محفوظة ومحتسبة فعلاً في هذه النقطة، وإجهاض
+  // العملية هنا يعني تكرار كل شيء في الدورة القادمة بلا داعٍ.
+  for (const userId of touchedUsers) {
+    await badgeService.evaluateQuietly(userId);
+  }
+
   return pending.length;
 }
 

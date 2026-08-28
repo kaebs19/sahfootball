@@ -18,6 +18,7 @@ import '../config.dart';
 import '../models/prediction.dart';
 import '../models/profile_stats.dart';
 import '../state/session.dart';
+import '../widgets/badge_grid.dart';
 import '../widgets/brand_widgets.dart';
 
 /// سلّم الرتب من ملف الهوية.
@@ -115,6 +116,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (stats.pointsDistribution.isNotEmpty) ...[
             const SizedBox(height: 12),
             _DistributionCard(buckets: stats.pointsDistribution),
+          ],
+
+          if (stats.badges.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            BadgeGrid(badges: stats.badges),
           ],
 
           const SizedBox(height: 20),

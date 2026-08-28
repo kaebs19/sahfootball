@@ -58,9 +58,14 @@ async function findByUserAndFixtures(userId, fixtureIds) {
 }
 
 // كل التوقعات غير المحتسبة لمباريات انتهت — مدخلات الاحتساب.
+//
+// user_id ليس مستخدماً في الاحتساب نفسه بل في ما بعده: الاحتساب هو
+// اللحظة الوحيدة التي يمكن أن يُستحق فيها وسام جديد، وصاحب التوقع
+// هو من يجب أن يُقيَّم. إخراجه هنا يوفر جولة ثانية للقاعدة تسأل
+// "من أصحاب هذه التوقعات؟" بعد أن كانت الإجابة في يدنا أصلاً.
 async function findUnsettled() {
   const { rows } = await db.query(
-    `SELECT p.id, p.pred_home, p.pred_away,
+    `SELECT p.id, p.user_id, p.pred_home, p.pred_away,
             f.goals_home, f.goals_away
      FROM predictions p
      JOIN fixtures f ON f.id = p.fixture_id
@@ -120,6 +125,10 @@ async function leaderboard(limit = 50) {
 //
 // القائمة مرتبة من الأقدم للأحدث، ولذلك قيمة run بعد انتهاء الحلقة
 // هي بالضبط السلسلة الجارية: مرور واحد يعطي الرقمين معاً.
+//
+// مصدّرة لأن badgeService يمنح أوسمة السلسلة منها هو أيضاً: تعريف
+// "السلسلة" في النظام واحد لا اثنان. لو حسبها الوسام بطريقته لظهر
+// يوماً ملف يقول "أطول سلسلة: 5" ووسام "سلسلة خمسة" مطفأ بجانبه.
 function computeStreaks(hits) {
   let longest = 0;
   let run = 0;
@@ -303,5 +312,6 @@ module.exports = {
   findUnsettled,
   settle,
   leaderboard,
+  computeStreaks,
   profileStats,
 };
