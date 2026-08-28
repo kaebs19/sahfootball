@@ -74,6 +74,7 @@ app.use('/api/predictions', require('./routes/predictions'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/groups', require('./routes/groups'));
 app.use('/api/profile', require('./routes/profile'));
+app.use('/api/notifications', require('./routes/notifications'));
 // محتوى الموقع التعريفي: عام بلا مصادقة عمداً — صفحة سياسة
 // الخصوصية يجب أن تُفتح برابط مباشر بلا حساب (مراجعة App Store
 // تفتحها هكذا).
@@ -183,6 +184,10 @@ const server = app.listen(PORT, () => {
   // تضاعفت الطلبات على حصة المزوّد) أو حين تريد التحكم اليدوي.
   if (process.env.ENABLE_SCHEDULER !== 'false') {
     require('./jobs/scheduler').start();
+    // الإشعارات تتبع نفس العلم: هي أيضاً وظيفة دورية يجب ألا تعمل
+    // في أكثر من نسخة سيرفر — نسختان تعنيان إشعارين لكل مستخدم،
+    // لأن سجل الإرسال يُكتب بعد الإرسال لا قبله.
+    require('./jobs/notifier').start();
   }
 });
 

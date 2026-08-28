@@ -2,10 +2,11 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.sahfootball.mobile"
+    namespace = "com.sahfootball.app"
     // 37 لا flutter.compileSdkVersion (=36): إضافة flutter_secure_storage
     // تشترط على من يعتمد عليها الترجمة على 37 أو أحدث. والرقم الفرعي
     // صريح لأن جوجل تنشر android-37.0 لا "android-37"، فالرقم المجرد
@@ -24,7 +25,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.sahfootball.mobile"
+        applicationId = "com.sahfootball.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -44,6 +45,17 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    // BoM (Bill of Materials): نثبّت رقم إصدار واحداً وتشتق منه
+    // بقية مكتبات Firebase نسخها المتوافقة. البديل — رقم لكل
+    // مكتبة — يصنع تعارضات وقت التشغيل يصعب تتبعها.
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    // الرسائل وحدها. لا analytics ولا crashlytics: كل مكتبة تُضاف
+    // هنا تكبّر حجم التطبيق وتوسّع ما نجمعه عن المستخدم، وسياسة
+    // الخصوصية عندنا تقول صراحة "لا تتبّع إعلاني".
+    implementation("com.google.firebase:firebase-messaging")
 }
 
 kotlin {

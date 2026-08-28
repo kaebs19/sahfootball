@@ -11,6 +11,7 @@
 // ميزة واحدة = تحذير مكتوب في اللوق كي يبقى مرئياً.
 const logger = require('../utils/logger');
 const { DRIVER_NAMES, DRIVER_REQUIREMENTS } = require('../services/mailer');
+const push = require('../services/pushProvider');
 
 const isProduction = () => process.env.NODE_ENV === 'production';
 
@@ -82,12 +83,44 @@ function check() {
     }
   }
 
+  // الإشعارات: driver مجهول يعني أن كل إشعار سيرمي داخل وظيفة
+  // مجدولة — أي فشل صامت في اللوق لا يراه أحد. نمسكه هنا.
+  const pushDriver = process.env.PUSH_DRIVER || 'console';
+  if (!push.DRIVER_NAMES.includes(pushDriver)) {
+    errors.push(
+      `PUSH_DRIVER غير معروف: ${pushDriver}. المتاح: ${push.DRIVER_NAMES.join('، ')}.`
+    );
+  } else if (pushDriver === 'real') {
+    // منصة واحدة إعداد مشروع، لا خطأ. لكن ألا تكتمل أي منصة يعني
+    // driver حقيقي لا يستطيع الوصول لجهاز واحد على وجه الأرض.
+    const apnsReady = push.APNS_KEYS.every((k) => process.env[k]);
+    const fcmReady = push.FCM_KEYS.every((k) => process.env[k]);
+
+    if (!apnsReady && !fcmReady) {
+      errors.push(
+        'PUSH_DRIVER=real بلا إعداد مكتمل لأي منصة. ' +
+        `iOS يحتاج ${push.APNS_KEYS.join('، ')}، وأندرويد يحتاج ${push.FCM_KEYS.join('، ')}.`
+      );
+    } else if (!apnsReady) {
+      warnings.push('إعداد APNs ناقص — أجهزة iOS لن يصلها أي إشعار.');
+    } else if (!fcmReady) {
+      warnings.push('إعداد FCM ناقص — أجهزة أندرويد لن يصلها أي إشعار.');
+    }
+  }
+
   // ── ما يستحق تحذيراً فقط ──────────────────────────────────────
 
   if (prod && mailDriver === 'console') {
     warnings.push(
       'MAIL_DRIVER=console: رموز استعادة كلمة المرور تُطبع في اللوق ولا تصل لأحد. ' +
       'من ينسى كلمته يفقد حسابه.'
+    );
+  }
+
+  if (prod && pushDriver === 'console') {
+    warnings.push(
+      'PUSH_DRIVER=console: التذكيرات تُطبع في اللوق ولا تصل لأحد. ' +
+      'المستخدم الذي ينسى التوقّع قبل صافرة البداية يفقد الجولة كاملة.'
     );
   }
 

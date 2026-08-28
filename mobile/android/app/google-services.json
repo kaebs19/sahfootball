@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "52200288508",
+    "project_id": "malik-altawaquat",
+    "storage_bucket": "malik-altawaquat.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:52200288508:android:19fc3ddad3d400eb67e779",
+        "android_client_info": {
+          "package_name": "com.sahfootball.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEIb-ryPRQpWBY4AAs3VmkTTyit3dh6sw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

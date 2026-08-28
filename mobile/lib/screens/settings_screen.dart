@@ -17,6 +17,7 @@ import 'about_footer.dart';
 import 'account_settings_screen.dart';
 import 'contact_screen.dart';
 import 'edit_profile_screen.dart';
+import 'notification_settings_screen.dart';
 import 'page_screen.dart';
 import 'privacy_settings_screen.dart';
 
@@ -53,14 +54,12 @@ class SettingsScreen extends StatelessWidget {
           const _GroupLabel('التفضيلات'),
           _SettingsGroup(
             children: [
-              // الإشعارات معطّلة لا مخفية: إخفاؤها يوحي بأنها لن توجد،
-              // ومفتاح يعمل بلا بنية إشعارات خلفه أسوأ — يظن المستخدم
-              // أنه فعّلها ثم ينتظر تنبيهاً لن يصل أبداً.
-              const _SettingsTile(
+              _SettingsTile(
                 icon: Icons.notifications_none,
                 title: 'الإشعارات',
                 subtitle: 'تنبيه قبل إقفال التوقع وعند احتساب النقاط',
-                trailingLabel: 'قريباً',
+                onTap: () =>
+                    _open(context, const NotificationSettingsScreen()),
               ),
               _SettingsTile(
                 icon: Icons.shield_outlined,

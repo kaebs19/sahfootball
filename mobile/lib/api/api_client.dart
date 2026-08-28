@@ -20,6 +20,7 @@ import '../config.dart';
 import '../models/fixture.dart';
 import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
+import '../models/notification_prefs.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
 import '../models/profile_stats.dart';
@@ -440,6 +441,58 @@ class ApiClient {
     }
   }
 
+
+  // ─────────────────────── الإشعارات ───────────────────────
+
+  /// ربط هذا الجهاز بالحساب الحالي.
+  ///
+  /// يُنادى بعد الإذن وعند كل إقلاع: النظام قد يبدّل التوكن في أي
+  /// وقت (استعادة نسخة احتياطية، تحديث نظام) ولا يخبر التطبيق
+  /// بسبب التغيير، فالإرسال في كل مرة أرخص من محاولة التتبع.
+  Future<void> registerDeviceToken(String token, String platform) async {
+    try {
+      await _dio.post('/api/notifications/token',
+          data: {'token': token, 'platform': platform});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// فكّ ارتباط الجهاز — عند الخروج من الحساب.
+  ///
+  /// بدونه تصل إشعارات الحساب السابق لمن يستخدم الهاتف بعده.
+  Future<void> unregisterDeviceToken(String token) async {
+    try {
+      await _dio.delete('/api/notifications/token', data: {'token': token});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<NotificationPrefs> notificationPrefs() async {
+    try {
+      final res = await _dio.get('/api/notifications/prefs');
+      return NotificationPrefs.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تحديث تفضيل واحد أو الاثنين. المحذوف يبقى على حاله في السيرفر.
+  Future<NotificationPrefs> updateNotificationPrefs({
+    bool? reminders,
+    bool? results,
+  }) async {
+    try {
+      final res = await _dio.put('/api/notifications/prefs', data: {
+        'reminders': ?reminders,
+        'results': ?results,
+      });
+      return NotificationPrefs.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
 
   /// قائمة الفرق — لاختيار الفريق المفضل. قراءة عامة بلا توكن.
   Future<List<FavoriteTeam>> teams() async {
