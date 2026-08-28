@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 
 import '../brand.dart';
+import '../format.dart';
 import '../models/fixture.dart';
 import 'brand_widgets.dart';
 
@@ -40,7 +41,7 @@ class FixtureCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  fixture.round ?? 'دوري روشن',
+                  Fmt.round(fixture.round),
                   style: const TextStyle(
                       color: Brand.textFaint,
                       fontSize: 11.5,
@@ -68,7 +69,7 @@ class FixtureCard extends StatelessWidget {
                       : Column(
                           children: [
                             Text(
-                              timeFmt.format(fixture.kickoffAt),
+                              Fmt.date(timeFmt, fixture.kickoffAt),
                               style: const TextStyle(
                                 fontFamily: Brand.displayFont,
                                 fontSize: 15,
@@ -116,10 +117,15 @@ class _StatusChip extends StatelessWidget {
     // اللعبة — الموعد وحده لا يخبر المستخدم كم بقي له ليقرر.
     final left = fixture.kickoffAt.difference(DateTime.now());
     if (left.inHours < 24) {
-      final label = left.inHours >= 1
-          ? 'يُقفل بعد ${left.inHours} س'
-          : 'يُقفل بعد ${left.inMinutes} د';
-      return BrandChip(label: label, tone: BrandTone.wrong);
+      // الأحمر للساعة الأخيرة فقط. كان يُصبغ به كل ما دون ٢٤ ساعة،
+      // أي كل مباريات اليوم — ولون التحذير الذي يظهر دائماً يتوقف
+      // عن كونه تحذيراً، فلا يبقى شيء يميّز المباراة التي توشك
+      // فعلاً أن تُقفل.
+      final urgent = left.inHours < 1;
+      return BrandChip(
+        label: 'يُقفل بعد ${Fmt.untilShort(left)}',
+        tone: urgent ? BrandTone.wrong : BrandTone.neutral,
+      );
     }
     return const BrandChip(label: 'مفتوح', tone: BrandTone.correct);
   }

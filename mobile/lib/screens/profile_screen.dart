@@ -7,19 +7,26 @@
 // يُقرأ معاً.
 //
 // الترتيب من الأعلى: من أنا (هوية ورتبة) ← كيف أؤدي (أرقام) ←
-// إلى أين أتجه (شكل الأداء) ← ماذا فعلت بالضبط (السجل).
+// ماذا نلت (شريط الأوسمة) ← ماذا فعلت بالضبط (سجلّ).
+//
+// السجلّ سجلّان في مكان واحد لا قسمان متتاليان: "التوقعات" تجيب
+// على "ماذا توقعت؟" و"النقاط" على "من أين جاءت نقاطي؟" — سؤالان
+// لا يُقرآن معاً، وعرضهما معاً يعني تمريرة طويلة يتوه فيها الاثنان.
+// المبدّل يجعل الشاشة بطول واحد مهما كثر التاريخ.
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../brand.dart';
+import '../format.dart';
 import '../config.dart';
 import '../models/prediction.dart';
 import '../models/profile_stats.dart';
 import '../state/session.dart';
 import '../widgets/badge_grid.dart';
 import '../widgets/brand_widgets.dart';
+import 'settings_screen.dart';
 
 /// سلّم الرتب من ملف الهوية.
 const _ranks = [
@@ -30,8 +37,7 @@ const _ranks = [
   (0, 'مشجّع'),
 ];
 
-String _rankName(int points) =>
-    _ranks.firstWhere((r) => points >= r.$1).$2;
+String _rankName(int points) => _ranks.firstWhere((r) => points >= r.$1).$2;
 
 /// النقاط الناقصة للرتبة التالية، أو null عند القمة.
 (int, String)? _nextRank(int points) {
@@ -48,10 +54,14 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
+/// أي سجلّ يعرضه النصف السفلي من الشاشة.
+enum _Log { predictions, points }
+
 class _ProfileScreenState extends State<ProfileScreen> {
   ProfileStats? _stats;
   List<Prediction>? _predictions;
   String? _error;
+  _Log _log = _Log.predictions;
 
   @override
   void initState() {
@@ -108,39 +118,321 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
           _StatsGrid(stats: stats),
 
-          if (stats.recentForm.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _FormCard(form: stats.recentForm),
-          ],
-
-          if (stats.pointsDistribution.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _DistributionCard(buckets: stats.pointsDistribution),
-          ],
-
           if (stats.badges.isNotEmpty) ...[
             const SizedBox(height: 18),
-            BadgeGrid(badges: stats.badges),
+            BadgeStrip(badges: stats.badges),
           ],
 
           const SizedBox(height: 20),
-          const BrandSectionLabel('سجلّ التوقعات'),
-          const SizedBox(height: 10),
-          if (preds.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 30),
-              child: Text(
-                'ما سجّلت أي توقع بعد — ابدأ من شاشة المباريات',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Brand.textMuted, height: 1.6),
+          Row(
+            children: [
+              BrandModeTab(
+                label: 'التوقعات',
+                selected: _log == _Log.predictions,
+                onTap: () => setState(() => _log = _Log.predictions),
               ),
-            )
+              const SizedBox(width: 8),
+              BrandModeTab(
+                label: 'النقاط',
+                selected: _log == _Log.points,
+                onTap: () => setState(() => _log = _Log.points),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (_log == _Log.predictions)
+            ..._predictionsLog(preds)
           else
-            for (final p in preds) _PredictionTile(prediction: p),
+            ..._pointsLog(stats, preds),
 
           const SizedBox(height: 22),
           _AccountCard(email: user?.email),
         ],
+      ),
+    );
+  }
+
+  /// سجلّ التوقعات: كل ما سجّلته، الأحدث أولاً كما يصل من السيرفر.
+  List<Widget> _predictionsLog(List<Prediction> preds) {
+    if (preds.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 30),
+          child: Text(
+            'ما سجّلت أي توقع بعد — ابدأ من شاشة المباريات',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Brand.textMuted, height: 1.6),
+          ),
+        ),
+      ];
+    }
+    return [for (final p in preds) _PredictionTile(prediction: p)];
+  }
+
+  /// سجلّ النقاط: من أين جاءت النقاط بالضبط.
+  ///
+  /// المحتسبة وحدها. توقع على مباراة لم تُلعب ليس صفر نقطة بل لا
+  /// شيء بعد، وإدراجه في سجلّ نقاط يجعل المجموع لا يطابق الرصيد.
+  List<Widget> _pointsLog(ProfileStats stats, List<Prediction> preds) {
+    final settled = preds.where((p) => p.isSettled).toList();
+
+    if (settled.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 30),
+          child: Text(
+            'لا نقاط محتسبة بعد — تُحتسب توقعاتك فور انتهاء مبارياتها',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Brand.textMuted, height: 1.6),
+          ),
+        ),
+      ];
+    }
+
+    // تجميع بالجولة: النقاط تُجمع في الأذهان جولةً جولة ("كم أخذت
+    // في الجولة الماضية؟")، والقائمة المسطحة لا تجيب على ذلك.
+    // LinkedHashMap ضمنياً: ترتيب الإدراج محفوظ، والقائمة أصلاً
+    // مرتبة تنازلياً بموعد المباراة.
+    final byRound = <String, List<Prediction>>{};
+    for (final p in settled) {
+      byRound.putIfAbsent(Fmt.round(p.round), () => []).add(p);
+    }
+
+    return [
+      _PointsSummary(stats: stats),
+      const SizedBox(height: 12),
+      if (stats.recentForm.isNotEmpty) ...[
+        _FormCard(form: stats.recentForm),
+        const SizedBox(height: 12),
+      ],
+      if (stats.pointsDistribution.isNotEmpty) ...[
+        _DistributionCard(buckets: stats.pointsDistribution),
+        const SizedBox(height: 12),
+      ],
+      for (final entry in byRound.entries) ...[
+        _RoundLedger(round: entry.key, predictions: entry.value),
+        const SizedBox(height: 10),
+      ],
+    ];
+  }
+}
+
+/// ترويسة سجلّ النقاط: الرصيد ومن أين تكوّن.
+class _PointsSummary extends StatelessWidget {
+  final ProfileStats stats;
+  const _PointsSummary({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final exact = stats.pointsDistribution
+        .where((b) => b.points >= 3)
+        .fold(0, (sum, b) => sum + b.count);
+
+    return BrandCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              BrandNumber('${stats.totalPoints}', size: 26, color: Brand.crown),
+              const SizedBox(height: 2),
+              const Text(
+                'نقطة تاج',
+                style: TextStyle(color: Brand.textMuted, fontSize: 11.5),
+              ),
+            ],
+          ),
+          const Spacer(),
+          _SummaryCell(
+            value: '${stats.settledPredictions}',
+            label: 'توقّع محتسب',
+          ),
+          const SizedBox(width: 18),
+          _SummaryCell(value: '$exact', label: 'نتيجة مضبوطة'),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryCell extends StatelessWidget {
+  final String value;
+  final String label;
+  const _SummaryCell({required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        BrandNumber(value, size: 16),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(color: Brand.textFaint, fontSize: 10.5),
+        ),
+      ],
+    );
+  }
+}
+
+/// نقاط جولة واحدة: مجموعها في الترويسة وتفصيلها تحتها.
+///
+/// الصف الواحد سطر لا بطاقة: هذا سجلّ يُمسح بالعين بحثاً عن رقم،
+/// لا قائمة بطاقات تُقرأ واحدة واحدة — بطاقة كاملة لكل مباراة كانت
+/// ستجعل جولة واحدة أطول من شاشة.
+class _RoundLedger extends StatelessWidget {
+  final String round;
+  final List<Prediction> predictions;
+
+  const _RoundLedger({required this.round, required this.predictions});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = predictions.fold(0, (sum, p) => sum + (p.points ?? 0));
+
+    return BrandCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                round,
+                style: const TextStyle(
+                  fontFamily: Brand.displayFont,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Brand.text,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                // الصفر بلا إشارة موجبة: "+0" وعدٌ لم يتحقق.
+                total > 0 ? '+$total' : '$total',
+                style: TextStyle(
+                  fontFamily: Brand.displayFont,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: Brand.tabular,
+                  color: total > 0 ? Brand.crown : Brand.textFaint,
+                ),
+              ),
+            ],
+          ),
+          const Divider(color: Brand.borderSoft, height: 18),
+          // ترويسة الأعمدة: رقمان متجاوران بلا تسمية لغز — أيهما
+          // توقعي وأيهما ما حدث فعلاً؟ سطر واحد يحسمها للجولة كلها.
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(child: SizedBox.shrink()),
+                _LedgerHead('توقعك', _LedgerRow.scoreWidth),
+                _LedgerHead('النتيجة', _LedgerRow.scoreWidth),
+                _LedgerHead('نقاط', _LedgerRow.pointsWidth),
+              ],
+            ),
+          ),
+          for (final p in predictions) _LedgerRow(prediction: p),
+        ],
+      ),
+    );
+  }
+}
+
+class _LedgerHead extends StatelessWidget {
+  final String label;
+  final double width;
+  const _LedgerHead(this.label, this.width);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Brand.textFaint, fontSize: 9.5),
+      ),
+    );
+  }
+}
+
+class _LedgerRow extends StatelessWidget {
+  /// أعمدة بعرض ثابت كي تصطف الأرقام تحت ترويستها مهما اختلفت
+  /// أطوال أسماء الفرق — العمود المصطف يُقرأ بنظرة واحدة.
+  static const scoreWidth = 58.0;
+  static const pointsWidth = 46.0;
+
+  final Prediction prediction;
+  const _LedgerRow({required this.prediction});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = prediction;
+    final points = p.points ?? 0;
+    final hasResult = p.goalsHome != null && p.goalsAway != null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${p.homeTeamName} — ${p.awayTeamName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Brand.text, fontSize: 12.5),
+            ),
+          ),
+          // النتيجة بمسافات حول الشرطة كما في بقية التطبيق: هكذا
+          // يضع ترتيب العربية رقم المستضيف على اليمين تحت اسمه.
+          // "2-1" بلا مسافات رمز واحد يُرسم يساراً-يميناً فينقلب.
+          _LedgerCell('${p.predHome} - ${p.predAway}', Brand.textMuted),
+          _LedgerCell(
+            hasResult ? '${p.goalsHome} - ${p.goalsAway}' : '—',
+            Brand.text,
+          ),
+          SizedBox(
+            width: pointsWidth,
+            child: Text(
+              points > 0 ? '+$points' : '—',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: Brand.displayFont,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                fontFeatures: Brand.tabular,
+                color: points > 0 ? Brand.crown : Brand.textFaint,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LedgerCell extends StatelessWidget {
+  final String value;
+  final Color color;
+  const _LedgerCell(this.value, this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _LedgerRow.scoreWidth,
+      child: Text(
+        value,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontFeatures: Brand.tabular,
+        ),
       ),
     );
   }
@@ -208,14 +500,21 @@ class _IdentityCard extends StatelessWidget {
                       Row(
                         children: [
                           if (stats.favoriteTeam!.logoUrl != null)
-                            Image.network(stats.favoriteTeam!.logoUrl!,
-                                width: 15, height: 15,
-                                errorBuilder: (_, _, _) =>
-                                    const SizedBox.shrink()),
+                            Image.network(
+                              stats.favoriteTeam!.logoUrl!,
+                              width: 15,
+                              height: 15,
+                              errorBuilder: (_, _, _) =>
+                                  const SizedBox.shrink(),
+                            ),
                           const SizedBox(width: 5),
-                          Text('يشجّع ${stats.favoriteTeam!.name}',
-                              style: const TextStyle(
-                                  color: Brand.textFaint, fontSize: 11.5)),
+                          Text(
+                            'يشجّع ${stats.favoriteTeam!.name}',
+                            style: const TextStyle(
+                              color: Brand.textFaint,
+                              fontSize: 11.5,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -225,10 +524,15 @@ class _IdentityCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  BrandNumber('${stats.totalPoints}',
-                      size: 30, color: Brand.crown),
-                  const Text('نقطة تاج',
-                      style: TextStyle(color: Brand.textMuted, fontSize: 11)),
+                  BrandNumber(
+                    '${stats.totalPoints}',
+                    size: 30,
+                    color: Brand.crown,
+                  ),
+                  const Text(
+                    'نقطة تاج',
+                    style: TextStyle(color: Brand.textMuted, fontSize: 11),
+                  ),
                 ],
               ),
             ],
@@ -273,18 +577,24 @@ class _RankProgress extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text('$remaining نقطة إلى $nextName',
-                style: const TextStyle(
-                    color: Brand.crown,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: Brand.tabular)),
+            Text(
+              '$remaining نقطة إلى $nextName',
+              style: const TextStyle(
+                color: Brand.crown,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFeatures: Brand.tabular,
+              ),
+            ),
             const Spacer(),
-            Text('${(progress * 100).round()}%',
-                style: const TextStyle(
-                    color: Brand.textFaint,
-                    fontSize: 11.5,
-                    fontFeatures: Brand.tabular)),
+            Text(
+              '${(progress * 100).round()}%',
+              style: const TextStyle(
+                color: Brand.textFaint,
+                fontSize: 11.5,
+                fontFeatures: Brand.tabular,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 7),
@@ -362,17 +672,22 @@ class _StatBox extends StatelessWidget {
         children: [
           BrandNumber(value, size: 21, color: tone ?? Brand.text),
           const SizedBox(height: 4),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Brand.textMuted, fontSize: 11.5)),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Brand.textMuted, fontSize: 11.5),
+          ),
           if (hint != null) ...[
             const SizedBox(height: 2),
-            Text(hint!,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: tone ?? Brand.textFaint,
-                    fontSize: 10.5,
-                    fontFeatures: Brand.tabular)),
+            Text(
+              hint!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: tone ?? Brand.textFaint,
+                fontSize: 10.5,
+                fontFeatures: Brand.tabular,
+              ),
+            ),
           ],
         ],
       ),
@@ -394,8 +709,10 @@ class _FormCard extends StatelessWidget {
     if (form.length >= 4) {
       final older = form.take(half);
       final newer = form.skip(half);
-      final a = older.map((f) => f.accuracy).reduce((x, y) => x + y) / older.length;
-      final b = newer.map((f) => f.accuracy).reduce((x, y) => x + y) / newer.length;
+      final a =
+          older.map((f) => f.accuracy).reduce((x, y) => x + y) / older.length;
+      final b =
+          newer.map((f) => f.accuracy).reduce((x, y) => x + y) / newer.length;
       delta = (b - a).round();
     }
 
@@ -407,12 +724,15 @@ class _FormCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('دقتك في آخر الجولات',
-                  style: TextStyle(
-                      fontFamily: Brand.displayFont,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Brand.text)),
+              const Text(
+                'دقتك في آخر الجولات',
+                style: TextStyle(
+                  fontFamily: Brand.displayFont,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Brand.text,
+                ),
+              ),
               const Spacer(),
               if (delta != null)
                 BrandChip(
@@ -432,12 +752,15 @@ class _FormCard extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${f.accuracy}',
-                            style: const TextStyle(
-                                color: Brand.textFaint,
-                                fontSize: 9.5,
-                                height: 1.2,
-                                fontFeatures: Brand.tabular)),
+                        Text(
+                          '${f.accuracy}',
+                          style: const TextStyle(
+                            color: Brand.textFaint,
+                            fontSize: 9.5,
+                            height: 1.2,
+                            fontFeatures: Brand.tabular,
+                          ),
+                        ),
                         const SizedBox(height: 3),
                         // ارتفاع أدنى للجولة بصفر دقة: العمود المعدوم
                         // يجعل الجولة تبدو غير موجودة، وهي موجودة
@@ -461,14 +784,17 @@ class _FormCard extends StatelessWidget {
                           // الرسم — جولة من الموسم الماضي وأخرى من
                           // هذا. نضيف الموسم حينها فقط: إضافته دائماً
                           // ضجيج، وإغفاله يجعل التكرار يبدو خللاً.
-                          spansSeasons ? '${f.shortLabel}\n${f.season}' : f.shortLabel,
+                          spansSeasons
+                              ? '${f.shortLabel}\n${f.season}'
+                              : f.shortLabel,
                           maxLines: 2,
                           textAlign: TextAlign.center,
                           overflow: TextOverflow.clip,
                           style: const TextStyle(
-                              color: Brand.textFaint,
-                              fontSize: 10,
-                              height: 1.2),
+                            color: Brand.textFaint,
+                            fontSize: 10,
+                            height: 1.2,
+                          ),
                         ),
                       ],
                     ),
@@ -495,12 +821,15 @@ class _DistributionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('كيف تكسب نقاطك',
-              style: TextStyle(
-                  fontFamily: Brand.displayFont,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Brand.text)),
+          const Text(
+            'كيف تكسب نقاطك',
+            style: TextStyle(
+              fontFamily: Brand.displayFont,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Brand.text,
+            ),
+          ),
           const SizedBox(height: 14),
           for (final b in buckets)
             Padding(
@@ -518,11 +847,14 @@ class _DistributionCard extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      Text('${b.count} · ${(b.count / total * 100).round()}%',
-                          style: const TextStyle(
-                              color: Brand.textFaint,
-                              fontSize: 11.5,
-                              fontFeatures: Brand.tabular)),
+                      Text(
+                        '${b.count} · ${(b.count / total * 100).round()}%',
+                        style: const TextStyle(
+                          color: Brand.textFaint,
+                          fontSize: 11.5,
+                          fontFeatures: Brand.tabular,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 5),
@@ -533,7 +865,8 @@ class _DistributionCard extends StatelessWidget {
                       minHeight: 5,
                       backgroundColor: Brand.fill,
                       valueColor: AlwaysStoppedAnimation(
-                          b.points == 0 ? Brand.fillStrong : Brand.crown),
+                        b.points == 0 ? Brand.fillStrong : Brand.crown,
+                      ),
                     ),
                   ),
                 ],
@@ -557,14 +890,20 @@ class _Avatar extends StatelessWidget {
       return Container(
         width: size,
         height: size,
-        decoration: const BoxDecoration(color: Brand.fill, shape: BoxShape.circle),
+        decoration: const BoxDecoration(
+          color: Brand.fill,
+          shape: BoxShape.circle,
+        ),
         alignment: Alignment.center,
-        child: Text(name.characters.first,
-            style: const TextStyle(
-                fontFamily: Brand.displayFont,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Brand.textMuted)),
+        child: Text(
+          name.characters.first,
+          style: const TextStyle(
+            fontFamily: Brand.displayFont,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: Brand.textMuted,
+          ),
+        ),
       );
     }
     return ClipOval(
@@ -609,32 +948,43 @@ class _PredictionTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Brand.text,
-                        fontFamily: Brand.displayFont,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600),
+                      color: Brand.text,
+                      fontFamily: Brand.displayFont,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(dateFmt.format(p.kickoffAt),
-                    style: const TextStyle(
-                        color: Brand.textFaint,
-                        fontSize: 11,
-                        fontFeatures: Brand.tabular)),
+                Text(
+                  Fmt.date(dateFmt, p.kickoffAt),
+                  style: const TextStyle(
+                    color: Brand.textFaint,
+                    fontSize: 11,
+                    fontFeatures: Brand.tabular,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
+                // محايد لا أخضر. كان "توقعك" أخضر دائماً — والأخضر
+                // في الهوية يعني "صحيح"، فكان يهنّئ صاحب التوقع
+                // الخاطئ بلون النجاح. والقاعدة الثانية تمنع الأخضر
+                // أن يتقاسم بطاقة مع الذهبي، والنقاط ذهبية. الحكم
+                // على التوقع تقوله شريحة النقاط وحدها.
                 _ScoreBox(
-                    title: 'توقعك',
-                    value: '${p.predHome} - ${p.predAway}',
-                    highlight: true),
+                  title: 'توقعك',
+                  value: '${p.predHome} - ${p.predAway}',
+                  highlight: false,
+                ),
                 const SizedBox(width: 8),
                 _ScoreBox(
-                    title: 'النتيجة',
-                    value: hasResult ? '${p.goalsHome} - ${p.goalsAway}' : '—',
-                    highlight: false),
+                  title: 'النتيجة',
+                  value: hasResult ? '${p.goalsHome} - ${p.goalsAway}' : '—',
+                  highlight: false,
+                ),
                 const Spacer(),
                 _PointsChip(points: p.isSettled ? (p.points ?? 0) : null),
               ],
@@ -667,13 +1017,19 @@ class _ScoreBox extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(title,
-              style: TextStyle(
-                  color: highlight ? Brand.correct : Brand.textMuted,
-                  fontSize: 10)),
+          Text(
+            title,
+            style: TextStyle(
+              color: highlight ? Brand.correct : Brand.textMuted,
+              fontSize: 10,
+            ),
+          ),
           const SizedBox(height: 1),
-          BrandNumber(value,
-              size: 15, color: highlight ? Brand.correct : Brand.text),
+          BrandNumber(
+            value,
+            size: 15,
+            color: highlight ? Brand.correct : Brand.text,
+          ),
         ],
       ),
     );
@@ -691,15 +1047,22 @@ class _PointsChip extends StatelessWidget {
     }
     if (points! > 0) {
       return BrandChip(
-          label: '+$points نقطة',
-          icon: Icons.emoji_events,
-          tone: BrandTone.crown);
+        label: '+$points نقطة',
+        icon: Icons.emoji_events,
+        tone: BrandTone.crown,
+      );
     }
     return const BrandChip(label: 'بدون نقاط', icon: Icons.close);
   }
 }
 
 /// الحساب — وهنا مكان الخروج الطبيعي: تبويب "ملفي" هو شاشة الحساب.
+/// أسفل الملف: البريد ومدخل الإعدادات.
+///
+/// زر الخروج انتقل إلى الإعدادات مع بقية أفعال الحساب. إبقاؤه هنا
+/// كان يضع الفعل الوحيد الذي لا رجعة فيه في نهاية شاشة تُمرَّر
+/// يومياً — بينما كل ما يجاوره (تعديل الملف، البريد، الحذف) في
+/// مكان واحد آخر.
 class _AccountCard extends StatelessWidget {
   final String? email;
   const _AccountCard({this.email});
@@ -707,61 +1070,41 @@ class _AccountCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BrandCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      ),
+      child: Row(
         children: [
-          const Text('الحساب',
-              style: TextStyle(
-                  fontFamily: Brand.displayFont,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Brand.text)),
-          if (email != null) ...[
-            const SizedBox(height: 6),
-            Text(email!,
-                textDirection: TextDirection.ltr,
-                style: const TextStyle(color: Brand.textMuted, fontSize: 12.5)),
-          ],
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _confirmLogout(context),
-              icon: const Icon(Icons.logout, size: 17),
-              label: const Text('تسجيل الخروج'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Brand.wrong,
-                side: BorderSide(color: Brand.wrong.withValues(alpha: 0.35)),
-                minimumSize: const Size.fromHeight(46),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
+          const Icon(Icons.settings_outlined, size: 20, color: Brand.textMuted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'الإعدادات',
+                  style: TextStyle(
+                    fontFamily: Brand.displayFont,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Brand.text,
+                  ),
+                ),
+                if (email != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    email!,
+                    textDirection: TextDirection.ltr,
+                    style:
+                        const TextStyle(color: Brand.textFaint, fontSize: 12),
+                  ),
+                ],
+              ],
             ),
           ),
+          const Icon(Icons.chevron_right, size: 20, color: Brand.textFaint),
         ],
       ),
     );
-  }
-
-  Future<void> _confirmLogout(BuildContext context) async {
-    final session = context.read<Session>();
-    final yes = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تسجيل الخروج'),
-        content: const Text('متأكد تبي تسجل خروج؟'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Brand.wrong),
-            child: const Text('خروج'),
-          ),
-        ],
-      ),
-    );
-    if (yes == true) await session.logout();
   }
 }

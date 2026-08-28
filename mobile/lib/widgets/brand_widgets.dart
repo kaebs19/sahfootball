@@ -233,3 +233,45 @@ class BrandCard extends StatelessWidget {
     );
   }
 }
+
+/// مبدّل أوضاع: شريحتان أو ثلاث، المختارة مصمتة والبقية محايدة.
+///
+/// كان يعيش خاصاً داخل شاشة المباريات ("القادمة | بالتاريخ"). نُقل
+/// هنا حين احتاجه الملف الشخصي ("التوقعات | النقاط"): نسخة ثانية
+/// كانت ستتفرق عن الأولى في أول تعديل على المقاسات، والمستخدم يرى
+/// عنصرين متشابهين بفروق لا يفسّرها شيء.
+class BrandModeTab extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const BrandModeTab({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? Brand.crown : Brand.fill,
+      borderRadius: BorderRadius.circular(Brand.radiusChip),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: selected ? Brand.onAccent : Brand.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

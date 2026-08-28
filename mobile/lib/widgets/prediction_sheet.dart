@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../brand.dart';
+import '../format.dart';
 import '../models/fixture.dart';
 import 'brand_widgets.dart';
 
@@ -107,7 +108,7 @@ class _PredictionSheetState extends State<_PredictionSheet> {
                   ?.copyWith(fontSize: 18)),
           const SizedBox(height: 4),
           Text(
-            widget.fixture.round ?? 'دوري روشن',
+            Fmt.round(widget.fixture.round),
             style: const TextStyle(color: Brand.textFaint, fontSize: 12),
           ),
           const SizedBox(height: 22),

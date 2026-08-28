@@ -22,6 +22,7 @@ import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../brand.dart';
+import '../format.dart';
 import '../models/live_fixture.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/live_match_card.dart';
@@ -275,15 +276,6 @@ class _NextUpCardState extends State<_NextUpCard> {
     final left = f.kickoffAt.difference(DateTime.now());
     final fmt = intl.DateFormat('EEEE d MMMM · h:mm a', 'ar');
 
-    String countdown() {
-      if (left.isNegative) return 'تنطلق الآن';
-      final h = left.inHours;
-      final m = left.inMinutes % 60;
-      final s = left.inSeconds % 60;
-      if (h >= 24) return 'بعد ${left.inDays} يوم';
-      if (h > 0) return 'بعد $h:${m.toString().padLeft(2, '0')} ساعة';
-      return 'بعد $m:${s.toString().padLeft(2, '0')} دقيقة';
-    }
 
     return BrandCard(
       royal: true,
@@ -291,7 +283,7 @@ class _NextUpCardState extends State<_NextUpCard> {
       child: Column(
         children: [
           Text(
-            countdown(),
+            Fmt.until(left),
             style: const TextStyle(
               fontFamily: Brand.displayFont,
               fontSize: 20,
@@ -302,7 +294,7 @@ class _NextUpCardState extends State<_NextUpCard> {
           ),
           const SizedBox(height: 3),
           Text(
-            fmt.format(f.kickoffAt),
+            Fmt.date(fmt, f.kickoffAt),
             style: const TextStyle(color: Brand.textFaint, fontSize: 11.5),
           ),
           const SizedBox(height: 14),

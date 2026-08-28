@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../brand.dart';
+import '../format.dart';
 import '../models/fixture.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/fixture_card.dart';
@@ -114,13 +115,13 @@ class _MatchesScreenState extends State<MatchesScreen> {
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
           child: Row(
             children: [
-              _ModeTab(
+              BrandModeTab(
                 label: 'القادمة',
                 selected: _mode == _Mode.upcoming,
                 onTap: () => _setMode(_Mode.upcoming),
               ),
               const SizedBox(width: 8),
-              _ModeTab(
+              BrandModeTab(
                 label: 'بالتاريخ',
                 selected: _mode == _Mode.byDate,
                 onTap: () => _setMode(_Mode.byDate),
@@ -169,7 +170,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     final byDay = <String, List<Fixture>>{};
     final dayFmt = intl.DateFormat('EEEE d MMMM', 'ar');
     for (final f in fixtures) {
-      byDay.putIfAbsent(dayFmt.format(f.kickoffAt), () => []).add(f);
+      byDay.putIfAbsent(Fmt.date(dayFmt, f.kickoffAt), () => []).add(f);
     }
 
     return RefreshIndicator(
@@ -204,41 +205,6 @@ class _MatchesScreenState extends State<MatchesScreen> {
 /// (علامة صح داخل الشريحة، حدود مصمتة) يخالف شرائح الهوية
 /// البيضاوية. الشريحة المختارة ذهبية مصمتة كما في مرشّحات البطولات
 /// في ملف الهوية — وهذا استعمال مسموح للذهبي لأنه تمييز حالة لا زر.
-class _ModeTab extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ModeTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? Brand.crown : Brand.fill,
-      borderRadius: BorderRadius.circular(Brand.radiusChip),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: selected ? Brand.onAccent : Brand.textMuted,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// شريط اليوم: سهمان للتنقل يوماً بيوم (الأكثر استعمالاً) وضغطة على
 /// التاريخ نفسه لفتح التقويم للقفزات البعيدة.
 class _DayBar extends StatelessWidget {
@@ -270,7 +236,7 @@ class _DayBar extends StatelessWidget {
             icon: const Icon(Icons.calendar_today,
                 size: 14, color: Brand.textMuted),
             label: Text(
-              fmt.format(day),
+              Fmt.date(fmt, day),
               style: const TextStyle(
                 color: Brand.text,
                 fontSize: 13,

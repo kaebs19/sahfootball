@@ -12,6 +12,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../format.dart';
 import '../models/live_fixture.dart';
 import 'brand_widgets.dart';
 
@@ -40,7 +41,7 @@ class LiveMatchCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  f.round ?? 'دوري روشن',
+                  Fmt.round(f.round),
                   style: const TextStyle(
                       color: Brand.textFaint,
                       fontSize: 11.5,

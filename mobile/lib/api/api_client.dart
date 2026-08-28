@@ -22,6 +22,7 @@ import '../models/leaderboard_entry.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
 import '../models/profile_stats.dart';
+import '../models/site_page.dart';
 import '../models/user.dart';
 
 /// خطأ موجه للعرض: message جاهزة بالعربية (السيرفر يرسل أخطاءه
@@ -346,4 +347,142 @@ class ApiClient {
       _throwReadable(e);
     }
   }
+
+  // ── الملف الشخصي والحساب ────────────────────────────────────────
+
+  /// تعديل الاسم أو الفريق المفضل. الحقل غير المُمرَّر لا يُلمس —
+  /// null قيمة صالحة تعني "أزل الفريق المفضل"، ولهذا لا نستطيع
+  /// استعمال null كعلامة "لم يتغير".
+  Future<User> updateProfile({
+    String? displayName,
+    Object? favoriteTeamId = _unset,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (displayName != null) body['displayName'] = displayName;
+      if (!identical(favoriteTeamId, _unset)) {
+        body['favoriteTeamId'] = favoriteTeamId;
+      }
+      final res = await _dio.put('/api/profile', data: body);
+      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// رفع صورة شخصية (multipart). السيرفر يحد بـ 2 ميغابايت ويقبل
+  /// jpeg/png/webp، ويشتق الامتداد من نوع الملف لا من اسمه.
+  Future<User> uploadAvatar(String filePath) async {
+    try {
+      final form = FormData.fromMap({
+        'avatar': await MultipartFile.fromFile(filePath),
+      });
+      final res = await _dio.post('/api/profile/avatar', data: form);
+      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<User> deleteAvatar() async {
+    try {
+      final res = await _dio.delete('/api/profile/avatar');
+      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تغيير كلمة السر. السيرفر يطرد بقية الأجهزة ويرد بزوج توكنات
+  /// جديد — نحفظه فوراً وإلا خرج المستخدم من جهازه هو أيضاً.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final res = await _dio.post('/api/auth/change-password', data: {
+        'currentPassword': currentPassword,
+        'newPassword': newPassword,
+      });
+      await tokens.save(
+        access: res.data['accessToken'] as String,
+        refresh: res.data['refreshToken'] as String,
+      );
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تغيير البريد. يطلب كلمة السر الحالية لأن البريد قناة استعادة
+  /// الحساب — من يملكه يملك الحساب.
+  Future<User> changeEmail({
+    required String newEmail,
+    required String currentPassword,
+  }) async {
+    try {
+      final res = await _dio.put('/api/auth/email', data: {
+        'newEmail': newEmail,
+        'currentPassword': currentPassword,
+      });
+      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// حذف الحساب نهائياً. لا تراجع.
+  Future<void> deleteAccount({required String password}) async {
+    try {
+      await _dio.delete('/api/auth/account', data: {'password': password});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+
+  /// قائمة الفرق — لاختيار الفريق المفضل. قراءة عامة بلا توكن.
+  Future<List<FavoriteTeam>> teams() async {
+    try {
+      final res = await _dio.get('/api/teams');
+      return (res.data['teams'] as List)
+          .map((j) => FavoriteTeam.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  // ── محتوى الموقع ───────────────────────────────────────────────
+
+  /// صفحة من صفحات الموقع (privacy / terms / about) — يحرّرها الأدمن
+  /// من اللوحة، فالنص يتغيّر بلا إصدار جديد من التطبيق.
+  Future<SitePage> sitePage(String slug) async {
+    try {
+      final res = await _dio.get('/api/site/pages/$slug');
+      return SitePage.fromJson(res.data['page'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<void> sendContact({
+    required String email,
+    required String message,
+    String? name,
+    String? subject,
+  }) async {
+    try {
+      await _dio.post('/api/site/contact', data: {
+        'email': email,
+        'message': message,
+        if (name != null && name.isNotEmpty) 'name': name,
+        if (subject != null && subject.isNotEmpty) 'subject': subject,
+      });
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
 }
+
+/// علامة "لم يُمرَّر" — تميّز غياب الوسيط عن تمرير null صراحةً.
+const Object _unset = Object();

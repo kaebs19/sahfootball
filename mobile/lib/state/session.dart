@@ -87,6 +87,23 @@ class Session extends ChangeNotifier {
     _setStatus(SessionStatus.loggedOut);
   }
 
+  /// تحديث بيانات المستخدم بعد تعديل الملف أو البريد أو الصورة.
+  /// الشاشات تقرأ Session لا ردّ الطلب، فبدون هذا يبقى الاسم القديم
+  /// معروضاً في الترويسة حتى إعادة التشغيل.
+  void setUser(User user) {
+    _user = user;
+    notifyListeners();
+  }
+
+  /// إنهاء الجلسة محلياً بلا نداء /logout — بعد حذف الحساب تحديداً:
+  /// الحساب لم يعد موجوداً والتوكنات أُبطلت في السيرفر أصلاً، ونداء
+  /// الخروج سيفشل بـ 401 ويظهر خطأً على فعل نجح تماماً.
+  Future<void> forgetSession() async {
+    await api.tokens.clear();
+    _user = null;
+    _setStatus(SessionStatus.loggedOut);
+  }
+
   void _handleExpired([String? reason]) {
     _user = null;
     _endedReason = reason;
