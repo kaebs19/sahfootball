@@ -1,6 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- بدونها لا يصل التطبيق للسيرفر إطلاقاً في نسخة الإصدار.
+         نسخة التطوير كانت تعمل لأن ملف debug/AndroidManifest.xml
+         يضيفها لأدوات فلاتر — فالعطل كان سيظهر أول مرة على متجر
+         Google Play لا على أي جهاز تطوير. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="ملك التوقعات"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

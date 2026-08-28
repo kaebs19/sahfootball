@@ -6,7 +6,15 @@ plugins {
 
 android {
     namespace = "com.sahfootball.mobile"
-    compileSdk = flutter.compileSdkVersion
+    // 37 لا flutter.compileSdkVersion (=36): إضافة flutter_secure_storage
+    // تشترط على من يعتمد عليها الترجمة على 37 أو أحدث. والرقم الفرعي
+    // صريح لأن جوجل تنشر android-37.0 لا "android-37"، فالرقم المجرد
+    // يبحث عن منصة غير موجودة.
+    //
+    // هذا لا يغيّر أقل نسخة مدعومة ولا النسخة المستهدفة — الترجمة على
+    // واجهات أحدث لا تعني اشتراطها على الأجهزة.
+    compileSdk = 37
+    compileSdkMinor = 0
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

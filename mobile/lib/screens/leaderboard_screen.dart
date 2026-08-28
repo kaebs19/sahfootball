@@ -1,4 +1,9 @@
-// شاشة العرش — ترتيب كل المتوقعين بنقاط التاج.
+// شاشة العرش — أين أنا بين الناس؟
+//
+// وضعان تحت تبويب واحد: "العام" ترتيب كل المتوقعين، و"مجالسي"
+// المنافسات الخاصة. سؤالهما واحد ولذلك لا يستحقان تبويبين في شريط
+// من أربعة — والمجلس بلا العرش بجانبه يفقد معناه: النقطة نفسها
+// تُحسب في الاثنين.
 //
 // نبرز صف المستخدم الحالي بحد ذهبي: في قائمة من خمسين اسماً،
 // السؤال الأول عند كل مستخدم هو "وين أنا؟".
@@ -14,9 +19,11 @@ import 'package:provider/provider.dart';
 import '../api/api_client.dart';
 import '../brand.dart';
 import '../config.dart';
+import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
+import 'group_screen.dart';
 
 /// سلّم الرتب الموسمية كما في ملف الهوية.
 enum Rank {
@@ -46,8 +53,13 @@ class LeaderboardScreen extends StatefulWidget {
   State<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
+/// أي ترتيب معروض: العرش العام أم مجالسي.
+enum _Board { global, councils }
+
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardEntry>? _entries;
+  List<Group>? _groups;
+  _Board _board = _Board.global;
   String? _error;
 
   @override
@@ -59,8 +71,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final entries = await context.read<ApiClient>().leaderboard();
-      if (mounted) setState(() => _entries = entries);
+      // الاثنان معاً في طلبين متوازيين: التبديل بين الوضعين يجب أن
+      // يكون فورياً، وجلب المجالس عند أول ضغطة يجعل الوضع الثاني
+      // يبدو أبطأ من الأول بلا سبب يفهمه المستخدم.
+      final results = await Future.wait([
+        context.read<ApiClient>().leaderboard(),
+        context.read<ApiClient>().myGroups(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _entries = results[0] as List<LeaderboardEntry>;
+        _groups = results[1] as List<Group>;
+      });
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     }
@@ -69,13 +91,48 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return BrandEmpty(
-          icon: Icons.wifi_off, message: _error!, onRetry: _load);
+      return BrandEmpty(icon: Icons.wifi_off, message: _error!, onRetry: _load);
+    }
+    if (_entries == null || _groups == null) {
+      return const Center(child: CircularProgressIndicator(color: Brand.crown));
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+          child: Row(
+            children: [
+              BrandModeTab(
+                label: 'العام',
+                selected: _board == _Board.global,
+                onTap: () => setState(() => _board = _Board.global),
+              ),
+              const SizedBox(width: 8),
+              BrandModeTab(
+                label: 'مجالسي',
+                selected: _board == _Board.councils,
+                onTap: () => setState(() => _board = _Board.councils),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _board == _Board.global
+              ? _buildGlobal()
+              : _CouncilsView(groups: _groups!, onChanged: _load),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGlobal() {
+    if (_error != null) {
+      return BrandEmpty(icon: Icons.wifi_off, message: _error!, onRetry: _load);
     }
     final entries = _entries;
     if (entries == null) {
-      return const Center(
-          child: CircularProgressIndicator(color: Brand.crown));
+      return const Center(child: CircularProgressIndicator(color: Brand.crown));
     }
     if (entries.isEmpty) {
       return BrandEmpty(
@@ -98,10 +155,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           const Text(
             'من يجلس على العرش؟',
             style: TextStyle(
-                fontFamily: Brand.displayFont,
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
-                color: Brand.text),
+              fontFamily: Brand.displayFont,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: Brand.text,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -112,7 +170,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           for (final e in entries)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: _LeaderRow(entry: e, isMe: e.userId == myId),
+              child: LeaderRow(entry: e, isMe: e.userId == myId),
             ),
         ],
       ),
@@ -120,10 +178,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 }
 
-class _LeaderRow extends StatelessWidget {
+/// صف واحد في أي ترتيب — العرش العام أو ترتيب مجلس.
+///
+/// مشترك عمداً: الرقم في المجلس والرقم في العرش يخرجان من نفس
+/// الحساب، فلو اختلف شكلهما ظنّ المستخدم أنهما شيئان مختلفان.
+class LeaderRow extends StatelessWidget {
   final LeaderboardEntry entry;
   final bool isMe;
-  const _LeaderRow({required this.entry, required this.isMe});
+  const LeaderRow({super.key, required this.entry, required this.isMe});
 
   @override
   Widget build(BuildContext context) {
@@ -150,16 +212,18 @@ class _LeaderRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            color: Brand.text,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600),
+                          color: Brand.text,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     if (isMe) ...[
                       const SizedBox(width: 6),
-                      const Text('· أنت',
-                          style:
-                              TextStyle(color: Brand.crown, fontSize: 11.5)),
+                      const Text(
+                        '· أنت',
+                        style: TextStyle(color: Brand.crown, fontSize: 11.5),
+                      ),
                     ],
                     if (entry.favoriteTeamLogo != null) ...[
                       const SizedBox(width: 6),
@@ -240,14 +304,18 @@ class _Avatar extends StatelessWidget {
       return Container(
         width: 30,
         height: 30,
-        decoration: const BoxDecoration(color: Brand.fill, shape: BoxShape.circle),
+        decoration: const BoxDecoration(
+          color: Brand.fill,
+          shape: BoxShape.circle,
+        ),
         alignment: Alignment.center,
         child: Text(
           name.characters.first,
           style: const TextStyle(
-              color: Brand.textMuted,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600),
+            color: Brand.textMuted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       );
     }
@@ -255,6 +323,292 @@ class _Avatar extends StatelessWidget {
       radius: 15,
       backgroundColor: Brand.fill,
       backgroundImage: CachedNetworkImageProvider(AppConfig.absoluteUrl(url!)),
+    );
+  }
+}
+
+/// قائمة مجالسي: بطاقة لكل مجلس، وزرّا الإنشاء والانضمام فوقها.
+///
+/// الزران في الأعلى دائماً لا في حالة الفراغ وحدها: من عنده مجلس
+/// واحد هو أكثر من يريد إنشاء الثاني أو الانضمام لمجلس صديق.
+class _CouncilsView extends StatelessWidget {
+  final List<Group> groups;
+  final Future<void> Function() onChanged;
+
+  const _CouncilsView({required this.groups, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: onChanged,
+      color: Brand.crown,
+      backgroundColor: Brand.surface,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 20),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _createDialog(context),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('أنشئ مجلساً'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _joinDialog(context),
+                  icon: const Icon(Icons.key_outlined, size: 18),
+                  label: const Text('انضم برمز'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (groups.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Column(
+                children: [
+                  Icon(Icons.groups_outlined, size: 42, color: Brand.textFaint),
+                  SizedBox(height: 14),
+                  Text(
+                    'ما عندك مجلس بعد',
+                    style: TextStyle(
+                      fontFamily: Brand.displayFont,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Brand.text,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'المجلس منافسة خاصة بينك وبين من تدعوهم — '
+                    'نفس النقاط، لكن الترتيب بينكم وحدكم.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Brand.textMuted,
+                      fontSize: 13,
+                      height: 1.8,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            for (final g in groups)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _CouncilCard(group: g, onChanged: onChanged),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createDialog(BuildContext context) async {
+    // نلتقط الخدمات قبل فتح النافذة لا بعدها: البحث عن
+    // ScaffoldMessenger يسجّل اعتماداً على الـ context، وتسجيله بعد
+    // await على شجرة تُعاد بناؤها هو ما يفجّر التأكيد
+    // "_dependents.isEmpty" في فلاتر.
+    final api = context.read<ApiClient>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final name = await _promptDialog(
+      context,
+      title: 'مجلس جديد',
+      label: 'اسم المجلس',
+      hint: 'مثلاً: شباب الحي',
+      action: 'أنشئ',
+    );
+    if (name == null) return;
+
+    try {
+      final group = await api.createGroup(name);
+      await onChanged();
+      messenger.showSnackBar(
+        SnackBar(content: Text('أُنشئ ${group.name} — شارك رمز الدعوة')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _joinDialog(BuildContext context) async {
+    final api = context.read<ApiClient>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final code = await _promptDialog(
+      context,
+      title: 'انضمام بمجلس',
+      label: 'رمز الدعوة',
+      hint: 'ستة أحرف',
+      action: 'انضم',
+    );
+    if (code == null) return;
+
+    try {
+      final group = await api.joinGroup(code);
+      await onChanged();
+      messenger.showSnackBar(
+        SnackBar(content: Text('انضممت إلى ${group.name}')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// نافذة إدخال سطر واحد. ترجع النص أو null لو ألغى المستخدم.
+  Future<String?> _promptDialog(
+    BuildContext context, {
+    required String title,
+    required String label,
+    required String hint,
+    required String action,
+  }) async {
+    final value = await showDialog<String>(
+      context: context,
+      builder: (_) => _PromptDialog(
+        title: title,
+        label: label,
+        hint: hint,
+        action: action,
+      ),
+    );
+    return (value == null || value.isEmpty) ? null : value;
+  }
+}
+
+/// نافذة الإدخال ويدجت ذات حالة كي تملك المتحكّم وتتخلص منه في
+/// dispose الخاص بها.
+///
+/// الشكل السابق كان ينشئ TextEditingController في دالة ثم يستدعي
+/// dispose فور عودة showDialog — بينما مسار النافذة ما زال يتحرك
+/// خارج الشاشة وحقل النص حيّ يستعمل المتحكّم. النتيجة انهيار عند
+/// الإنشاء، لا عند الكتابة، فيبدو وكأن العطل في نداء السيرفر.
+class _PromptDialog extends StatefulWidget {
+  final String title;
+  final String label;
+  final String hint;
+  final String action;
+
+  const _PromptDialog({
+    required this.title,
+    required this.label,
+    required this.hint,
+    required this.action,
+  });
+
+  @override
+  State<_PromptDialog> createState() => _PromptDialogState();
+}
+
+class _PromptDialogState extends State<_PromptDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Brand.surface,
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration:
+            InputDecoration(labelText: widget.label, hintText: widget.hint),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء')),
+        TextButton(onPressed: _submit, child: Text(widget.action)),
+      ],
+    );
+  }
+}
+
+class _CouncilCard extends StatelessWidget {
+  final Group group;
+  final Future<void> Function() onChanged;
+
+  const _CouncilCard({required this.group, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandCard(
+      onTap: () async {
+        final changed = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) =>
+                GroupScreen(groupId: group.id, groupName: group.name),
+          ),
+        );
+        // المجلس قد يكون حُذف أو غادره المستخدم — القائمة تُعاد بعده.
+        if (changed == true) await onChanged();
+      },
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: const BoxDecoration(
+              color: Brand.fill,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              group.isOwner ? Icons.workspace_premium : Icons.groups_outlined,
+              size: 20,
+              // التاج لصاحب المجلس: الذهبي هنا في محله — تمييز دور
+              // لا زينة زر.
+              color: group.isOwner ? Brand.crown : Brand.textMuted,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  group.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: Brand.displayFont,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Brand.text,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  group.isOwner
+                      ? '${group.membersCount} عضو · مجلسك'
+                      : '${group.membersCount} عضو',
+                  style: const TextStyle(
+                    color: Brand.textFaint,
+                    fontSize: 11.5,
+                    fontFeatures: Brand.tabular,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, size: 20, color: Brand.textFaint),
+        ],
+      ),
     );
   }
 }

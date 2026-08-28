@@ -18,6 +18,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../config.dart';
 import '../models/fixture.dart';
+import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
@@ -447,6 +448,78 @@ class ApiClient {
       return (res.data['teams'] as List)
           .map((j) => FavoriteTeam.fromJson(j as Map<String, dynamic>))
           .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+
+  // ── المجالس (groups في السيرفر) ─────────────────────────────────
+
+  Future<List<Group>> myGroups() async {
+    try {
+      final res = await _dio.get('/api/groups/mine');
+      return (res.data['groups'] as List)
+          .map((j) => Group.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<Group> createGroup(String name) async {
+    try {
+      final res = await _dio.post('/api/groups', data: {'name': name});
+      return Group.fromJson(res.data['group'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// الانضمام برمز الدعوة. السيرفر يطبّع الرمز (مسافات وحروف صغيرة)
+  /// فلا نتشدد هنا على شكل ما يلصقه المستخدم.
+  Future<Group> joinGroup(String code) async {
+    try {
+      final res = await _dio.post('/api/groups/join', data: {'code': code});
+      return Group.fromJson(res.data['group'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<GroupDetail> groupDetail(String id) async {
+    try {
+      final res = await _dio.get('/api/groups/$id');
+      return GroupDetail.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<GroupFixturePredictions> groupFixturePredictions(
+    String groupId,
+    int fixtureId,
+  ) async {
+    try {
+      final res =
+          await _dio.get('/api/groups/$groupId/fixtures/$fixtureId/predictions');
+      return GroupFixturePredictions.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<void> leaveGroup(String id) async {
+    try {
+      await _dio.post('/api/groups/$id/leave');
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<void> deleteGroup(String id) async {
+    try {
+      await _dio.delete('/api/groups/$id');
     } on DioException catch (e) {
       _throwReadable(e);
     }

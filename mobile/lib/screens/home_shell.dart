@@ -63,7 +63,11 @@ class _HomeShellState extends State<HomeShell> {
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
             ),
-          if (user != null)
+          // الاسم في تبويب ملفي وحده. كان يظهر في كل شريط: تكرار
+          // لا يضيف شيئاً — المستخدم يعرف من هو، وثلاث شاشات تعرض
+          // مباريات وترتيباً لا علاقة لها باسمه، بينما الشريط أضيق
+          // مكان في الشاشة.
+          if (user != null && _index == _profileTab)
             Padding(
               padding: const EdgeInsetsDirectional.only(end: 16),
               child: Center(

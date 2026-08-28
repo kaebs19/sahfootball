@@ -101,10 +101,17 @@ router.get('/:id', async (req, res) => {
 // توقعات أعضاء القروب على مباراة — الميزة الاجتماعية الأساسية:
 // "ماذا توقع أصحابي؟"
 //
-// قاعدة الكشف: التوقعات مخفية ما دام باب التوقع مفتوحاً (وإلا نسخ
-// الأعضاء توقعات بعضهم)، وتنكشف في نفس اللحظة التي يُغلق فيها —
-// شرط واحد مطابق حرفياً لشرط القفل في routes/predictions.js،
-// فلا توجد فجوة زمنية بين "أغلق" و"انكشف".
+// قاعدة الكشف شرطان معاً:
+//
+// 1) أن يكون باب التوقع قد أُغلق — شرط مطابق حرفياً لشرط القفل في
+//    routes/predictions.js، فلا فجوة زمنية بين "أغلق" و"انكشف"،
+//    وإلا نسخ الأعضاء توقعات بعضهم.
+//
+// 2) أن يكون الطالب نفسه قد توقّع تلك المباراة. من لم يشارك لا يرى
+//    ما اختاره غيره: التوقع ثمن الاطلاع، وبدون هذا الشرط يصير
+//    المجلس مكاناً يُتفرَّج فيه بلا مخاطرة — وهي أسرع طريقة لقتل
+//    المنافسة. الشرط في السيرفر لا في الواجهة، لأن ما يُرسل يُقرأ
+//    مهما فعلت الواجهة به.
 router.get('/:id/fixtures/:fixtureId/predictions', async (req, res) => {
   const { id } = req.params;
   const fixtureId = Number(req.params.fixtureId);
@@ -120,10 +127,14 @@ router.get('/:id/fixtures/:fixtureId/predictions', async (req, res) => {
   const fixture = await fixtureRepo.findById(fixtureId);
   if (!fixture) return res.status(404).json({ error: 'المباراة غير موجودة' });
 
-  const revealed =
+  const locked =
     fixture.status !== 'scheduled' || new Date(fixture.kickoff_at) <= new Date();
 
   const rows = await groupRepo.fixturePredictions(id, fixtureId);
+
+  const mine = rows.find((r) => r.user_id === req.userId);
+  const viewerPredicted = Boolean(mine && mine.pred_home !== null);
+  const revealed = locked && viewerPredicted;
   const predictions = rows.map((r) => {
     const predicted = r.pred_home !== null;
     if (!revealed) {
@@ -142,7 +153,10 @@ router.get('/:id/fixtures/:fixtureId/predictions', async (req, res) => {
     };
   });
 
-  res.json({ fixture, revealed, predictions });
+  // viewer_predicted و locked ينزلان مع الرد كي تعرف الواجهة سبب
+  // الإخفاء: "المباراة لم تبدأ" و"لم تتوقّع أنت" رسالتان مختلفتان،
+  // والثانية فيها فعل يفعله المستخدم الآن.
+  res.json({ fixture, revealed, locked, viewer_predicted: viewerPredicted, predictions });
 });
 
 // POST /api/groups/:id/leave — مغادرة
