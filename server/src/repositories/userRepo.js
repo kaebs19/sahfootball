@@ -43,9 +43,12 @@ async function setSuspension(id, { suspendedAt, reason }) {
 }
 
 // للتحقق من كلمة السر عند الدخول — الوحيدة التي ترجع الـ hash.
+//
+// apple_sub معها لأن من يتحقق من الهوية يحتاج الطريقتين: حساب بلا
+// hash هو حساب Apple، وإثبات هويته يكون بمطابقة sub لا بكلمة سر.
 async function findByEmailWithHash(email) {
   const { rows } = await db.query(
-    `SELECT ${PUBLIC_COLUMNS}, password_hash FROM users WHERE email = $1`,
+    `SELECT ${PUBLIC_COLUMNS}, password_hash, apple_sub FROM users WHERE email = $1`,
     [email]
   );
   return rows[0] ?? null;

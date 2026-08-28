@@ -4,6 +4,7 @@ const express = require('express');
 const authService = require('../services/authService');
 const requireAuth = require('../middleware/requireAuth');
 const throttle = require('../utils/authThrottle');
+const { deleteAvatarFile } = require('../utils/avatarFile');
 
 const router = express.Router();
 
@@ -102,6 +103,31 @@ router.post('/reset-password', async (req, res) => {
   const { email, code, newPassword } = req.body || {};
   const result = await authService.resetPassword({ email, code, newPassword });
   res.json(result);
+});
+
+// DELETE /api/auth/account — يحذف المستخدم حسابه بنفسه (محمي).
+//
+// الجسم: { password } لحسابات كلمة السر، أو { appleIdentityToken }
+// لحسابات Apple. الحذف نهائي ويجرّ معه التوقعات والجلسات، وتنتقل
+// ملكية القروبات لأقدم عضو — انظر userRepo.removeWithGroupHandover.
+//
+// وجود هذا المسار شرط في App Store: أي تطبيق يسمح بإنشاء حساب
+// داخله يجب أن يسمح بحذفه داخله (بند 5.1.1(v)).
+router.delete('/account', requireAuth, async (req, res) => {
+  const { password, appleIdentityToken } = req.body || {};
+  const result = await authService.deleteAccount(req.userId, {
+    password,
+    appleIdentityToken,
+  });
+  // الصورة تُحذف بعد نجاح المعاملة لا قبلها: الملف على القرص خارج
+  // نطاق ROLLBACK. أسوأ حالات هذا الترتيب ملف يتيم في uploads.
+  await deleteAvatarFile(result.avatar_url);
+
+  res.json({
+    deleted: result.deleted,
+    deleted_groups: result.deleted_groups,
+    transferred_groups: result.transferred_groups,
+  });
 });
 
 module.exports = router;

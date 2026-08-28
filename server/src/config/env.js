@@ -10,6 +10,7 @@
 // القاعدة هنا: ما يكسر الأمان أو يفقد البيانات = توقف. وما يعطّل
 // ميزة واحدة = تحذير مكتوب في اللوق كي يبقى مرئياً.
 const logger = require('../utils/logger');
+const { DRIVER_NAMES, DRIVER_REQUIREMENTS } = require('../services/mailer');
 
 const isProduction = () => process.env.NODE_ENV === 'production';
 
@@ -63,9 +64,27 @@ function check() {
     );
   }
 
+  // البريد: اسم driver مجهول أو مفتاح ناقص لا يظهر إلا حين يطلب
+  // مستخدم استعادة كلمته — أي بعد أسابيع من النشر وفي أسوأ لحظة.
+  // نمسكه عند الإقلاع بدلاً من ذلك.
+  const mailDriver = process.env.MAIL_DRIVER || 'console';
+  if (!DRIVER_NAMES.includes(mailDriver)) {
+    errors.push(
+      `MAIL_DRIVER غير معروف: ${mailDriver}. المتاح: ${DRIVER_NAMES.join('، ')}.`
+    );
+  } else {
+    const missing = (DRIVER_REQUIREMENTS[mailDriver] || [])
+      .filter((k) => !process.env[k]);
+    if (missing.length) {
+      errors.push(
+        `MAIL_DRIVER=${mailDriver} يحتاج ${missing.join('، ')} — بدونها لن تُرسل أي رسالة.`
+      );
+    }
+  }
+
   // ── ما يستحق تحذيراً فقط ──────────────────────────────────────
 
-  if (prod && (process.env.MAIL_DRIVER || 'console') === 'console') {
+  if (prod && mailDriver === 'console') {
     warnings.push(
       'MAIL_DRIVER=console: رموز استعادة كلمة المرور تُطبع في اللوق ولا تصل لأحد. ' +
       'من ينسى كلمته يفقد حسابه.'

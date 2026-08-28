@@ -9,7 +9,8 @@
     "migrate": "node scripts/migrate.js",
     "sync": "node src/jobs/syncFixtures.js",
     "deploy": "npm run migrate && node src/app.js",
-    "check-plan": "node scripts/checkPlan.js"
+    "check-plan": "node scripts/checkPlan.js",
+    "test-mail": "node scripts/sendTestMail.js"
   },
   "keywords": [],
   "author": "",

@@ -11,6 +11,7 @@ const userRepo = require('../repositories/userRepo');
 const refreshTokenRepo = require('../repositories/refreshTokenRepo');
 const redis = require('../config/redis');
 const { sendMail } = require('./mailer');
+const mailTemplates = require('./mailTemplates');
 const appleAuth = require('./appleAuth');
 const logger = require('../utils/logger');
 
@@ -338,11 +339,21 @@ async function forgotPassword(email) {
   await redis.set(key, JSON.stringify({ codeHash: sha256(code), attempts: 0 }),
     'EX', RESET_CODE_TTL_SECONDS);
 
-  await sendMail({
-    to: email,
-    subject: 'رمز استعادة كلمة السر — صح فوتبول',
-    text: `رمز الاستعادة: ${code}\nصالح لمدة 10 دقائق. إن لم تطلب الاستعادة تجاهل هذه الرسالة.`,
-  });
+  // الرمز محفوظ فعلاً في Redis، فلو فشل الإرسال (مزوّد معطّل، حد
+  // يومي) لا نُبقي المستخدم أمام نجاح كاذب ينتظر بعده بريداً لن يصل:
+  // نمسح الرمز ونترك الخطأ يصعد ليرد السيرفر بفشل واضح. (نعم، هذا
+  // يفرّق بين بريد مسجّل وغيره حين يكون المزوّد معطّلاً — لكن ذلك
+  // عطل معلن أصلاً، وإخفاؤه يعني ترك المستخدم ينتظر إلى الأبد.)
+  try {
+    await sendMail({
+      to: email,
+      ...mailTemplates.resetCode({ code, ttlMinutes: RESET_CODE_TTL_SECONDS / 60 }),
+    });
+  } catch (err) {
+    await redis.del(key);
+    logger.error('[auth] فشل إرسال رمز الاستعادة:', err.message);
+    throw err;
+  }
 }
 
 // استعادة كلمة السر — الخطوة 2: التحقق من الرمز وتعيين كلمة جديدة.
@@ -386,8 +397,56 @@ async function resetPassword({ email, code, newPassword }) {
   return { user, ...tokens };
 }
 
+
+// حذف المستخدم حسابَه بنفسه — لا تراجع.
+//
+// لماذا مسار منفصل عن حذف الأدمن رغم أنهما ينتهيان لنفس الدالة؟
+// لأن الحارس مختلف: الأدمن يُحرَس بدوره، والمستخدم يُحرَس بكلمة
+// سره. جلسة مفتوحة على هاتف منسي تكفي لمحو حساب كامل بلا هذا
+// الفحص — وهو محو نهائي لا استعادة بعده، أخطر من تغيير البريد
+// الذي نطلب له الكلمة أصلاً.
+//
+// حساب Apple لا كلمة له: إعادة إثبات الهوية عنده تكون بتوكن Apple
+// جديد، وهو ما يرسله التطبيق في appleIdentityToken.
+async function deleteAccount(userId, { password, appleIdentityToken }) {
+  const user = await userRepo.findById(userId);
+  if (!user) throw new AuthError(401, 'الحساب لم يعد موجوداً');
+
+  const withHash = await userRepo.findByEmailWithHash(user.email);
+
+  if (withHash?.password_hash) {
+    const ok = await bcrypt.compare(password || '', withHash.password_hash);
+    if (!ok) throw new AuthError(401, 'كلمة السر غير صحيحة');
+  } else {
+    // حساب Apple: نتحقق أن التوكن الجديد يخص نفس الحساب — توكن
+    // صالح لشخص آخر لا يأذن بحذف هذا الحساب.
+    if (!appleIdentityToken) {
+      throw new AuthError(400, 'أعد تسجيل الدخول عبر Apple لتأكيد الحذف');
+    }
+    const claims = await appleAuth.verifyIdentityToken(appleIdentityToken);
+    if (!claims?.sub || claims.sub !== withHash.apple_sub) {
+      throw new AuthError(401, 'تأكيد Apple لا يخص هذا الحساب');
+    }
+  }
+
+  // إبطال الجلسات قبل الحذف: الحذف يجرّها معه بالـ CASCADE، لكن لو
+  // فشل بعد ذلك لأي سبب لا نريد جلسات حية على حساب طلب صاحبه محوه.
+  await refreshTokenRepo.revokeAllForUser(userId);
+
+  const result = await userRepo.removeWithGroupHandover(userId);
+  if (!result.ok) {
+    if (result.reason === 'last_admin') {
+      throw new AuthError(400, 'أنت آخر أدمن — عيّن أدمن آخر قبل حذف حسابك');
+    }
+    throw new AuthError(404, 'الحساب لم يعد موجوداً');
+  }
+
+  return result;
+}
+
 module.exports = {
   register, login, loginWithApple, refresh, logout,
   changePassword, changeEmail, forgotPassword, resetPassword,
+  deleteAccount,
   AuthError,
 };
