@@ -100,4 +100,13 @@ async function homeStrip(limit = 6) {
   return { mode: 'upcoming', fixtures: rows };
 }
 
-module.exports = { byDate, daysAround, live, homeStrip };
+/** مباراة واحدة بكل ما تعرضه صفحتها. */
+async function findById(id) {
+  const { rows } = await db.query(
+    `SELECT ${COLUMNS}, f.home_team_id, f.away_team_id ${FROM} WHERE f.id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { byDate, daysAround, live, homeStrip, findById };

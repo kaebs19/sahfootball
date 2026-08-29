@@ -13,6 +13,7 @@ const siteRepo = require('../repositories/siteRepo');
 const siteFixtureRepo = require('../repositories/siteFixtureRepo');
 const leagueRepo = require('../repositories/leagueRepo');
 const standingsService = require('../services/standingsService');
+const matchDetailService = require('../services/matchDetailService');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
@@ -442,6 +443,51 @@ router.post('/logout', async (req, res) => {
   if (session && !checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
   await webSession.destroy(req, res);
   res.redirect(303, '/');
+});
+
+// ─────────────────── صفحة المباراة ───────────────────
+//
+// ثلاثة نداءات للمزوّد لكل مباراة تُفتح (أحداث، إحصاءات، تشكيلات)،
+// وهي النداءات الوحيدة في الموقع مع الترتيب. الكاش هو ما يجعلها
+// آمنة: مباراة يفتحها مئة زائر في دقيقة تُجلب مرة.
+router.get('/match/:id', async (req, res, next) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return next();
+
+  const fixture = await siteFixtureRepo.findById(id);
+  if (!fixture) return next(); // 404 بهوية الموقع
+
+  const [settings, detail] = await Promise.all([
+    loadSettings(),
+    matchDetailService.get(fixture),
+  ]);
+
+  res.type('html').send(renderer.renderMatch(settings, { fixture, detail }));
+});
+
+// ─────────────────── الهدافون ───────────────────
+router.get('/scorers', async (req, res) => {
+  const leagues = await leagueRepo.findEnabled();
+  const asked = String(req.query.league || '');
+  const league = /^\d+$/.test(asked) && leagues.some((l) => String(l.id) === asked)
+    ? Number(asked)
+    : leagues[0]?.id;
+
+  const settings = await loadSettings();
+  const current = leagues.find((l) => l.id === league);
+
+  let scorers = [];
+  let error = null;
+  try {
+    scorers = await matchDetailService.topScorers({
+      leagueId: league, season: current?.season,
+    });
+  } catch (err) {
+    logger.error('[pages] scorers failed:', err.message);
+    error = 'تعذّر جلب قائمة الهدافين الآن. حاول بعد قليل.';
+  }
+
+  res.type('html').send(renderer.renderScorers(settings, { leagues, league, scorers, error }));
 });
 
 // بقية الصفحات المنشورة

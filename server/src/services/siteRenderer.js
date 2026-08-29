@@ -99,6 +99,7 @@ function socialLinks(settings) {
 const NAV = [
   { href: '/', label: 'المباريات' },
   { href: '/standings', label: 'الترتيب' },
+  { href: '/scorers', label: 'الهدافون' },
   { href: '/about', label: 'حول الموقع' },
   { href: '/contact', label: 'اتصل بنا' },
 ];
@@ -581,6 +582,19 @@ function arabicDate(day, { withWeekday = true } = {}) {
   return parts.join(' ');
 }
 
+/**
+ * اليوم الذي تقع فيه المباراة بتوقيت الرياض، بصيغة YYYY-MM-DD.
+ *
+ * لا يجوز اقتطاع أول عشرة أحرف من kickoff_at: مكتبة pg ترجع
+ * الأعمدة الزمنية ككائن Date لا كنص ISO، فيعطي String() منه
+ * "Fri Aug 22 2026 …" ويعطي القطع "Fri Aug 22" — ثم يفشل التحليل
+ * بصمت ويطبع "undefined". وحتى مع نص ISO كان الاقتطاع خطأ لأنه
+ * يعطي يوم UTC لا يوم الرياض.
+ */
+function riyadhDay(value) {
+  return new Date(value).toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+}
+
 /** وقت الانطلاق بتوقيت الرياض: "9:00 م". */
 function kickoffTime(kickoffAt) {
   return new Date(kickoffAt).toLocaleTimeString('ar-SA-u-nu-latn', {
@@ -625,7 +639,7 @@ function teamBadge(name, logo) {
  */
 function fixtureRow(f) {
   return `
-<div class="fx" data-status="${esc(f.status)}">
+<a class="fx" href="/match/${esc(String(f.id))}" data-status="${esc(f.status)}">
   <div class="fx-side fx-home">
     ${teamBadge(f.home_team_name, f.home_team_logo)}
     <span class="fx-name">${esc(f.home_team_name)}</span>
@@ -635,7 +649,7 @@ function fixtureRow(f) {
     ${teamBadge(f.away_team_name, f.away_team_logo)}
     <span class="fx-name">${esc(f.away_team_name)}</span>
   </div>
-</div>`;
+</a>`;
 }
 
 /** يجمع المباريات في مجموعات حسب الدوري مع حفظ ترتيبها. */
@@ -818,6 +832,191 @@ function renderMatches(settings, { day, fixtures, days, leagues, league }) {
   });
 }
 
+// ─────────────────── صفحة المباراة ───────────────────
+
+/** شريط نسبة بين فريقين — للإحصاءات. */
+function statBar(label, home, away) {
+  // النسب المئوية تأتي نصاً ("75%")؛ نجرّدها للحساب ونعرض الأصل.
+  const num = (v) => Number(String(v).replace('%', '')) || 0;
+  const h = num(home);
+  const a = num(away);
+  const total = h + a;
+  // الشريط بلا بيانات (0 و0) يُرسم نصفين متساويين لا شريطاً فارغاً
+  // يوحي بأن أحدهم صفر والآخر كل شيء.
+  const hp = total ? Math.round((h / total) * 100) : 50;
+
+  return `
+<div class="stat">
+  <div class="stat-row">
+    <span class="num">${esc(String(home))}</span>
+    <span class="stat-label">${esc(label)}</span>
+    <span class="num">${esc(String(away))}</span>
+  </div>
+  <div class="stat-bar"><span style="width:${hp}%"></span></div>
+</div>`;
+}
+
+/** صف حدث في الخط الزمني. */
+function eventRow(e) {
+  const minute = `${e.minute}${e.extra ? `+${e.extra}` : ''}'`;
+  return `
+<div class="ev ev-${esc(e.side)}">
+  <div class="ev-body">
+    <span class="ev-icon ${esc(e.cls)}" title="${esc(e.label)}">${e.icon}</span>
+    <span class="ev-name">${esc(e.player)}</span>
+    ${e.assist ? `<span class="ev-assist">صناعة ${esc(e.assist)}</span>` : ''}
+  </div>
+  <div class="ev-min num" dir="ltr">${esc(minute)}</div>
+</div>`;
+}
+
+/** عمود تشكيلة فريق واحد. */
+function lineupColumn(title, side) {
+  if (!side) return '';
+  return `
+<div class="lineup">
+  <div class="lineup-head">
+    <strong>${esc(title)}</strong>
+    ${side.formation ? `<span class="num" dir="ltr">${esc(side.formation)}</span>` : ''}
+  </div>
+  <ol class="lineup-list">
+    ${side.starters.map((p) => `
+      <li>
+        <span class="sh num">${p.number ?? ''}</span>
+        <span class="sn">${esc(p.name)}</span>
+        <span class="sp">${esc(p.pos || '')}</span>
+      </li>`).join('')}
+  </ol>
+  ${side.coach ? `<div class="lineup-coach">المدرب: ${esc(side.coach)}</div>` : ''}
+</div>`;
+}
+
+function renderMatch(settings, { fixture: f, detail }) {
+  const title = `${f.home_team_name} ضد ${f.away_team_name}`;
+  const hasEvents = detail.events.length > 0;
+  const hasStats = detail.statistics.length > 0;
+  const hasLineups = Boolean(detail.lineups.home || detail.lineups.away);
+
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:820px">
+    <a class="back" href="/?date=${esc(riyadhDay(f.kickoff_at))}">→ كل المباريات</a>
+
+    <div class="card mh">
+      <div class="mh-league">
+        ${f.league_logo ? `<img src="${esc(f.league_logo)}" alt="" width="18" height="18" loading="lazy">` : ''}
+        <span>${esc(f.league_name)}</span>
+        ${f.round ? `<span class="mh-round">${esc(f.round)}</span>` : ''}
+      </div>
+
+      <div class="mh-teams">
+        <div class="mh-side">
+          ${teamBadge(f.home_team_name, f.home_team_logo)}
+          <span>${esc(f.home_team_name)}</span>
+        </div>
+        <div class="mh-center">${fixtureCenter(f)}</div>
+        <div class="mh-side">
+          ${teamBadge(f.away_team_name, f.away_team_logo)}
+          <span>${esc(f.away_team_name)}</span>
+        </div>
+      </div>
+
+      <div class="mh-when">${esc(arabicDate(riyadhDay(f.kickoff_at)))} — ${esc(kickoffTime(f.kickoff_at))}</div>
+    </div>
+
+    ${hasEvents ? `
+    <section class="card sec">
+      <h2>أحداث المباراة</h2>
+      <div class="evs">${detail.events.map(eventRow).join('')}</div>
+    </section>` : ''}
+
+    ${hasStats ? `
+    <section class="card sec">
+      <h2>الإحصاءات</h2>
+      ${detail.statistics.map((st) => statBar(st.label, st.home, st.away)).join('')}
+    </section>` : ''}
+
+    ${hasLineups ? `
+    <section class="card sec">
+      <h2>التشكيلتان</h2>
+      <div class="lineups">
+        ${lineupColumn(f.home_team_name, detail.lineups.home)}
+        ${lineupColumn(f.away_team_name, detail.lineups.away)}
+      </div>
+    </section>` : ''}
+
+    ${!hasEvents && !hasStats && !hasLineups ? `
+    <div class="card" style="text-align:center;padding:40px 20px">
+      <h3>لم تُنشر التفاصيل بعد</h3>
+      <p class="section-sub" style="margin-top:8px">
+        التشكيلات تُنشر قبل الانطلاق بساعة تقريباً، والأحداث والإحصاءات مع صافرة البداية.
+      </p>
+    </div>` : ''}
+  </div>
+</div>`;
+
+  return layout({
+    title,
+    description: `${title} — ${f.league_name}. النتيجة والأحداث والتشكيلات والإحصاءات.`,
+    body, settings, active: '/',
+  });
+}
+
+// ─────────────────── الهدافون ───────────────────
+
+function renderScorers(settings, { leagues, league, scorers, error }) {
+  const current = (leagues || []).find((l) => String(l.id) === String(league));
+
+  const body = `
+<div class="page">
+  <div class="wrap">
+    <div class="section-label">الهدافون</div>
+    <h1 class="section-title" style="margin-bottom:18px">${esc(current?.name_ar || current?.name_en || 'الهدافون')}</h1>
+
+    ${leagueChips(leagues, { active: league, href: (id) => `/scorers?league=${id}`, all: false })}
+
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+    ${!error && (!scorers || !scorers.length) ? `
+      <div class="card" style="text-align:center;padding:40px 20px">
+        <h3>لا توجد قائمة هدافين لهذه البطولة بعد</h3>
+      </div>` : ''}
+
+    <div class="scorers">
+      ${(scorers || []).map((p) => `
+      <div class="card sc">
+        <div class="sc-rank num">${esc(String(p.rank))}</div>
+        ${p.photo ? `<img class="sc-photo" src="${esc(p.photo)}" alt="" width="46" height="46" loading="lazy">` : ''}
+        <div class="sc-main">
+          <div class="sc-name">${esc(p.name)}</div>
+          <div class="sc-team">
+            ${p.teamLogo ? `<img src="${esc(p.teamLogo)}" alt="" width="15" height="15" loading="lazy">` : ''}
+            ${esc(p.team)}
+          </div>
+        </div>
+        <div class="sc-nums">
+          <div class="sc-goals num">${esc(String(p.goals))}</div>
+          <div class="sc-cap">هدف</div>
+        </div>
+        <div class="sc-nums sc-sub">
+          <div class="num">${esc(String(p.assists))}</div>
+          <div class="sc-cap">صناعة</div>
+        </div>
+        <div class="sc-nums sc-sub">
+          <div class="num">${esc(String(p.played))}</div>
+          <div class="sc-cap">مباراة</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>
+</div>`;
+
+  return layout({
+    title: `هدافو ${current?.name_ar || ''}`.trim(),
+    description: 'قائمة الهدافين — الأهداف وصناعتها وعدد المباريات.',
+    body, settings, active: '/scorers',
+  });
+}
+
 /** صفحة 404 بنفس هوية الموقع بدل صفحة Express البيضاء. */
 function renderNotFound(settings) {
   const body = `
@@ -837,6 +1036,7 @@ module.exports = {
   renderPage, renderContact, renderNotFound,
   renderForgot, renderReset, renderResetDone,
   renderLogin, renderRegister, renderAccount,
-  renderMatches, renderStandings, riyadhToday, shiftDay,
+  renderMatches, renderStandings, renderMatch, renderScorers,
+  riyadhToday, shiftDay,
   esc,
 };

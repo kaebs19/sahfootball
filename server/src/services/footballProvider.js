@@ -26,6 +26,8 @@ const TTL = {
   LINEUPS: 24 * 3600,  // التشكيلات
   EVENTS: 60,          // أحداث مباراة (أهداف/بطاقات) — قصيرة لأنها قد تكون جارية
   LEAGUES_SEARCH: 24 * 3600, // بحث الدوريات: قائمة المزود شبه ثابتة
+  STATISTICS: 120,     // إحصاءات مباراة: تتغير أثناء اللعب كالأحداث
+  SCORERS: 6 * 3600,   // الهدافون: ترتيب لا يتغير إلا بعد جولة
 };
 
 // ---------------------------------------------------------------
@@ -176,6 +178,36 @@ function getFixtureEvents(fixtureId) {
   });
 }
 
+// تشكيلتا الفريقين. تُنشر قبل ~ساعة من الانطلاق ولا تتغير بعدها،
+// فكاش يوم كامل آمن — والنداء قبل النشر يرجع فارغاً لا خطأ.
+function getFixtureLineups(fixtureId) {
+  return request('fixtures/lineups', { fixture: fixtureId }, {
+    cacheKey: `football:lineups:${fixtureId}`,
+    ttl: TTL.LINEUPS,
+  });
+}
+
+// إحصاءات المباراة: استحواذ، تسديدات، ركنيات، بطاقات.
+function getFixtureStatistics(fixtureId) {
+  return request('fixtures/statistics', { fixture: fixtureId }, {
+    cacheKey: `football:stats:${fixtureId}`,
+    ttl: TTL.STATISTICS,
+  });
+}
+
+// هدافو الدوري.
+//
+// المزود يرجع 20 لاعباً افتراضياً وهو كافٍ للعرض. الكاش ست ساعات
+// لأن القائمة لا تتغير إلا بعد جولة كاملة، ونداءٌ لكل زائر كان
+// سيستهلك الحصة على بيانات ثابتة عملياً.
+function getTopScorers(options) {
+  const { league, season } = resolve(options);
+  return request('players/topscorers', { league, season }, {
+    cacheKey: `football:scorers:${league}:${season}`,
+    ttl: TTL.SCORERS,
+  });
+}
+
 // فرق الدوري للموسم الحالي.
 function getTeams(options) {
   const { league, season } = resolve(options);
@@ -217,6 +249,9 @@ module.exports = {
   getFixturesByDate,
   getLiveFixtures,
   getFixtureEvents,
+  getFixtureLineups,
+  getFixtureStatistics,
+  getTopScorers,
   getTeams,
   getStandings,
   searchLeagues,

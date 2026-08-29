@@ -860,3 +860,185 @@ button.btn {
 .form .dot.w { background: var(--correct); }
 .form .dot.l { background: var(--wrong); }
 .form .dot.d { background: var(--text-faint); }
+
+/* ═══════════════ صفحة المباراة ═══════════════ */
+
+.back {
+  display: inline-block;
+  margin-bottom: 16px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.back:hover { color: var(--correct); }
+
+/* صف المباراة صار رابطاً: نعيد له شكل الصف لا شكل الرابط. */
+a.fx { text-decoration: none; color: inherit; }
+a.fx:hover { background: rgba(255,255,255,.025); }
+
+/* ترويسة المباراة */
+.mh { padding: 22px 20px; }
+.mh-league {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+.mh-round { color: var(--text-faint); }
+.mh-round::before { content: '·'; margin-inline-end: 8px; }
+.mh-teams {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.mh-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.mh-side .fx-logo { width: 52px; height: 52px; }
+.mh-center .fx-score, .mh-center .fx-time { font-size: 30px; }
+.mh-when {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.sec { margin-top: 16px; padding: 20px; }
+.sec h2 { font-size: 1rem; margin-bottom: 16px; }
+
+/* الأحداث: عمودان حول خط زمني.
+   جانب كل حدث يقول أي فريق سجّله بلا كلمة واحدة. */
+.evs { display: flex; flex-direction: column; gap: 2px; }
+.ev {
+  display: grid;
+  grid-template-columns: 1fr 46px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ev:last-child { border-bottom: none; }
+.ev-away { grid-template-columns: 46px 1fr; direction: ltr; text-align: left; }
+.ev-away .ev-body { direction: rtl; flex-direction: row-reverse; }
+.ev-body { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.ev-icon { font-size: 14px; line-height: 1; }
+.ev-icon.goal { color: var(--correct); }
+.ev-icon.own, .ev-icon.miss, .ev-icon.red { color: var(--wrong); }
+.ev-icon.yellow { color: var(--crown); }
+.ev-icon.subst { color: var(--text-faint); }
+.ev-name { font-size: 14px; }
+.ev-assist { font-size: 11.5px; color: var(--text-faint); }
+.ev-min { color: var(--text-faint); font-size: 12.5px; text-align: center; }
+
+/* الإحصاءات: رقمان وشريط نسبة */
+.stat { margin-bottom: 15px; }
+.stat:last-child { margin-bottom: 0; }
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
+.stat-label { color: var(--text-muted); font-size: 12.5px; }
+.stat-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--wrong);
+  overflow: hidden;
+  opacity: .75;
+}
+.stat-bar span { display: block; height: 100%; background: var(--correct); }
+
+/* التشكيلتان */
+.lineups { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.lineup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13.5px;
+  padding-bottom: 9px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid var(--border);
+}
+.lineup-head .num { color: var(--crown); font-size: 12.5px; }
+.lineup-list { list-style: none; margin: 0; padding: 0; }
+.lineup-list li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.lineup-list .sh {
+  flex: 0 0 22px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  text-align: center;
+}
+.lineup-list .sn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lineup-list .sp { color: var(--text-faint); font-size: 10.5px; }
+.lineup-coach {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* ═══════════════ الهدافون ═══════════════ */
+
+.scorers { display: flex; flex-direction: column; gap: 10px; }
+.sc {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 16px;
+}
+.sc-rank {
+  flex: 0 0 24px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+/* أول ثلاثة بالذهبي — نفس قاعدة الهوية: الذهبي للرتب والصدارة. */
+.sc:nth-child(-n+3) .sc-rank { color: var(--crown); font-weight: 700; }
+.sc-photo { border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
+.sc-main { flex: 1; min-width: 0; }
+.sc-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sc-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.sc-nums { flex: 0 0 auto; text-align: center; min-width: 46px; }
+.sc-goals { font-size: 19px; font-weight: 700; color: var(--crown); }
+.sc-nums .num { font-size: 15px; }
+.sc-cap { font-size: 10.5px; color: var(--text-faint); margin-top: 1px; }
+
+@media (max-width: 560px) {
+  .lineups { grid-template-columns: 1fr; }
+  .mh-side .fx-logo { width: 42px; height: 42px; }
+  .mh-center .fx-score, .mh-center .fx-time { font-size: 24px; }
+  .sc-sub { display: none; }  /* الأهداف وحدها تكفي على الجوال */
+  .sc-photo { display: none; }
+}
