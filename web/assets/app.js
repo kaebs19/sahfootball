@@ -38,13 +38,19 @@
   // "فوز القادسية" يتحدّث مع الأرقام. الخادم يرسله محسوباً من
   // التوقّع المحفوظ، وهذا يبقيه صحيحاً أثناء التعديل — بدونه يبقى
   // النص يقول "تعادل" بينما المستخدم رفع رقماً لتوّه.
-  var rows = document.querySelector('.trs');
+  // النموذج هو البطاقة نفسها الآن: المربّعان في ترويسة الفريقين
+  // والزر أسفلها، واسما الفريقين على data-home/data-away.
+  var form = document.querySelector('form.pf[data-home]');
   var pick = document.querySelector('[data-pick]');
 
-  if (rows && pick) {
+  if (form && pick) {
     var refresh = function () {
-      var rh = rows.querySelector('input[name="home"]').value.trim();
-      var ra = rows.querySelector('input[name="away"]').value.trim();
+      var hi = form.querySelector('input[name="home"]');
+      var ai = form.querySelector('input[name="away"]');
+      if (!hi || !ai) return;
+
+      var rh = hi.value.trim();
+      var ra = ai.value.trim();
 
       // فارغان معاً = لا توقّع بعد. وفارغ واحد يُعامل صفراً — وهو
       // بالضبط ما سيحفظه الخادم، فما يراه المستخدم هو ما يُحفظ.
@@ -54,12 +60,12 @@
       var a = ra === '' ? 0 : parseInt(ra, 10);
       if (isNaN(h) || isNaN(a)) { pick.textContent = ''; return; }
 
-      pick.textContent = h > a ? 'فوز ' + rows.dataset.home
-        : h < a ? 'فوز ' + rows.dataset.away
+      pick.textContent = h > a ? 'فوز ' + form.dataset.home
+        : h < a ? 'فوز ' + form.dataset.away
         : 'تعادل';
     };
 
-    rows.addEventListener('input', refresh);
+    form.addEventListener('input', refresh);
     refresh();
   }
 

@@ -1281,6 +1281,18 @@ function h2hRows(list, homeId) {
  * والحقل يبقى قابلاً للكتابة: من يريد 4-3 يكتبها بدل سبع ضغطات،
  * ومن يعطّل JavaScript لا يفقد إلا الزرّين.
  */
+/** مربّع النتيجة بأزراره — يوضع تحت اسم الفريق في الترويسة. */
+function stepper(field, name, value) {
+  return `
+<span class="stepper">
+  <button class="step" type="button" data-step="down" aria-label="إنقاص ${esc(name)}">−</button>
+  <input class="num" name="${esc(field)}" type="number" inputmode="numeric"
+         min="0" max="99" aria-label="أهداف ${esc(name)}"
+         value="${value === null || value === undefined ? '' : esc(String(value))}">
+  <button class="step" type="button" data-step="up" aria-label="زيادة ${esc(name)}">+</button>
+</span>`;
+}
+
 function teamScoreRow(field, name, logo, id, value) {
   return `
 <div class="tr">
@@ -1307,6 +1319,9 @@ function pickLabel(f, mine) {
 }
 
 function renderMatch(settings, { fixture: f, detail, predict }) {
+  // هل نعرض مربّعي النتيجة؟ ثلاثة شروط: الدوري داخل اللعبة،
+  // والزائر مسجّل، والتوقّع لم يُقفل.
+  const canPredict = Boolean(predict && predict.viewer && predict.open);
   const title = `${f.home_team_name} ضد ${f.away_team_name}`;
   const hasEvents = detail.events.length > 0;
   const hasStats = detail.statistics.length > 0;
@@ -1318,7 +1333,12 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
   <div class="wrap" style="max-width:820px">
     <a class="back" href="/?date=${esc(riyadhDay(f.kickoff_at))}">→ كل المباريات</a>
 
-    <div class="card mh">
+    <!-- البطاقة نفسها هي النموذج حين يمكن التوقّع: المربّعان في
+         ترويسة الفريقين والزر أسفلها، فلا يجوز أن يفصلهما وسم. -->
+    ${canPredict ? `<form method="post" action="/predict" class="card mh pf"
+        data-home="${esc(f.home_team_name)}" data-away="${esc(f.away_team_name)}">
+      ${csrfField(predict.csrf)}
+      <input type="hidden" name="fixture" value="${esc(String(f.id))}">` : '<div class="card mh">'}
       <div class="mh-league">
         ${f.league_logo ? `<img src="${esc(localLogo('league', f.league_id))}" alt="" width="18" height="18" loading="lazy">` : ''}
         <span>${esc(f.league_name)}</span>
@@ -1329,6 +1349,7 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
         <div class="mh-side">
           ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
           <span>${esc(f.home_team_name)}</span>
+          ${canPredict ? stepper('home', f.home_team_name, predict.mine?.pred_home) : ''}
         </div>
         <div class="mh-center">
           ${f.status === 'scheduled' && untilKickoff(f.kickoff_at) ? `
@@ -1347,6 +1368,7 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
         <div class="mh-side">
           ${teamBadge(f.away_team_name, f.away_team_logo, f.away_team_id)}
           <span>${esc(f.away_team_name)}</span>
+          ${canPredict ? stepper('away', f.away_team_name, predict.mine?.pred_away) : ''}
         </div>
       </div>
 
@@ -1365,71 +1387,41 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
       </dl>` : ''}
 
       ${predict ? `
-      <!-- التوقّع داخل بطاقة المباراة لا في تبويب مستقل.
-           هو الفعل الأساسي في الصفحة، وإخفاؤه خلف تبويب يجعله
-           خياراً ثانوياً بجانب "الإحصاءات" — وهي معلومة تُقرأ لا
-           فعل يُفعل. -->
+      <!-- التوقّع في البطاقة نفسها: المربّع تحت كل فريق في ترويسته،
+           والزر أسفلها. كان صفّان مستقلان يكرران اسمي الفريقين
+           الموجودين فوقهما بالفعل. -->
       <div class="mh-predict">
-        <div class="pq">من سيفوز؟</div>
-      ${predict.saved ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
-      ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
+        ${predict.saved ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
+        ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
 
-      ${!predict.viewer ? `
-        <!-- زائر غير مسجّل: الدعوة صريحة بزر لا سطر نصّي.
-             "سجّل الدخول لتتوقّع" في فقرة رمادية يمرّ عليه القارئ
-             كأنه تنبيه لا دعوة. -->
-        <div class="pj">
-          <div class="pj-teams">
-            <span>${esc(f.home_team_name)}</span>
-            <span class="pj-or">أو</span>
-            <span>${esc(f.away_team_name)}</span>
-          </div>
-          <p class="pj-lede">
-            سجّل توقّعك وانضم للمنافسة على العرش. النتيجة المضبوطة
-            <b>${esc(String(predict.points.exact))}</b> نقاط،
-            وفارق الأهداف الصحيح <b>${esc(String(predict.points.diff))}</b>،
-            والفوز الصحيح <b>${esc(String(predict.points.outcome))}</b>.
-          </p>
-          <div class="pj-cta">
-            ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
-            <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
-            <a class="btn btn-ghost" href="/login">عندي حساب</a>
-          </div>
-        </div>` : predict.open ? `
-        <form method="post" action="/predict" class="pf">
-          ${csrfField(predict.csrf)}
-          <input type="hidden" name="fixture" value="${esc(String(f.id))}">
-
-          <!-- الخطوة الأولى: السؤال الذي يعرف كل مشجّع جوابه.
-               ثلاثة أزرار تحفظ نتيجة افتراضية للاتجاه المختار، ثم
-               تُعدَّل الأرقام لمن يريد الدقة. البدء بحقلي أرقام
-               فارغين يسأل سؤالاً أصعب مما يريد أغلب الناس الإجابة
-               عنه. -->
-          <div class="trs"
-               data-home="${esc(f.home_team_name)}"
-               data-away="${esc(f.away_team_name)}">
-            ${teamScoreRow('home', f.home_team_name, f.home_team_logo, f.home_team_id, predict.mine?.pred_home)}
-            ${teamScoreRow('away', f.away_team_name, f.away_team_logo, f.away_team_id, predict.mine?.pred_away)}
-          </div>
-
-          <!-- الاتجاه مشتقّ من الأرقام ويتحدّث معها. النص المرسَل من
-               الخادم محسوب من التوقّع المحفوظ، فيراه من يعطّل
-               JavaScript صحيحاً. -->
+        ${!predict.viewer ? `
+          <div class="pj">
+            <div class="pj-q">من سيفوز؟</div>
+            <p class="pj-lede">
+              سجّل توقّعك وانضم للمنافسة على العرش. النتيجة المضبوطة
+              <b>${esc(String(predict.points.exact))}</b> نقاط،
+              وفارق الأهداف الصحيح <b>${esc(String(predict.points.diff))}</b>،
+              والفوز الصحيح <b>${esc(String(predict.points.outcome))}</b>.
+            </p>
+            <div class="pj-cta">
+              ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
+              <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
+              <a class="btn btn-ghost" href="/login">عندي حساب</a>
+            </div>
+          </div>` : canPredict ? `
           <div class="tr-pick" data-pick>${esc(pickLabel(f, predict.mine))}</div>
-
           <button class="btn btn-primary" type="submit">${predict.mine ? 'تعديل التوقّع' : 'سجّل التوقّع'}</button>
           <p class="pf-note">
             يُقفل التوقّع عند صافرة البداية — ${esc(untilKickoff(f.kickoff_at) || 'الآن')}.
             مضبوطة ${esc(String(predict.points.exact))} · فارق ${esc(String(predict.points.diff))} · فوز ${esc(String(predict.points.outcome))}.
-          </p>
-        </form>` : `
-        <div class="pf-locked">
-          ${predict.mine
-            ? `توقّعك كان <b class="num" dir="ltr">${esc(String(predict.mine.pred_home))} - ${esc(String(predict.mine.pred_away))}</b>${predict.mine.points !== null && predict.mine.points !== undefined ? ` — <b>${esc(String(predict.mine.points))}</b> نقطة` : ''}`
-            : 'أُقفل التوقّع على هذه المباراة.'}
-        </div>`}
+          </p>` : `
+          <div class="pf-locked">
+            ${predict.mine
+              ? `توقّعك كان <b class="num" dir="ltr">${esc(String(predict.mine.pred_home))} - ${esc(String(predict.mine.pred_away))}</b>${predict.mine.points !== null && predict.mine.points !== undefined ? ` — <b>${esc(String(predict.mine.points))}</b> نقطة` : ''}`
+              : 'أُقفل التوقّع على هذه المباراة.'}
+          </div>`}
       </div>` : ''}
-    </div>
+    ${canPredict ? '</form>' : '</div>'}
 
     <nav class="tabs" role="tablist" hidden></nav>
 

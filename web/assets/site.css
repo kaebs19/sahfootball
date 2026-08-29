@@ -2067,3 +2067,33 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .tr-name { font-size: 13.5px; }
   .tr .stepper input { width: 48px; font-size: 17px; }
 }
+
+
+/* ═══════════════ المربّع تحت اسم الفريق ═══════════════ */
+
+.mh-side .stepper { margin-top: 10px; }
+.mh-side .stepper input {
+  width: 54px;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  padding: 6px 4px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--fill);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.mh-side .stepper input:focus { outline: none; border-color: var(--correct); }
+.mh-side .stepper input::-webkit-outer-spin-button,
+.mh-side .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.mh-side .stepper input { -moz-appearance: textfield; }
+
+/* كتلة التوقّع صارت الزر والرسائل فقط — الأرقام صعدت للترويسة. */
+.mh-predict .btn { width: 100%; justify-content: center; }
+
+@media (max-width: 560px) {
+  .mh-side .stepper { gap: 4px; margin-top: 8px; }
+  .mh-side .stepper input { width: 42px; font-size: 17px; }
+  .mh-side .step { width: 26px; height: 26px; font-size: 15px; }
+}
