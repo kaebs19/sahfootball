@@ -1636,3 +1636,48 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .pick .fx-logo, .pick-x { width: 28px; height: 28px; }
   .pj-cta .btn { flex: 1; min-width: 0; }
 }
+
+/* ═══════════════ الدخول بجوجل ═══════════════ */
+
+/* أبيض على كل الثيمات: علامة جوجل لها إرشادات صارمة، وزر يتلوّن
+   بألوان موقعنا يفقد التعرّف الفوري الذي هو سبب وجوده. */
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: #fff;
+  color: #1f1f1f;
+  border-color: #dadce0;
+}
+.btn-google:hover { background: #f4f4f4; }
+.g-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #4285f4;
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* فاصل "أو" */
+.sep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.sep::before, .sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}

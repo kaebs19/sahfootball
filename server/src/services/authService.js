@@ -13,6 +13,7 @@ const redis = require('../config/redis');
 const { sendMail } = require('./mailer');
 const mailTemplates = require('./mailTemplates');
 const appleAuth = require('./appleAuth');
+const googleAuth = require('./googleAuth');
 const logger = require('../utils/logger');
 
 // bcrypt: 12 جولة (cost factor). كل زيادة تضاعف زمن الحساب —
@@ -276,6 +277,50 @@ async function changeEmail(userId, { newEmail, currentPassword }) {
 // displayName يأتي من التطبيق وليس من التوكن: Apple تعطي الاسم
 // لتطبيق iOS مرة واحدة فقط في أول تفويض ولا تضعه في الـ token
 // أبداً، لذلك يجب أن يمرره التطبيق معه في أول طلب وإلا ضاع.
+/**
+ * الدخول بحساب جوجل — بعد أن تحقّقنا من التوكن في googleAuth.
+ *
+ * نفس منطق آبل بثلاث حالات، مع فرق واحد جوهري: نشترط أن يكون
+ * البريد موثّقاً عند جوجل قبل الربط بحساب قائم. جوجل تسمح بحسابات
+ * ببريد غير موثّق (نطاقات Workspace خاصة)، ومن يملك حساباً كهذا
+ * ببريد يدّعيه كان سيستولي على حساب موجود عندنا بضغطة.
+ *
+ * آبل لا تحتاج هذا الشرط لأنها لا تُصدر توكناً لبريد لم تتحقق منه.
+ */
+async function loginWithGoogle(profile) {
+  const { googleSub, email, emailVerified, name } = profile;
+
+  // الحالة 1: نعرف هذا الـ google_sub — مستخدم عائد.
+  let user = await userRepo.findByGoogleSub(googleSub);
+
+  // الحالة 2: أول دخول بجوجل وبريده مسجّل عندنا — نربط الهويتين
+  // بدل إنشاء حساب مكرر، بشرط أن جوجل تحققت من البريد.
+  if (!user && email && emailVerified) {
+    const existing = await userRepo.findByEmail(email);
+    if (existing) {
+      await userRepo.linkGoogleSub(existing.id, googleSub);
+      user = existing;
+    }
+  }
+
+  // الحالة 3: مستخدم جديد.
+  if (!user) {
+    if (!email) throw new AuthError(401, 'حساب جوجل بلا بريد — جرّب طريقة أخرى');
+    if (!emailVerified) {
+      throw new AuthError(401, 'بريد حساب جوجل غير موثّق — وثّقه ثم أعد المحاولة');
+    }
+    user = await userRepo.createWithGoogle({
+      email, googleSub, displayName: name,
+    });
+  }
+
+  // بعد إثبات جوجل للهوية: الحساب الموقوف لا يلتف على الإيقاف
+  // بتبديل طريقة الدخول.
+  await assertNotSuspended(user.id);
+  const tokens = await issueTokens(user.id);
+  return { user, ...tokens };
+}
+
 async function loginWithApple({ identityToken, displayName }) {
   if (!identityToken) throw new AuthError(400, 'identityToken مطلوب');
 
@@ -445,7 +490,7 @@ async function deleteAccount(userId, { password, appleIdentityToken }) {
 }
 
 module.exports = {
-  register, login, loginWithApple, refresh, logout,
+  register, login, loginWithApple, loginWithGoogle, refresh, logout,
   changePassword, changeEmail, forgotPassword, resetPassword,
   deleteAccount,
   AuthError,

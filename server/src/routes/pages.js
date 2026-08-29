@@ -15,6 +15,7 @@ const leagueRepo = require('../repositories/leagueRepo');
 const standingsService = require('../services/standingsService');
 const matchDetailService = require('../services/matchDetailService');
 const predictionService = require('../services/predictionService');
+const googleAuth = require('../services/googleAuth');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
@@ -80,6 +81,9 @@ async function pageContext(req) {
     // من أول بايت. القيمة الوحيدة المقبولة 'light'؛ ما عداها داكن
     // (الافتراضي، وهوية العلامة).
     theme: readTheme(req),
+    // الزر يظهر فقط حين يكتمل الإعداد: زر يقود إلى خطأ أسوأ من
+    // غيابه.
+    google: googleAuth.isConfigured(),
     // المسار الحالي — يعود إليه زر التبديل.
     canonicalPath: req.originalUrl || '/',
   };
@@ -382,6 +386,81 @@ router.post('/reset', async (req, res) => {
   }
 
   res.type('html').send(renderer.renderResetDone(settings));
+});
+
+// ─────────────────── الدخول بجوجل ───────────────────
+//
+// تدفّق OAuth بالتحويل لا زر JavaScript: سياسة المحتوى عندنا تمنع
+// السكربت الخارجي، والتحويل يعمل بلا JS أصلاً. التفاصيل في
+// services/googleAuth.
+
+const OAUTH_STATE_COOKIE = 'sah_oauth';
+
+router.get('/auth/google', (req, res) => {
+  if (!googleAuth.isConfigured()) return res.redirect(303, '/login');
+
+  // state عشوائي في كوكي قصير العمر، يُقارن عند العودة.
+  //
+  // بدونه يستطيع مهاجم أن يبدأ التدفّق بحسابه هو ثم يدفع الضحية
+  // إلى رابط العودة، فتجد نفسها داخلة بحساب المهاجم وتكتب فيه
+  // بياناتها. الهجمة معروفة (CSRF على تسجيل الدخول) وحمايتها
+  // هذا السطر.
+  const state = googleAuth.newState();
+  res.setHeader('Set-Cookie',
+    `${OAUTH_STATE_COOKIE}=${state}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=600` +
+    (isSecure(req) ? '; Secure' : ''));
+
+  res.redirect(302, googleAuth.authUrl(state));
+});
+
+router.get('/auth/google/callback', async (req, res) => {
+  const settings = await pageContext(req);
+  const fail = (error) => res.status(401).type('html').send(
+    renderer.renderLogin(settings, { error })
+  );
+
+  // كوكي الـ state يُستعمل مرة واحدة.
+  const clearState = () => res.setHeader('Set-Cookie',
+    `${OAUTH_STATE_COOKIE}=; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=0`);
+
+  // المستخدم ضغط "إلغاء" في شاشة جوجل: ليس خطأً، نعيده بهدوء.
+  if (req.query.error) {
+    clearState();
+    return res.redirect(303, '/login');
+  }
+
+  const expected = /(?:^|;\s*)sah_oauth=([^;]+)/.exec(req.headers.cookie || '')?.[1];
+  const got = String(req.query.state || '');
+  const code = String(req.query.code || '');
+
+  if (!code || !expected || got !== expected) {
+    clearState();
+    return fail('انتهت جلسة الدخول بجوجل. حاول مرة أخرى.');
+  }
+
+  let profile;
+  try {
+    profile = await googleAuth.exchangeCode(code);
+  } catch (err) {
+    // detail يحمل رد جوجل الحقيقي (redirect_uri_mismatch مثلاً)
+    // ويذهب للوق لا للمستخدم.
+    logger.error('[pages] google exchange failed:', err.message, err.detail || '');
+    clearState();
+    return fail(err.expose ? err.message : 'تعذّر الدخول بجوجل الآن.');
+  }
+
+  try {
+    const { user } = await authService.loginWithGoogle(profile);
+    // create يكتب Set-Cookie للجلسة. كوكي الـ state مقيّد بمسار
+    // /auth/google وينتهي بعد عشر دقائق، فتركه مقبول.
+    await webSession.create(res, user.id, { secure: isSecure(req) });
+    return res.redirect(303, '/account');
+  } catch (err) {
+    clearState();
+    if (err.status && err.expose) return fail(err.message);
+    logger.error('[pages] google login failed:', err.message);
+    return fail('تعذّر الدخول بجوجل الآن.');
+  }
 });
 
 // ──────────────── الحساب على الويب ────────────────

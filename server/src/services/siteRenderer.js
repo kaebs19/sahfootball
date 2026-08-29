@@ -460,6 +460,25 @@ function csrfField(csrf) {
   return `<input type="hidden" name="_csrf" value="${esc(csrf)}">`;
 }
 
+/**
+ * زر الدخول بجوجل + فاصل.
+ *
+ * فوق نموذج البريد لا تحته: من يملك حساب جوجل يريده أولاً، ومن
+ * لا يملكه يتخطّاه بنظرة. ووضعه تحت النموذج يجعله يبدو خياراً
+ * احتياطياً لا طريقاً أقصر.
+ *
+ * ولا يُعرض إطلاقاً حين ينقص الإعداد: زر يقود إلى خطأ أسوأ من غيابه.
+ */
+function googleBlock(settings, label) {
+  if (!settings?.google) return '';
+  return `
+<a class="btn btn-google" href="/auth/google">
+  <span class="g-mark" aria-hidden="true">G</span>
+  ${esc(label)}
+</a>
+<div class="sep"><span>أو</span></div>`;
+}
+
 function renderLogin(settings, { error, values } = {}) {
   const v = values || {};
   const body = `
@@ -471,6 +490,7 @@ function renderLogin(settings, { error, values } = {}) {
         ادخل لإدارة حسابك. التوقّع والمنافسة في التطبيق.
       </p>
       ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      ${googleBlock(settings, 'الدخول بحساب جوجل')}
       <form method="post" action="/login">
         <div class="field">
           <label for="email">البريد الإلكتروني</label>
@@ -505,6 +525,7 @@ function renderRegister(settings, { error, values } = {}) {
         أنشئ حسابك هنا ثم حمّل التطبيق وابدأ التوقّع بنفس البيانات.
       </p>
       ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      ${googleBlock(settings, 'المتابعة بحساب جوجل')}
       <form method="post" action="/register">
         <div class="field">
           <label for="name">الاسم الظاهر</label>
@@ -1190,6 +1211,7 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
             والفوز الصحيح <b>${esc(String(predict.points.outcome))}</b>.
           </p>
           <div class="pj-cta">
+            ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
             <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
             <a class="btn btn-ghost" href="/login">عندي حساب</a>
           </div>

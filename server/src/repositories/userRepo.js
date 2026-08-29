@@ -97,6 +97,33 @@ async function linkAppleSub(userId, appleSub) {
   );
 }
 
+async function findByGoogleSub(googleSub) {
+  const { rows } = await db.query(
+    `SELECT ${PUBLIC_COLUMNS} FROM users WHERE google_sub = $1`,
+    [googleSub]
+  );
+  return rows[0] ?? null;
+}
+
+// إنشاء حساب عبر جوجل: بلا كلمة سر (NULL صراحة) — كنظيره في Apple.
+async function createWithGoogle({ email, googleSub, displayName }) {
+  const { rows } = await db.query(
+    `INSERT INTO users (email, google_sub, display_name)
+     VALUES ($1, $2, $3)
+     RETURNING ${PUBLIC_COLUMNS}`,
+    [email, googleSub, displayName ?? null]
+  );
+  return rows[0];
+}
+
+// ربط حساب موجود بهوية جوجل (نفس البريد في الجهتين).
+async function linkGoogleSub(userId, googleSub) {
+  await db.query(
+    `UPDATE users SET google_sub = $2, updated_at = now() WHERE id = $1`,
+    [userId, googleSub]
+  );
+}
+
 // تحديث الملف الشخصي — يبني جملة UPDATE ديناميكياً من الحقول
 // المرسلة فقط: إرسال displayName وحده لا يمسح الفريق المفضل.
 async function updateProfile(userId, { displayName, favoriteTeamId, avatarUrl }) {
@@ -372,6 +399,7 @@ async function removeWithGroupHandover(id) {
 module.exports = {
   create, findByEmailWithHash, findById, findByEmail, updatePassword, updateProfile,
   findByAppleSub, createWithApple, linkAppleSub, updateEmail,
+  findByGoogleSub, createWithGoogle, linkGoogleSub,
   findSuspension, setSuspension,
   adminList, adminDetail, updateRole, countOtherAdmins, removeWithGroupHandover,
 };
