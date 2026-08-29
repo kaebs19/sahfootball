@@ -22,6 +22,8 @@ const COLUMNS = `
   f.elapsed,
   f.goals_home,
   f.goals_away,
+  f.home_team_id,
+  f.away_team_id,
   COALESCE(ht.name_ar, ht.name_en) AS home_team_name,
   ht.logo_url         AS home_team_logo,
   COALESCE(at.name_ar, at.name_en) AS away_team_name,
@@ -103,7 +105,7 @@ async function homeStrip(limit = 6) {
 /** مباراة واحدة بكل ما تعرضه صفحتها. */
 async function findById(id) {
   const { rows } = await db.query(
-    `SELECT ${COLUMNS}, f.home_team_id, f.away_team_id ${FROM} WHERE f.id = $1`,
+    `SELECT ${COLUMNS} ${FROM} WHERE f.id = $1`,
     [id]
   );
   return rows[0] || null;

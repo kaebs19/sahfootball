@@ -149,7 +149,7 @@ async function topScorers(options) {
       name: row.player?.name || '',
       photo: row.player?.photo || null,
       team: nameById.get(stat.team?.id) ?? stat.team?.name ?? '',
-      teamLogo: stat.team?.logo || null,
+      teamId: stat.team?.id ?? null,
       goals: stat.goals?.total ?? 0,
       assists: stat.goals?.assists ?? 0,
       played: stat.games?.appearences ?? 0,

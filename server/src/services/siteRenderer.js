@@ -622,10 +622,18 @@ function fixtureCenter(f) {
           <div class="fx-min">${esc(f.status === 'postponed' ? 'مؤجلة' : 'لم تبدأ')}</div>`;
 }
 
+/**
+ * شعار مخدوم من عندنا. المعرّف هو مفتاحنا الأساسي (وهو معرّف
+ * المزوّد نفسه — قرار موثّق في 001_init)، فلا حاجة لحفظ مسار ثانٍ
+ * في القاعدة: العنوان مشتق من المعرّف حسابياً.
+ */
+const localLogo = (kind, id) => `/logos/${kind}-${id}.png`;
+
 /** شعار فريق، أو حرفه الأول حين لا شعار. */
-function teamBadge(name, logo) {
+function teamBadge(name, logo, id) {
   if (logo) {
-    return `<img class="fx-logo" src="${esc(logo)}" alt="" loading="lazy" width="30" height="30">`;
+    const src = id ? localLogo('team', id) : logo;
+    return `<img class="fx-logo" src="${esc(src)}" alt="" loading="lazy" width="30" height="30">`;
   }
   return `<span class="fx-logo fx-logo-fallback">${esc((name || '?').trim().charAt(0))}</span>`;
 }
@@ -641,12 +649,12 @@ function fixtureRow(f) {
   return `
 <a class="fx" href="/match/${esc(String(f.id))}" data-status="${esc(f.status)}">
   <div class="fx-side fx-home">
-    ${teamBadge(f.home_team_name, f.home_team_logo)}
+    ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
     <span class="fx-name">${esc(f.home_team_name)}</span>
   </div>
   <div class="fx-center">${fixtureCenter(f)}</div>
   <div class="fx-side fx-away">
-    ${teamBadge(f.away_team_name, f.away_team_logo)}
+    ${teamBadge(f.away_team_name, f.away_team_logo, f.away_team_id)}
     <span class="fx-name">${esc(f.away_team_name)}</span>
   </div>
 </a>`;
@@ -735,7 +743,7 @@ function renderStandings(settings, { leagues, league, rows, error }) {
           <tr>
             <td class="c num rank">${esc(String(r.rank))}</td>
             <td class="team">
-              ${teamBadge(r.team_name, r.logo_url)}
+              ${teamBadge(r.team_name, r.logo_url, r.team_id)}
               <span class="fx-name">${esc(r.team_name)}</span>
             </td>
             <td class="c num">${esc(String(r.played))}</td>
@@ -815,7 +823,7 @@ function renderMatches(settings, { day, fixtures, days, leagues, league }) {
       </div>` : groups.map((g) => `
       <section class="lg">
         <header class="lg-head">
-          ${g.logo ? `<img src="${esc(g.logo)}" alt="" width="22" height="22" loading="lazy">` : ''}
+          ${g.logo ? `<img src="${esc(localLogo('league', g.id))}" alt="" width="22" height="22" loading="lazy">` : ''}
           <h2>${esc(g.name)}</h2>
           <a class="lg-link" href="/standings?league=${esc(String(g.id))}">الترتيب</a>
           <span class="lg-count num">${esc(String(g.fixtures.length))}</span>
@@ -904,19 +912,19 @@ function renderMatch(settings, { fixture: f, detail }) {
 
     <div class="card mh">
       <div class="mh-league">
-        ${f.league_logo ? `<img src="${esc(f.league_logo)}" alt="" width="18" height="18" loading="lazy">` : ''}
+        ${f.league_logo ? `<img src="${esc(localLogo('league', f.league_id))}" alt="" width="18" height="18" loading="lazy">` : ''}
         <span>${esc(f.league_name)}</span>
         ${f.round ? `<span class="mh-round">${esc(f.round)}</span>` : ''}
       </div>
 
       <div class="mh-teams">
         <div class="mh-side">
-          ${teamBadge(f.home_team_name, f.home_team_logo)}
+          ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
           <span>${esc(f.home_team_name)}</span>
         </div>
         <div class="mh-center">${fixtureCenter(f)}</div>
         <div class="mh-side">
-          ${teamBadge(f.away_team_name, f.away_team_logo)}
+          ${teamBadge(f.away_team_name, f.away_team_logo, f.away_team_id)}
           <span>${esc(f.away_team_name)}</span>
         </div>
       </div>
@@ -985,11 +993,14 @@ function renderScorers(settings, { leagues, league, scorers, error }) {
       ${(scorers || []).map((p) => `
       <div class="card sc">
         <div class="sc-rank num">${esc(String(p.rank))}</div>
-        ${p.photo ? `<img class="sc-photo" src="${esc(p.photo)}" alt="" width="46" height="46" loading="lazy">` : ''}
+        <!-- صور اللاعبين تبقى من المزوّد ولا تُخزَّن: تتغير مع كل
+             انتقال وقصّة شعر، وقائمة الهدافين نفسها تتبدّل كل جولة.
+             تخزينها يعني صوراً قديمة لا صفحة أسرع. -->
+        ${p.photo ? `<img class="sc-photo" src="${esc(p.photo)}" alt="" width="46" height="46" loading="lazy" referrerpolicy="no-referrer">` : ''}
         <div class="sc-main">
           <div class="sc-name">${esc(p.name)}</div>
           <div class="sc-team">
-            ${p.teamLogo ? `<img src="${esc(p.teamLogo)}" alt="" width="15" height="15" loading="lazy">` : ''}
+            <img src="${esc(localLogo('team', p.teamId))}" alt="" width="15" height="15" loading="lazy">
             ${esc(p.team)}
           </div>
         </div>

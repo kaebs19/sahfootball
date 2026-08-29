@@ -10,7 +10,8 @@
     "sync": "node src/jobs/syncFixtures.js",
     "deploy": "npm run migrate && node src/app.js",
     "check-plan": "node scripts/checkPlan.js",
-    "test-mail": "node scripts/sendTestMail.js"
+    "test-mail": "node scripts/sendTestMail.js",
+    "cache-logos": "node scripts/cacheLogos.js"
   },
   "keywords": [],
   "author": "",

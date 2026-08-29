@@ -119,6 +119,36 @@ app.use(
     maxAge: '30d',
   })
 );
+// شعارات الفرق والدوريات، مخدومة من عندنا.
+//
+// طلبها من media.api-sports.io مباشرة كان يعمل، لكنه يربط سرعة
+// الموقع بخادم طرف ثالث: بطؤه بطؤنا، وانقطاعه صفحة بلا شعارات.
+// خمسون شعاراً في صفحة تعني خمسين طلباً لخادم غيرنا عند كل زيارة.
+//
+// وحين لا يوجد الملف نحوّل للمزوّد بدل أن نرد 404: فريق أُضيف بعد
+// آخر تشغيل لـ cache-logos يظهر شعاره من المصدر ويُنزَّل في الدورة
+// التالية — تدهور لطيف بدل صورة مكسورة.
+app.use('/logos', (req, res, next) => {
+  const m = /^\/(team|league)-(\d+)\.png$/.exec(req.path);
+  if (!m) return next();
+
+  // من web/assets/logos لا من مجلد الرفع: هذه أصول ثابتة تعيش في
+  // المستودع كـ site.css تماماً — مصغّرة إلى 64px مسبقاً (6 كيلوبايت
+  // بدل 90)، فلا يحتاج أي خادم أداة تصغير ولا تنزيلاً عند النشر.
+  const file = require('path').join(
+    __dirname, '..', '..', 'web', 'assets', 'logos', `${m[1]}-${m[2]}.png`
+  );
+
+  res.sendFile(file, {
+    maxAge: '30d',
+    headers: { 'Cross-Origin-Resource-Policy': 'cross-origin' },
+  }, (err) => {
+    if (!err) return;
+    const kind = m[1] === 'team' ? 'teams' : 'leagues';
+    res.redirect(302, `https://media.api-sports.io/football/${kind}/${m[2]}.png`);
+  });
+});
+
 app.use('/api/admin', require('./routes/admin'));
 
 // ── الموقع العام ────────────────────────────────────────────────
