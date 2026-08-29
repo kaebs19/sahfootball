@@ -33,7 +33,29 @@ if (process.env.TRUST_PROXY) {
   app.set('trust proxy', /^\d+$/.test(value) ? Number(value) : value);
 }
 
-app.use(helmet());       // ترويسات أمان قياسية (HTTP headers)
+// ترويسات أمان قياسية، بتعديل واحد على سياسة المحتوى (CSP).
+//
+// الافتراضي img-src 'self' data:‎ يحجب كل صورة خارجية، وشعارات
+// الفرق والدوريات تأتي من media.api-sports.io — فكانت تظهر
+// مكسورة على الموقع بلا خطأ في الشبكة، والسبب لا يُرى إلا في
+// وحدة تحكم المتصفح.
+//
+// نوسّع img-src وحده وبمضيف واحد محدد، لا بـ * ولا بتعطيل CSP:
+// السياسة الافتراضية هي ما يمنع حقن سكربت من نجاحه، وإسقاطها
+// كلها لأجل صور خطأ لا يتناسب مع سببه.
+//
+// وfonts.googleapis يُسمح له أصلاً في الافتراضي لأن الخطوط تُحمَّل
+// كـ stylesheet — أبقيناها صريحة كي لا يكسرها تشديد لاحق.
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      'img-src': ["'self'", 'data:', 'https://media.api-sports.io'],
+      'font-src': ["'self'", 'https://fonts.gstatic.com'],
+      'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    },
+  },
+}));
 
 // CORS: قائمة بيضاء من CORS_ORIGINS بدل الفتح للجميع.
 //

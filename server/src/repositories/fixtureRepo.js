@@ -15,10 +15,20 @@ const FIXTURE_COLUMNS = `
 
 // نضم جدول الفرق مرتين (مرة للمضيف ومرة للضيف) بأسماء مستعارة
 // ht و at، مع التدهور اللطيف للاسم العربي عبر COALESCE أعلاه.
+//
+// وJOIN مع leagues بقيد in_app: هذا الملف يخدم التطبيق وحده (راجع
+// من يستدعيه: routes/fixtures و predictions و groups)، والتطبيق
+// لعبة توقّعات حول دوري روشن. الموقع العام يعرض ثماني بطولات
+// ويستعلم من siteFixtureRepo بقيد enabled بدلاً منه.
+//
+// القيد هنا في المصدر الواحد لا في كل استعلام: إضافته يدوياً في
+// ستة استعلامات تعني أن السابع سينساه، ويظهر في التطبيق دوري
+// إسباني لا يُتوقَّع عليه — وهو عطل يبدو ميزة فلا يُبلَّغ عنه.
 const FIXTURE_FROM = `
   FROM fixtures f
   JOIN teams ht ON ht.id = f.home_team_id
   JOIN teams at ON at.id = f.away_team_id
+  JOIN leagues l ON l.id = f.league_id AND l.in_app
 `;
 
 const FIXTURE_SELECT = `SELECT ${FIXTURE_COLUMNS} ${FIXTURE_FROM}`;

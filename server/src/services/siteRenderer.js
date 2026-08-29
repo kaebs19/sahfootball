@@ -91,12 +91,16 @@ function socialLinks(settings) {
   return items.length ? `<div class="social">${items.join('')}</div>` : '';
 }
 
+// القائمة: المباريات ثانياً مباشرة بعد الرئيسية.
+//
+// هي المحتوى الحيّ الوحيد في الموقع، وما يعود إليه الزائر يومياً.
+// الصفحات القانونية تبقى في التذييل حيث يبحث عنها من يبحث — ووجودها
+// في الشريط العلوي كان يزاحم ما يُستعمل فعلاً بما يُفتح مرة واحدة.
 const NAV = [
   { href: '/', label: 'الرئيسية' },
+  { href: '/matches', label: 'المباريات' },
   { href: '/about', label: 'حول الموقع' },
   { href: '/contact', label: 'اتصل بنا' },
-  { href: '/privacy', label: 'الخصوصية' },
-  { href: '/terms', label: 'الشروط' },
 ];
 
 /** التخطيط المشترك: ترويسة وتذييل حول أي محتوى. */
@@ -205,25 +209,38 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
 // ولأنها تصف ما يفعله التطبيق فعلاً، فتغييرها يرافق تغييره لا
 // تحرير نص. لو احتاجها المالك قابلة للتحرير فالخطوة الواضحة
 // جدول مستقل بحقول (عنوان، وصف، تصنيف) لا صفحة Markdown.
+// المزايا: ما يفعله التطبيق اليوم، لا ما رُسم له.
+//
+// كانت هذه القائمة تعرض ستاً ولا يعمل منها إلا واحدة: مستشار
+// التوقّع والمضاعِف ودرع السلسلة وتوقّع الدقيقة والتحدي ١ ضد ١
+// كلها بلا خادم يحسبها. الوعد بما لا يوجد ليس تسويقاً متفائلاً
+// بل سبب لمراجعة App Store أن ترفض ("لقطات ووصف لا يطابقان
+// التطبيق")، وسبب أوثق لأن يشعر أول مستخدم أنه خُدع.
+//
+// حين تُبنى أي منها، تعود إلى هنا في سطر واحد.
 const FEATURES = [
-  ['ذكاء', 'مستشار التوقّع', 'قراءة مختصرة قبل كل مباراة: الفورمة والغيابات وسلوك الفريق في نفس التوقيت، مع نسبة ثقة صريحة.'],
-  ['مخاطرة', 'مضاعِف ×2', 'استخدم مضاعِفاً على مباراة واحدة كل جولة. التوقّع ضد الأغلبية يفتح مضاعِفاً إضافياً.'],
-  ['حماية', 'درع السلسلة', 'توقّع خاطئ واحد لا يكسر سلسلتك إذا كان الدرع مفعّلاً — يُكتسب كل خمسة توقّعات صحيحة.'],
-  ['لحظي', 'توقّع الدقيقة', 'أثناء المباراة: من يسجّل التالي؟ نوافذ قصيرة بنقاط لحظية لا تؤثر على السلسلة.'],
-  ['اجتماعي', 'دوريات خاصة', 'دوري بكود دعوة حتى خمسين لاعباً، بجدول مستقل ورسائل داخل الدوري بعد كل جولة.'],
-  ['منافسة', 'تحدّي ١ ضد ١', 'واجه صاحبك على جولة كاملة. الفائز يأخذ نقاط تاج ووساماً، والخاسر يفقد جزءاً من رتبته.'],
+  ['توقّع', 'نتيجة كل مباراة', 'توقّع النتيجة بالضبط قبل صافرة البداية. النتيجة المضبوطة نقاط أعلى، والفوز الصحيح نقاط أقل.'],
+  ['احتساب', 'نقاط فور النهاية', 'تُحتسب نقاطك خلال دقائق من نهاية المباراة، بلا انتظار ولا مراجعة يدوية.'],
+  ['منافسة', 'العرش', 'لوحة صدارة عامة ترتّب الجميع بالنقاط، وخمس رتب موسمية من مشجّع إلى الملك.'],
+  ['اجتماعي', 'مجموعات خاصة', 'أنشئ مجموعة بكود دعوة ونافس أصحابك وحدهم في جدول مستقل.'],
+  ['أوسمة', 'تسعة إنجازات', 'أول توقّع، نتيجة مضبوطة، سلسلة خمسة وعشرة، جولة كاملة… تُمنح تلقائياً حين تستحقها.'],
+  ['تنبيه', 'قبل الإقفال', 'تذكير قبل انطلاق مباراة لم تتوقّع لها، وإشعار بنتيجة توقعاتك بعد احتسابها.'],
 ];
 
+// الرتب: العتبات مطابقة لما يحسبه التطبيق فعلاً
+// (mobile/lib/screens/leaderboard_screen.dart). العمود الثالث كان
+// يعد بمزايا لكل رتبة (مضاعِف، درع، تحديات) لا وجود لها؛ صار يصف
+// ما تعنيه الرتبة حقاً.
 const RANKS = [
-  ['مشجّع', '0 — 500', 'توقّع أساسي وترتيب عام'],
-  ['لاعب', '500 — 1,500', 'دوري خاص واحد'],
-  ['فارس', '1,500 — 3,000', 'مضاعِف ودرع السلسلة'],
-  ['أمير', '3,000 — 5,000', 'تحديات مفتوحة وإحصاءات موسّعة'],
-  ['الملك', '5,000+', 'تاج على الاسم وصدارة الموسم'],
+  ['مشجّع', '0 — 500', 'البداية'],
+  ['لاعب', '500 — 1,500', 'توقّع منتظم'],
+  ['فارس', '1,500 — 3,000', 'دقة ثابتة'],
+  ['أمير', '3,000 — 5,000', 'من العشرة الأوائل عادةً'],
+  ['الملك', '5,000+', 'تاج على الاسم'],
 ];
 
 /** الصفحة الرئيسية. */
-function renderHome(settings) {
+function renderHome(settings, strip) {
   const appStore = safeUrl(settings?.appStoreUrl);
   const play = safeUrl(settings?.googlePlayUrl);
 
@@ -244,6 +261,20 @@ function renderHome(settings) {
     </div>
   </div>
 </div>
+
+${strip && strip.fixtures.length ? `
+<section class="strip-sec">
+  <div class="wrap">
+    <div class="strip-head">
+      <div>
+        <div class="section-label">${strip.mode === 'live' ? 'يُلعب الآن' : 'قادم'}</div>
+        <h2 class="section-title" style="margin:0">${strip.mode === 'live' ? 'مباريات جارية' : 'أقرب المباريات'}</h2>
+      </div>
+      <a class="btn btn-ghost" href="/matches">كل المباريات</a>
+    </div>
+    <div class="lg-body">${strip.fixtures.map(fixtureRow).join('')}</div>
+  </div>
+</section>` : ''}
 
 <section>
   <div class="wrap">
@@ -613,6 +644,163 @@ function renderAccount(settings, { user, stats, notice, error, csrf }) {
   return layout({ title: 'حسابي', body, settings, active: null });
 }
 
+// ─────────────────────── المباريات ───────────────────────
+
+const WEEKDAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+/** اليوم بتوقيت الرياض بصيغة YYYY-MM-DD. */
+function riyadhToday() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+}
+
+/** يوم بإزاحة عن يوم معطى، بحساب تقويمي لا بجمع ثوانٍ. */
+function shiftDay(day, delta) {
+  const d = new Date(`${day}T12:00:00Z`); // منتصف النهار: بعيد عن حدود التوقيت الصيفي
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+/** "السبت 29 أغسطس" — الأرقام غربية دائماً، كما في التطبيق. */
+function arabicDate(day, { withWeekday = true } = {}) {
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const parts = [];
+  if (withWeekday) parts.push(WEEKDAYS[date.getUTCDay()]);
+  parts.push(String(d), MONTHS[m - 1]);
+  return parts.join(' ');
+}
+
+/** وقت الانطلاق بتوقيت الرياض: "9:00 م". */
+function kickoffTime(kickoffAt) {
+  return new Date(kickoffAt).toLocaleTimeString('ar-SA-u-nu-latn', {
+    timeZone: 'Asia/Riyadh', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+/**
+ * وسط بطاقة المباراة: النتيجة أو الوقت.
+ *
+ * قبل الانطلاق goals تساوي NULL لا صفراً — وعرض "0 - 0" لمباراة لم
+ * تبدأ يجعل القارئ يظنها انتهت بالتعادل. هذا فخ وقعنا فيه من قبل
+ * في التطبيق، والحارس هنا هو نفسه: الحالة تحكم لا القيمة.
+ */
+function fixtureCenter(f) {
+  if (f.status === 'live') {
+    return `<div class="fx-score num live">${esc(String(f.goals_home ?? 0))} - ${esc(String(f.goals_away ?? 0))}</div>
+            <div class="fx-min">${f.elapsed ? esc(String(f.elapsed)) + "'" : 'مباشر'}</div>`;
+  }
+  if (f.status === 'finished') {
+    return `<div class="fx-score num">${esc(String(f.goals_home ?? 0))} - ${esc(String(f.goals_away ?? 0))}</div>
+            <div class="fx-min">انتهت</div>`;
+  }
+  return `<div class="fx-time num">${esc(kickoffTime(f.kickoff_at))}</div>
+          <div class="fx-min">${esc(f.status === 'postponed' ? 'مؤجلة' : 'لم تبدأ')}</div>`;
+}
+
+/** شعار فريق، أو حرفه الأول حين لا شعار. */
+function teamBadge(name, logo) {
+  if (logo) {
+    return `<img class="fx-logo" src="${esc(logo)}" alt="" loading="lazy" width="30" height="30">`;
+  }
+  return `<span class="fx-logo fx-logo-fallback">${esc((name || '?').trim().charAt(0))}</span>`;
+}
+
+/**
+ * صف مباراة واحدة.
+ *
+ * المضيف على اليمين والضيف على اليسار — الترتيب الطبيعي في واجهة
+ * RTL، ونفس ما يفعله التطبيق. الاتجاه يأتي من CSS لا من عكس
+ * الحقول، فيبقى ترتيب النتيجة "المضيف - الضيف" سليماً.
+ */
+function fixtureRow(f) {
+  return `
+<div class="fx" data-status="${esc(f.status)}">
+  <div class="fx-side fx-home">
+    ${teamBadge(f.home_team_name, f.home_team_logo)}
+    <span class="fx-name">${esc(f.home_team_name)}</span>
+  </div>
+  <div class="fx-center">${fixtureCenter(f)}</div>
+  <div class="fx-side fx-away">
+    ${teamBadge(f.away_team_name, f.away_team_logo)}
+    <span class="fx-name">${esc(f.away_team_name)}</span>
+  </div>
+</div>`;
+}
+
+/** يجمع المباريات في مجموعات حسب الدوري مع حفظ ترتيبها. */
+function groupByLeague(fixtures) {
+  const groups = [];
+  for (const f of fixtures) {
+    const last = groups[groups.length - 1];
+    if (last && last.id === f.league_id) last.fixtures.push(f);
+    else groups.push({ id: f.league_id, name: f.league_name, logo: f.league_logo, fixtures: [f] });
+  }
+  return groups;
+}
+
+function renderMatches(settings, { day, fixtures, days }) {
+  const today = riyadhToday();
+  const groups = groupByLeague(fixtures);
+
+  // شريط الأيام: نبني المدى كاملاً لا من الأيام التي فيها مباريات
+  // فقط — يوم فارغ يجب أن يبقى قابلاً للفتح، وإلا بدا الشريط وكأنه
+  // يقفز فوق أيام بلا سبب مفهوم.
+  const counts = new Map(days.map((d) => [d.day, d.count]));
+  const strip = [];
+  for (let i = -3; i <= 3; i += 1) {
+    const d = shiftDay(today, i);
+    strip.push({
+      day: d,
+      label: i === 0 ? 'اليوم' : i === 1 ? 'غداً' : i === -1 ? 'أمس' : arabicDate(d, { withWeekday: false }),
+      weekday: WEEKDAYS[new Date(`${d}T12:00:00Z`).getUTCDay()],
+      count: counts.get(d) || 0,
+      active: d === day,
+    });
+  }
+
+  const body = `
+<div class="page">
+  <div class="wrap">
+    <div class="section-label">المباريات</div>
+    <h1 class="section-title" style="margin-bottom:6px">${esc(arabicDate(day))}</h1>
+    <p class="section-sub" style="margin-bottom:22px">
+      كل الأوقات بتوقيت الرياض. النتائج تُحدَّث أثناء اللعب.
+    </p>
+
+    <nav class="daystrip">
+      ${strip.map((d) => `
+        <a class="day${d.active ? ' active' : ''}" href="/matches?date=${esc(d.day)}">
+          <span class="dw">${esc(d.weekday)}</span>
+          <span class="dl">${esc(d.label)}</span>
+          <span class="dc num">${d.count ? esc(String(d.count)) : '—'}</span>
+        </a>`).join('')}
+    </nav>
+
+    ${groups.length === 0 ? `
+      <div class="card" style="text-align:center;padding:44px 20px">
+        <h3>لا مباريات في هذا اليوم</h3>
+        <p class="section-sub" style="margin-top:8px">اختر يوماً آخر من الشريط أعلاه.</p>
+      </div>` : groups.map((g) => `
+      <section class="lg">
+        <header class="lg-head">
+          ${g.logo ? `<img src="${esc(g.logo)}" alt="" width="22" height="22" loading="lazy">` : ''}
+          <h2>${esc(g.name)}</h2>
+          <span class="lg-count num">${esc(String(g.fixtures.length))}</span>
+        </header>
+        <div class="lg-body">${g.fixtures.map(fixtureRow).join('')}</div>
+      </section>`).join('')}
+  </div>
+</div>`;
+
+  return layout({
+    title: `مباريات ${arabicDate(day)}`,
+    description: 'مباريات ونتائج دوري روشن ودوري أبطال أوروبا وآسيا والدوريات الأوروبية الكبرى.',
+    body, settings, active: '/matches',
+  });
+}
+
 /** صفحة 404 بنفس هوية الموقع بدل صفحة Express البيضاء. */
 function renderNotFound(settings) {
   const body = `
@@ -632,5 +820,6 @@ module.exports = {
   renderHome, renderPage, renderContact, renderNotFound,
   renderForgot, renderReset, renderResetDone,
   renderLogin, renderRegister, renderAccount,
+  renderMatches, riyadhToday, shiftDay,
   esc,
 };

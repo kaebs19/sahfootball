@@ -10,6 +10,7 @@
 const crypto = require('node:crypto');
 const express = require('express');
 const siteRepo = require('../repositories/siteRepo');
+const siteFixtureRepo = require('../repositories/siteFixtureRepo');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
@@ -47,8 +48,13 @@ async function loadSettings() {
 
 // الصفحة الرئيسية
 router.get('/', async (req, res) => {
-  const settings = await loadSettings();
-  res.type('html').send(renderer.renderHome(settings));
+  // الشريط لا يُسقط الصفحة لو فشل: الرئيسية تعمل بلا مباريات،
+  // وعطل في القاعدة يجب أن يفقدنا الشريط لا الموقع كله.
+  const [settings, strip] = await Promise.all([
+    loadSettings(),
+    siteFixtureRepo.homeStrip().catch(() => null),
+  ]);
+  res.type('html').send(renderer.renderHome(settings, strip));
 });
 
 // صفحة اتصل بنا — قبل /:slug لأن لها معالجاً خاصاً (نموذج + POST)
@@ -109,6 +115,26 @@ router.post('/contact', async (req, res) => {
   }
 
   res.redirect(303, '/contact?sent=1');
+});
+
+// ─────────────────────── المباريات ───────────────────────
+//
+// كل البيانات من قاعدتنا لا من المزوّد: المزامن يملؤها دورياً،
+// فزائر الموقع مهما كثر لا يكلّف طلباً خارجياً واحداً. هذا شرط لا
+// تحسين — صفحة عامة تنادي مزوّداً محدود الحصة تسقط عند أول انتشار.
+router.get('/matches', async (req, res) => {
+  // تحقق من الشكل لا مجرد وجود القيمة: التاريخ يدخل الاستعلام،
+  // و"غداً" أو نص عشوائي يجب أن يرجع لليوم لا أن يرمي.
+  const asked = String(req.query.date || '');
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : renderer.riyadhToday();
+
+  const [settings, fixtures, days] = await Promise.all([
+    loadSettings(),
+    siteFixtureRepo.byDate(day),
+    siteFixtureRepo.daysAround(renderer.riyadhToday()),
+  ]);
+
+  res.type('html').send(renderer.renderMatches(settings, { day, fixtures, days }));
 });
 
 // ─────────────────── استعادة كلمة المرور ───────────────────

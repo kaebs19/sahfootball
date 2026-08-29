@@ -640,3 +640,145 @@ button.btn {
 }
 .auth-wrap .card { padding: 26px 24px; }
 .auth-wrap .btn { width: 100%; justify-content: center; }
+
+/* ═══════════════ المباريات ═══════════════ */
+
+/* شريط الأيام: تمرير أفقي على الجوال بدل التفافه لسطرين.
+   سبعة أيام لا تتسع في 375 بكسل، والالتفاف يكسر إحساس "الشريط". */
+.daystrip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 26px;
+  scrollbar-width: none;
+}
+.daystrip::-webkit-scrollbar { display: none; }
+
+.daystrip .day {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 76px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-decoration: none;
+  color: var(--text);
+}
+.daystrip .day:hover { border-color: var(--text-faint); }
+.daystrip .day.active {
+  background: var(--correct);
+  border-color: var(--correct);
+  color: var(--on-accent);
+}
+.daystrip .dw { font-size: 11.5px; opacity: .7; }
+.daystrip .dl { font-size: 13.5px; font-weight: 600; }
+.daystrip .dc { font-size: 11px; opacity: .6; }
+
+/* مجموعة الدوري */
+.lg { margin-bottom: 20px; }
+.lg-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 10px;
+}
+.lg-head h2 { font-size: 1rem; margin: 0; }
+.lg-head img { border-radius: 4px; object-fit: contain; }
+.lg-count {
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.lg-body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* صف المباراة: ثلاثة أعمدة، الأوسط ثابت العرض.
+   العرض الثابت يجعل كل النتائج على عمود واحد مهما طالت أسماء
+   الفرق — بلا ذلك تتراقص النتيجة يميناً ويساراً بين الصفوف. */
+.fx {
+  display: grid;
+  grid-template-columns: 1fr 84px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.fx:last-child { border-bottom: none; }
+
+.fx-side {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+/* الضيف معكوس فيلتصق شعاره بالوسط — الشعاران متقابلان حول
+   النتيجة كما في شاشات النتائج المعروفة. */
+.fx-away { flex-direction: row-reverse; }
+
+.fx-name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fx-logo {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.fx-logo-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--text-faint);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fx-center { text-align: center; }
+.fx-score, .fx-time {
+  font-family: var(--font-num, inherit);
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* الأخضر للنتيجة الجارية وحدها: لو صُبغ كل رقم لفقد اللون معناه،
+   وهو هنا يعني "يُلعب الآن". */
+.fx-score.live { color: var(--correct); }
+.fx-min {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.fx[data-status="live"] .fx-min { color: var(--correct); }
+
+@media (max-width: 560px) {
+  .fx { grid-template-columns: 1fr 68px 1fr; padding: 12px 10px; gap: 6px; }
+  .fx-name { font-size: 13px; }
+  .fx-logo { width: 26px; height: 26px; }
+}
+
+/* شريط المباريات في الرئيسية */
+.strip-sec .lg-body { margin-top: 4px; }
+.strip-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+@media (max-width: 560px) {
+  .strip-head { flex-direction: column; align-items: stretch; }
+  .strip-head .btn { text-align: center; justify-content: center; }
+}

@@ -67,7 +67,8 @@ async function updatePrefs(userId, { reminders, results }) {
  *  - له جهاز مسجّل (EXISTS لا JOIN: الانضمام يكرّر الصف لكل
  *    جهاز، فيصل نفس الإشعار مرتين لصاحب هاتف وآيباد)
  *  - مفعّل التذكيرات وغير موقوف
- *  - المباراة في دوري مفعّل ولم تنطلق بعد
+ *  - المباراة في دوري داخل التطبيق (in_app) ولم تنطلق بعد —
+ *    لا نذكّر بمباراة لا يستطيع المستخدم توقّعها أصلاً
  *  - لا يملك توقعاً لها  ← NOT EXISTS
  *  - ولم نذكّره بها من قبل ← NOT EXISTS على sent_notifications
  *
@@ -88,7 +89,7 @@ async function usersNeedingReminder(leadMinutes) {
        JOIN fixtures f ON f.status = 'scheduled'
                       AND f.kickoff_at > now()
                       AND f.kickoff_at <= now() + ($1 || ' minutes')::interval
-       JOIN leagues l ON l.id = f.league_id AND l.enabled
+       JOIN leagues l ON l.id = f.league_id AND l.in_app
        JOIN teams ht ON ht.id = f.home_team_id
        JOIN teams at ON at.id = f.away_team_id
       WHERE u.notify_reminders
