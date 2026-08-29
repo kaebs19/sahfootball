@@ -208,6 +208,31 @@ function getTopScorers(options) {
   });
 }
 
+/**
+ * حالة الاشتراك: الخطة، تاريخ الانتهاء، والمستهلك من الحصة اليومية.
+ *
+ * بلا كاش عمداً: تُنادى مرة يومياً من وظيفة المراقبة، وقيمتها كلها
+ * في كونها لحظية — رقم استهلاك عمره ساعة لا يفيد في إنذار.
+ *
+ * وهي لا تُحتسب على الحصة نفسها عند المزوّد.
+ */
+async function getStatus() {
+  const res = await fetch(`${BASE_URL}/status`, {
+    headers: { 'x-apisports-key': process.env.FOOTBALL_API_KEY },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  const json = await res.json();
+  const r = json.response || {};
+  return {
+    plan: r.subscription?.plan ?? null,
+    endsAt: r.subscription?.end ?? null,
+    active: r.subscription?.active ?? false,
+    used: r.requests?.current ?? 0,
+    limit: r.requests?.limit_day ?? 0,
+  };
+}
+
 // فرق الدوري للموسم الحالي.
 function getTeams(options) {
   const { league, season } = resolve(options);
@@ -252,6 +277,7 @@ module.exports = {
   getFixtureLineups,
   getFixtureStatistics,
   getTopScorers,
+  getStatus,
   getTeams,
   getStandings,
   searchLeagues,

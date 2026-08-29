@@ -124,6 +124,14 @@ function check() {
     );
   }
 
+  if (prod && !process.env.ALERT_EMAIL) {
+    warnings.push(
+      'ALERT_EMAIL غير مضبوط: لن يصلك تنبيه قبل انتهاء اشتراك مزوّد البيانات ' +
+      'ولا عند اقتراب نفاد الحصة. انتهاء الاشتراك عطل صامت — الموقع يعمل ' +
+      'والبيانات تتجمّد.'
+    );
+  }
+
   if (prod && !process.env.CORS_ORIGINS) {
     warnings.push(
       'CORS_ORIGINS غير مضبوط — الـ API مفتوح لأي أصل. اضبطه بنطاقاتك ' +

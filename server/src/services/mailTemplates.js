@@ -75,6 +75,23 @@ function resetCode({ code, ttlMinutes }) {
 }
 
 /** رسالة تجربة — يستعملها scripts/sendTestMail.js للتحقق من الإعداد. */
+/**
+ * تنبيه إداري: الاشتراك أو الحصة.
+ *
+ * لا يذهب لمستخدم بل لمالك الموقع، ولذلك لغته مباشرة بلا ترحيب:
+ * من يقرأ هذه الرسالة يريد أن يعرف في ثانية ماذا ينتهي ومتى وماذا
+ * يفعل — لا أن يُشكر على استخدامه التطبيق.
+ */
+function providerAlert({ title, lines, action }) {
+  const body = `
+    <h1 style="margin:0 0 14px;font-size:19px">${title}</h1>
+    ${lines.map((l) => `<p style="margin:0 0 8px">${l}</p>`).join('')}
+    ${action ? `<p style="margin:18px 0 0"><strong>${action}</strong></p>` : ''}
+  `;
+  const text = [title, '', ...lines, '', action || ''].join('\n');
+  return { html: layout({ preview: title, body }), text };
+}
+
 function testMail() {
   const text = `إعداد البريد يعمل. أُرسلت هذه الرسالة من سيرفر ${APP_NAME} للتحقق فقط.`;
   return {
@@ -87,4 +104,4 @@ function testMail() {
   };
 }
 
-module.exports = { resetCode, testMail, APP_NAME };
+module.exports = { resetCode, testMail, providerAlert, APP_NAME };
