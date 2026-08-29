@@ -11,6 +11,8 @@ const crypto = require('node:crypto');
 const express = require('express');
 const siteRepo = require('../repositories/siteRepo');
 const siteFixtureRepo = require('../repositories/siteFixtureRepo');
+const leagueRepo = require('../repositories/leagueRepo');
+const standingsService = require('../services/standingsService');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
@@ -47,16 +49,33 @@ async function loadSettings() {
 }
 
 // الصفحة الرئيسية
+// الصفحة الرئيسية = مباريات اليوم.
+//
+// كل البيانات من قاعدتنا لا من المزوّد: المزامن يملؤها دورياً،
+// فزائر الموقع مهما كثر لا يكلّف طلباً خارجياً واحداً. صفحة عامة
+// تنادي مزوّداً محدود الحصة تسقط عند أول انتشار.
 router.get('/', async (req, res) => {
-  // الشريط لا يُسقط الصفحة لو فشل: الرئيسية تعمل بلا مباريات،
-  // وعطل في القاعدة يجب أن يفقدنا الشريط لا الموقع كله.
-  const [settings, strip] = await Promise.all([
-    loadSettings(),
-    siteFixtureRepo.homeStrip().catch(() => null),
-  ]);
-  res.type('html').send(renderer.renderHome(settings, strip));
-});
+  // تحقق من الشكل لا مجرد الوجود: القيمة تدخل الاستعلام، ونص
+  // عشوائي يجب أن يعود لليوم لا أن يرمي.
+  const asked = String(req.query.date || '');
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : renderer.riyadhToday();
+  const league = /^\d+$/.test(String(req.query.league || '')) ? Number(req.query.league) : null;
 
+  const [settings, all, days, leagues] = await Promise.all([
+    loadSettings(),
+    siteFixtureRepo.byDate(day),
+    siteFixtureRepo.daysAround(renderer.riyadhToday()),
+    leagueRepo.findEnabled(),
+  ]);
+
+  // الترشيح في الذاكرة لا في SQL: الصفوف عشرات لا آلاف، والاستعلام
+  // نفسه يخدم "الكل" و"دوري واحد" فلا يتفرّع.
+  const fixtures = league ? all.filter((f) => f.league_id === league) : all;
+
+  res.type('html').send(
+    renderer.renderMatches(settings, { day, fixtures, days, leagues, league })
+  );
+});
 // صفحة اتصل بنا — قبل /:slug لأن لها معالجاً خاصاً (نموذج + POST)
 router.get('/contact', async (req, res) => {
   const [settings, page] = await Promise.all([
@@ -122,21 +141,45 @@ router.post('/contact', async (req, res) => {
 // كل البيانات من قاعدتنا لا من المزوّد: المزامن يملؤها دورياً،
 // فزائر الموقع مهما كثر لا يكلّف طلباً خارجياً واحداً. هذا شرط لا
 // تحسين — صفحة عامة تنادي مزوّداً محدود الحصة تسقط عند أول انتشار.
-router.get('/matches', async (req, res) => {
-  // تحقق من الشكل لا مجرد وجود القيمة: التاريخ يدخل الاستعلام،
-  // و"غداً" أو نص عشوائي يجب أن يرجع لليوم لا أن يرمي.
-  const asked = String(req.query.date || '');
-  const day = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : renderer.riyadhToday();
-
-  const [settings, fixtures, days] = await Promise.all([
-    loadSettings(),
-    siteFixtureRepo.byDate(day),
-    siteFixtureRepo.daysAround(renderer.riyadhToday()),
-  ]);
-
-  res.type('html').send(renderer.renderMatches(settings, { day, fixtures, days }));
+// /matches كان العنوان قبل أن تصير الرئيسية هي المباريات.
+// تحويل دائم لا حذف: الروابط المنشورة والمحفوظة يجب ألا تكسر.
+router.get('/matches', (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(301, qs ? `/?${qs}` : '/');
 });
 
+// ─────────────────────── الترتيب ───────────────────────
+//
+// الترتيب لا يُخزَّن عندنا (بيانات مشتقة — انظر standingsMapper)،
+// فهو النداء الوحيد في الموقع الذي قد يمس المزوّد. كاش الخدمة
+// يمتصه: زوار الدوري الواحد في نفس الساعة يقرؤون نسخة واحدة.
+router.get('/standings', async (req, res) => {
+  const leagues = await leagueRepo.findEnabled();
+  const asked = String(req.query.league || '');
+  const league = /^\d+$/.test(asked) && leagues.some((l) => String(l.id) === asked)
+    ? Number(asked)
+    : leagues[0]?.id;
+
+  const settings = await loadSettings();
+  const current = leagues.find((l) => l.id === league);
+
+  let rows = [];
+  let error = null;
+  try {
+    rows = await standingsService.getStandings({
+      leagueId: league, season: current?.season,
+    });
+  } catch (err) {
+    // نفاد الحصة أو عطل عند المزوّد: الصفحة تبقى وتقول السبب،
+    // ولا تتحول إلى خطأ 500 يخفي أن البقية تعمل.
+    logger.error('[pages] standings failed:', err.message);
+    error = 'تعذّر جلب الترتيب الآن. حاول بعد قليل.';
+  }
+
+  res.type('html').send(
+    renderer.renderStandings(settings, { leagues, league, rows, error })
+  );
+});
 // ─────────────────── استعادة كلمة المرور ───────────────────
 //
 // نفس منطق /api/auth/forgot-password تماماً، بواجهة HTML بدل JSON.

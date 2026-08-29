@@ -97,8 +97,8 @@ function socialLinks(settings) {
 // الصفحات القانونية تبقى في التذييل حيث يبحث عنها من يبحث — ووجودها
 // في الشريط العلوي كان يزاحم ما يُستعمل فعلاً بما يُفتح مرة واحدة.
 const NAV = [
-  { href: '/', label: 'الرئيسية' },
-  { href: '/matches', label: 'المباريات' },
+  { href: '/', label: 'المباريات' },
+  { href: '/standings', label: 'الترتيب' },
   { href: '/about', label: 'حول الموقع' },
   { href: '/contact', label: 'اتصل بنا' },
 ];
@@ -218,104 +218,13 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
 // التطبيق")، وسبب أوثق لأن يشعر أول مستخدم أنه خُدع.
 //
 // حين تُبنى أي منها، تعود إلى هنا في سطر واحد.
-const FEATURES = [
-  ['توقّع', 'نتيجة كل مباراة', 'توقّع النتيجة بالضبط قبل صافرة البداية. النتيجة المضبوطة نقاط أعلى، والفوز الصحيح نقاط أقل.'],
-  ['احتساب', 'نقاط فور النهاية', 'تُحتسب نقاطك خلال دقائق من نهاية المباراة، بلا انتظار ولا مراجعة يدوية.'],
-  ['منافسة', 'العرش', 'لوحة صدارة عامة ترتّب الجميع بالنقاط، وخمس رتب موسمية من مشجّع إلى الملك.'],
-  ['اجتماعي', 'مجموعات خاصة', 'أنشئ مجموعة بكود دعوة ونافس أصحابك وحدهم في جدول مستقل.'],
-  ['أوسمة', 'تسعة إنجازات', 'أول توقّع، نتيجة مضبوطة، سلسلة خمسة وعشرة، جولة كاملة… تُمنح تلقائياً حين تستحقها.'],
-  ['تنبيه', 'قبل الإقفال', 'تذكير قبل انطلاق مباراة لم تتوقّع لها، وإشعار بنتيجة توقعاتك بعد احتسابها.'],
-];
+// الصفحة الرئيسية صارت المباريات نفسها (routes/pages.js).
+//
+// كانت صفحة تعريفية: عنوان كبير وشعار ووصف وست "مزايا" وسلّم رتب —
+// كتيّب يُقرأ مرة واحدة، بينما الزائر يعود يومياً لسؤال واحد:
+// "ماذا يُلعب اليوم؟". صار الجواب هو الصفحة، والتعريف في /about
+// لمن يريده. (renderHome و FEATURES و RANKS في تاريخ git.)
 
-// الرتب: العتبات مطابقة لما يحسبه التطبيق فعلاً
-// (mobile/lib/screens/leaderboard_screen.dart). العمود الثالث كان
-// يعد بمزايا لكل رتبة (مضاعِف، درع، تحديات) لا وجود لها؛ صار يصف
-// ما تعنيه الرتبة حقاً.
-const RANKS = [
-  ['مشجّع', '0 — 500', 'البداية'],
-  ['لاعب', '500 — 1,500', 'توقّع منتظم'],
-  ['فارس', '1,500 — 3,000', 'دقة ثابتة'],
-  ['أمير', '3,000 — 5,000', 'من العشرة الأوائل عادةً'],
-  ['الملك', '5,000+', 'تاج على الاسم'],
-];
-
-/** الصفحة الرئيسية. */
-function renderHome(settings, strip) {
-  const appStore = safeUrl(settings?.appStoreUrl);
-  const play = safeUrl(settings?.googlePlayUrl);
-
-  const storeButtons = [
-    appStore && `<a class="btn btn-primary" href="${esc(appStore)}" target="_blank" rel="noopener noreferrer">حمّل من App Store</a>`,
-    play && `<a class="btn btn-ghost" href="${esc(play)}" target="_blank" rel="noopener noreferrer">حمّل من Google Play</a>`,
-  ].filter(Boolean).join('');
-
-  const body = `
-<div class="hero">
-  <div class="wrap">
-    <div class="hero-badge">${brandMark(60, '#101e17')}</div>
-    <h1>${esc(settings?.siteName || 'ملك التوقعات')}</h1>
-    <p class="tagline">${esc(settings?.tagline || '')}</p>
-    <p class="lede">${esc(settings?.description || '')}</p>
-    <div class="cta-row">
-      ${storeButtons || '<a class="btn btn-ghost" href="/contact">التطبيق قادم قريباً — تواصل معنا</a>'}
-    </div>
-  </div>
-</div>
-
-${strip && strip.fixtures.length ? `
-<section class="strip-sec">
-  <div class="wrap">
-    <div class="strip-head">
-      <div>
-        <div class="section-label">${strip.mode === 'live' ? 'يُلعب الآن' : 'قادم'}</div>
-        <h2 class="section-title" style="margin:0">${strip.mode === 'live' ? 'مباريات جارية' : 'أقرب المباريات'}</h2>
-      </div>
-      <a class="btn btn-ghost" href="/matches">كل المباريات</a>
-    </div>
-    <div class="lg-body">${strip.fixtures.map(fixtureRow).join('')}</div>
-  </div>
-</section>` : ''}
-
-<section>
-  <div class="wrap">
-    <div class="section-label">المزايا</div>
-    <h2 class="section-title">ليست مجرد توقّعات</h2>
-    <p class="section-sub">كل ميزة هنا مبنية على سؤال واحد: ما الذي يجعل المنافسة بينك وبين أصحابك تستمر طوال الموسم؟</p>
-    <div class="cards">
-      ${FEATURES.map(([kicker, title, text]) => `
-        <div class="card">
-          <span class="kicker">${esc(kicker)}</span>
-          <h3>${esc(title)}</h3>
-          <p>${esc(text)}</p>
-        </div>`).join('')}
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="section-label">سلّم الرتب</div>
-    <h2 class="section-title">من مشجّع إلى ملك</h2>
-    <p class="section-sub">خمس رتب موسمية بصعود وهبوط أسبوعي، تحفظ التنافس متوازناً ولا تترك المتصدّر بلا منافس.</p>
-    <div class="ranks">
-      ${RANKS.map(([name, range, perk], i) => `
-        <div class="rank${i === RANKS.length - 1 ? ' king' : ''}">
-          <div class="name">${esc(name)}</div>
-          <div class="range num">${esc(range)}</div>
-          <div class="perk">${esc(perk)}</div>
-        </div>`).join('')}
-    </div>
-  </div>
-</section>`;
-
-  return layout({
-    title: settings?.siteName || 'ملك التوقعات',
-    description: settings?.description,
-    body,
-    settings,
-    active: '/',
-  });
-}
 
 /** صفحة محتوى (الخصوصية، الشروط، حول الموقع). */
 function renderPage(page, settings) {
@@ -740,7 +649,109 @@ function groupByLeague(fixtures) {
   return groups;
 }
 
-function renderMatches(settings, { day, fixtures, days }) {
+/**
+ * شرائح الدوريات — مرشّح أفقي.
+ *
+ * روابط لا أزرار JavaScript: كل ترشيح صفحة بعنوان خاص يمكن حفظه
+ * ومشاركته، ويعمل بلا سكربت. وسياسة المحتوى عندنا تمنع السكربت
+ * الخارجي أصلاً، وصفحةُ نتائجٍ تحتاج JS لتعرض قائمة تفشل عند أول
+ * عطل فيه.
+ */
+function leagueChips(leagues, { active, href, all = true }) {
+  const chip = (id, label) => {
+    const on = String(active || '') === String(id);
+    return `<a class="chip${on ? ' active' : ''}" href="${esc(href(id))}">${esc(label)}</a>`;
+  };
+  return `<nav class="chips">
+    ${all ? chip('', 'الكل') : ''}
+    ${(leagues || []).map((l) => chip(l.id, l.name_ar || l.name || l.name_en)).join('')}
+  </nav>`;
+}
+
+/**
+ * جدول الترتيب.
+ *
+ * الفورمة (آخر خمس مباريات) حروف ملوّنة لا نص: "WWDLW" يقرؤها من
+ * يعرف الاصطلاح وحده، والدوائر الملوّنة يقرؤها الجميع بنظرة.
+ */
+function renderStandings(settings, { leagues, league, rows, error }) {
+  const current = (leagues || []).find((l) => String(l.id) === String(league));
+  const formDots = (form) => (form || '').slice(-5).split('').map((c) => {
+    const cls = c === 'W' ? 'w' : c === 'L' ? 'l' : 'd';
+    const label = c === 'W' ? 'فوز' : c === 'L' ? 'خسارة' : 'تعادل';
+    return `<span class="dot ${cls}" title="${label}"></span>`;
+  }).join('');
+
+  const body = `
+<div class="page">
+  <div class="wrap">
+    <div class="section-label">الترتيب</div>
+    <h1 class="section-title" style="margin-bottom:18px">${esc(current?.name_ar || current?.name_en || 'جدول الترتيب')}</h1>
+
+    ${leagueChips(leagues, {
+      active: league,
+      href: (id) => `/standings?league=${id}`,
+      // لا شريحة "الكل": الجدول يعرض دورياً واحداً بطبيعته، وشريحة
+      // تعد بترتيب موحّد لثماني بطولات لا معنى له.
+      all: false,
+    })}
+
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+    ${!error && (!rows || rows.length === 0) ? `
+      <div class="card" style="text-align:center;padding:40px 20px">
+        <h3>لا يوجد ترتيب لهذه البطولة</h3>
+        <p class="section-sub" style="margin-top:8px">
+          البطولات الإقصائية (كدوري الأبطال في أدواره الأولى) قد لا يكون لها جدول.
+        </p>
+      </div>` : ''}
+
+    ${rows && rows.length ? `
+    <div class="table-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th class="c">#</th><th>الفريق</th>
+            <th class="c">لعب</th><th class="c">فاز</th><th class="c">تعادل</th><th class="c">خسر</th>
+            <th class="c">له</th><th class="c">عليه</th><th class="c">الفارق</th>
+            <th class="c">نقاط</th><th class="c">آخر ٥</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r) => `
+          <tr>
+            <td class="c num rank">${esc(String(r.rank))}</td>
+            <td class="team">
+              ${teamBadge(r.team_name, r.logo_url)}
+              <span class="fx-name">${esc(r.team_name)}</span>
+            </td>
+            <td class="c num">${esc(String(r.played))}</td>
+            <td class="c num">${esc(String(r.win))}</td>
+            <td class="c num">${esc(String(r.draw))}</td>
+            <td class="c num">${esc(String(r.lose))}</td>
+            <td class="c num">${esc(String(r.goals_for))}</td>
+            <td class="c num">${esc(String(r.goals_against))}</td>
+            <!-- dir="ltr" على الخلية وحدها: "+9" في فقرة عربية
+                 يعيد المتصفح ترتيبها إلى "9+" لأن الإشارة محايدة
+                 الاتجاه فتلتحق بما حولها. الرقم وحده لا يكفي —
+                 السالب يصير "3-" وهو أسوأ لأنه يبدو صحيحاً. -->
+            <td class="c num" dir="ltr">${r.goals_diff > 0 ? '+' : ''}${esc(String(r.goals_diff))}</td>
+            <td class="c num pts">${esc(String(r.points))}</td>
+            <td class="c form">${formDots(r.form)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+  </div>
+</div>`;
+
+  return layout({
+    title: `ترتيب ${current?.name_ar || ''}`.trim(),
+    description: 'جداول ترتيب الدوريات الكبرى — نقاط، فارق أهداف، وآخر خمس مباريات.',
+    body, settings, active: '/standings',
+  });
+}
+
+function renderMatches(settings, { day, fixtures, days, leagues, league }) {
   const today = riyadhToday();
   const groups = groupByLeague(fixtures);
 
@@ -769,9 +780,14 @@ function renderMatches(settings, { day, fixtures, days }) {
       كل الأوقات بتوقيت الرياض. النتائج تُحدَّث أثناء اللعب.
     </p>
 
+    ${leagueChips(leagues, {
+      active: league,
+      href: (id) => `/?date=${day}${id ? `&league=${id}` : ''}`,
+    })}
+
     <nav class="daystrip">
       ${strip.map((d) => `
-        <a class="day${d.active ? ' active' : ''}" href="/matches?date=${esc(d.day)}">
+        <a class="day${d.active ? ' active' : ''}" href="/?date=${esc(d.day)}${league ? `&amp;league=${esc(String(league))}` : ''}">
           <span class="dw">${esc(d.weekday)}</span>
           <span class="dl">${esc(d.label)}</span>
           <span class="dc num">${d.count ? esc(String(d.count)) : '—'}</span>
@@ -787,6 +803,7 @@ function renderMatches(settings, { day, fixtures, days }) {
         <header class="lg-head">
           ${g.logo ? `<img src="${esc(g.logo)}" alt="" width="22" height="22" loading="lazy">` : ''}
           <h2>${esc(g.name)}</h2>
+          <a class="lg-link" href="/standings?league=${esc(String(g.id))}">الترتيب</a>
           <span class="lg-count num">${esc(String(g.fixtures.length))}</span>
         </header>
         <div class="lg-body">${g.fixtures.map(fixtureRow).join('')}</div>
@@ -817,9 +834,9 @@ function renderNotFound(settings) {
 }
 
 module.exports = {
-  renderHome, renderPage, renderContact, renderNotFound,
+  renderPage, renderContact, renderNotFound,
   renderForgot, renderReset, renderResetDone,
   renderLogin, renderRegister, renderAccount,
-  renderMatches, riyadhToday, shiftDay,
+  renderMatches, renderStandings, riyadhToday, shiftDay,
   esc,
 };

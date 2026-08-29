@@ -782,3 +782,81 @@ button.btn {
   .strip-head { flex-direction: column; align-items: stretch; }
   .strip-head .btn { text-align: center; justify-content: center; }
 }
+
+/* ═══════════════ الشرائح والجدول ═══════════════ */
+
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 16px;
+  scrollbar-width: none;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chips .chip {
+  flex: 0 0 auto;
+  padding: 8px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13.5px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chips .chip:hover { color: var(--text); border-color: var(--text-faint); }
+.chips .chip.active {
+  background: var(--crown);
+  border-color: var(--crown);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/* رابط "الترتيب" في ترويسة الدوري */
+.lg-link {
+  margin-inline-start: auto;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.lg-link:hover { color: var(--correct); border-bottom-color: currentColor; }
+.lg-head .lg-count { margin-inline-start: 12px; }
+
+/* الجدول: يمرَّر أفقياً على الجوال بدل أن يُقلّص الأعمدة حتى
+   تصير الأرقام غير مقروءة. */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.tbl { width: 100%; border-collapse: collapse; min-width: 640px; }
+.tbl th, .tbl td { padding: 11px 10px; border-bottom: 1px solid var(--border); }
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl th {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-faint);
+  text-align: start;
+  white-space: nowrap;
+}
+.tbl .c { text-align: center; }
+.tbl .num { font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.tbl .rank { color: var(--text-faint); width: 34px; }
+.tbl .pts { font-weight: 700; color: var(--crown); }
+.tbl .team { display: flex; align-items: center; gap: 9px; min-width: 170px; }
+.tbl tbody tr:hover { background: rgba(255,255,255,.02); }
+
+/* الفورمة: دوائر لا حروف. "WWDLW" يقرؤها من يعرف الاصطلاح وحده. */
+.form { white-space: nowrap; }
+.form .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-inline-start: 3px;
+}
+.form .dot.w { background: var(--correct); }
+.form .dot.l { background: var(--wrong); }
+.form .dot.d { background: var(--text-faint); }
