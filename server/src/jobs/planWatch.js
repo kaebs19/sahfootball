@@ -8,6 +8,7 @@
 // ونفس المنطق للحصة: تجاوزها يعني توقف المزامنة حتى منتصف الليل،
 // وهو ما يحدث فعلاً حين يُضاف دوري جديد بلا حساب.
 const provider = require('../services/footballProvider');
+const rateLimiter = require('../utils/rateLimiter');
 const { sendMail } = require('../services/mailer');
 const { providerAlert } = require('../services/mailTemplates');
 const redis = require('../config/redis');
@@ -102,7 +103,57 @@ async function check() {
     }
   }
 
-  // ── الحصة اليومية ────────────────────────────────────────────
+  // ── حدّنا الداخلي ────────────────────────────────────────────
+  //
+  // هذا الفحص أُضيف بعد عطل حقيقي: توقفت المزامنة يوماً كاملاً
+  // برسالة "Daily API request limit reached" بينما حصة المزوّد
+  // مستهلَكة 5% فقط. الحدّ الذي نفد كان حدَّنا نحن — بقي على
+  // الافتراضي 100 (خطة مجانية) بعد الترقية إلى Pro.
+  //
+  // المراقبة كانت تقرأ عدّاد المزوّد وحده فلم ترَ شيئاً: العطل
+  // عندنا، والرسالة تشير إليه. الآن نقارن العدّادين، والتناقض
+  // بينهما هو الإشارة.
+  const usedLocal = await rateLimiter.usedToday().catch(() => 0);
+  const localLimit = rateLimiter.DAILY_LIMIT;
+
+  if (localLimit && status.limit && localLimit < status.limit) {
+    await once(`limit-mismatch:${localLimit}:${status.limit}`, 7 * 86400, async () => {
+      await sendMail({
+        to,
+        subject: 'حدّ الطلبات الداخلي أقل من حدّ الاشتراك',
+        ...providerAlert({
+          title: 'إعداد FOOTBALL_DAILY_LIMIT أقل مما يسمح به اشتراكك',
+          lines: [
+            `حدّنا الداخلي: <strong>${localLimit}</strong> · حدّ الاشتراك: <strong>${status.limit}</strong>`,
+            'المزامنة ستتوقف عند الحدّ الأصغر وترد "Daily API request limit reached" — وهي رسالة توحي بأن المزوّد رفض بينما هو لم يُسأل.',
+          ],
+          action: `اضبط FOOTBALL_DAILY_LIMIT=${status.limit} في .env وأعد التشغيل`,
+        }),
+      });
+      logger.warn(`[planWatch] تنبيه: الحدّ الداخلي ${localLimit} < حدّ الاشتراك ${status.limit}`);
+    });
+  }
+
+  if (localLimit && usedLocal / localLimit >= QUOTA_RATIO) {
+    const day = new Date().toISOString().slice(0, 10);
+    await once(`quota-local:${day}`, 26 * 3600, async () => {
+      await sendMail({
+        to,
+        subject: `استُهلك ${Math.round((usedLocal / localLimit) * 100)}% من الحدّ الداخلي`,
+        ...providerAlert({
+          title: 'العدّاد الداخلي يقترب من حدّه',
+          lines: [
+            `المستهلك: <strong>${usedLocal}</strong> من <strong>${localLimit}</strong>`,
+            `وحصة المزوّد الفعلية: ${status.used} من ${status.limit}.`,
+            'عند بلوغ الحدّ الداخلي تتوقف المزامنة حتى منتصف الليل UTC.',
+          ],
+          action: 'راجع FOOTBALL_DAILY_LIMIT أو الدوريات المفعّلة',
+        }),
+      });
+    });
+  }
+
+  // ── حصة المزوّد ──────────────────────────────────────────────
   if (status.limit && status.used / status.limit >= QUOTA_RATIO) {
     const day = new Date().toISOString().slice(0, 10);
     await once(`quota:${day}`, 26 * 3600, async () => {
