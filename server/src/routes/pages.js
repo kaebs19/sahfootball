@@ -571,12 +571,26 @@ router.post('/predict', async (req, res) => {
   const fixtureId = Number(req.body?.fixture);
   const back = (suffix) => res.redirect(303, `/match/${fixtureId}${suffix}`);
 
+  // زر "من سيفوز؟" يرسل pick بلا أرقام. الأرقام المكتوبة تسبقه
+  // حين توجد: من عدّل النتيجة يقصدها، والاتجاه مشتقّ منها أصلاً.
+  const typed = {
+    home: Number(req.body?.home),
+    away: Number(req.body?.away),
+  };
+  const hasTyped = Number.isInteger(typed.home) && Number.isInteger(typed.away);
+  const preset = predictionService.DEFAULT_SCORELINE[String(req.body?.pick || '')];
+
+  const score = hasTyped ? typed : preset;
+  if (!score) {
+    return back('?err=' + encodeURIComponent('اختر الفائز أو اكتب النتيجة.'));
+  }
+
   try {
     await predictionService.submit({
       userId: session.userId,
       fixtureId,
-      home: Number(req.body?.home),
-      away: Number(req.body?.away),
+      home: score.home,
+      away: score.away,
     });
   } catch (err) {
     if (err.status && err.expose) {
@@ -635,6 +649,13 @@ async function buildPredict(req, settings, fixture) {
     viewer: Boolean(settings.viewer),
     csrf: session?.csrf || '',
     mine,
+    // الاتجاه مشتقّ من التوقّع المحفوظ لا مخزّن معه: قيمة واحدة
+    // في القاعدة (النتيجة) لا تتناقض مع نفسها.
+    pick: predictionService.outcomeOf(mine),
+    // النقاط من الإعدادات لا أرقاماً مكتوبة في النص: الأدمن يعدّلها
+    // من اللوحة، ووعدٌ بخمس نقاط بينما النظام يمنح ثلاثاً هو أسوأ
+    // ما يمكن أن يقرأه لاعب.
+    points: await predictionService.points(),
     saved: req.query.saved === '1',
     error: req.query.err ? String(req.query.err).slice(0, 120) : null,
   };

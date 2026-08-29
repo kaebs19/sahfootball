@@ -7,6 +7,8 @@
 // ثغرة نزاهة في الباب المنسي لا خطأ ظاهراً.
 //
 // القاعدة الذهبية هنا: لا توقّع بعد الانطلاق. كل ما عداها تفاصيل.
+const settingsRepo = require('../repositories/settingsRepo');
+const { DEFAULT_SCORING } = require('./scoringService');
 const predictionRepo = require('../repositories/predictionRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
 
@@ -55,4 +57,33 @@ function isOpen(fixture) {
   return fixture.status === 'scheduled' && new Date(fixture.kickoff_at) > new Date();
 }
 
-module.exports = { submit, isOpen, PredictionError, MAX_GOALS };
+/**
+ * نتيجة افتراضية لاتجاه مختار.
+ *
+ * من يضغط "يفوز الأهلي" يريد أن يقول ذلك لا أن يخمّن 2-1. النتائج
+ * هنا هي الأشيع في كرة القدم فعلاً، وتعطيه نقاط الاتجاه على الأقل
+ * إن لم يعدّلها — وهو أفضل من أن يغادر بلا توقّع.
+ */
+const DEFAULT_SCORELINE = {
+  home: { home: 1, away: 0 },
+  draw: { home: 1, away: 1 },
+  away: { home: 0, away: 1 },
+};
+
+/** اتجاه توقّع محفوظ: 'home' | 'draw' | 'away'. */
+function outcomeOf(prediction) {
+  if (!prediction) return null;
+  if (prediction.pred_home > prediction.pred_away) return 'home';
+  if (prediction.pred_home < prediction.pred_away) return 'away';
+  return 'draw';
+}
+
+/** جدول النقاط المعمول به — من الإعدادات، وإلا الافتراضي. */
+async function points() {
+  return (await settingsRepo.get('scoring').catch(() => null)) ?? DEFAULT_SCORING;
+}
+
+module.exports = {
+  submit, isOpen, outcomeOf, points,
+  DEFAULT_SCORELINE, PredictionError, MAX_GOALS,
+};

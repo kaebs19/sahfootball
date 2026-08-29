@@ -1544,3 +1544,95 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   padding: 6px 0;
 }
 .pf-locked b { color: var(--crown); }
+
+/* ═══════════════ من سيفوز؟ ═══════════════ */
+
+.pq {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 12px;
+}
+.pq-sub {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.picks {
+  display: grid;
+  grid-template-columns: 1fr 78px 1fr;
+  gap: 8px;
+}
+.pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 14px 8px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--fill);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pick span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick:hover { border-color: var(--text-faint); }
+/* المختار بالأخضر: قاعدة الهوية — الأخضر للصح والتأكيد.
+   والذهبي محجوز للنقاط والرتب، فلا يُستعمل هنا. */
+.pick.on {
+  border-color: var(--correct);
+  background: rgba(18, 224, 126, 0.1);
+}
+.pick .fx-logo { width: 32px; height: 32px; }
+.pick-x {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 15px;
+}
+
+/* دعوة التسجيل */
+.pj { text-align: center; padding: 6px 0 2px; }
+.pj-q { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.pj-teams {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+.pj-or { color: var(--text-faint); font-size: 12px; }
+.pj-lede {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  line-height: 1.9;
+  max-width: 420px;
+  margin: 0 auto 18px;
+}
+.pj-lede b { color: var(--crown); }
+.pj-cta { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.pj-cta .btn { min-width: 140px; justify-content: center; }
+
+@media (max-width: 560px) {
+  .picks { grid-template-columns: 1fr 62px 1fr; gap: 6px; }
+  .pick { padding: 11px 6px; font-size: 12px; }
+  .pick .fx-logo, .pick-x { width: 28px; height: 28px; }
+  .pj-cta .btn { flex: 1; min-width: 0; }
+}

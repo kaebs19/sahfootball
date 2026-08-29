@@ -1168,33 +1168,77 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
 
     ${predict ? `
     <section class="card sec predict">
-      <h2>توقّعك</h2>
+      <h2>توقعات</h2>
       ${predict.saved ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
       ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
 
-      ${predict.open ? (predict.viewer ? `
+      ${!predict.viewer ? `
+        <!-- زائر غير مسجّل: الدعوة صريحة بزر لا سطر نصّي.
+             "سجّل الدخول لتتوقّع" في فقرة رمادية يمرّ عليه القارئ
+             كأنه تنبيه لا دعوة. -->
+        <div class="pj">
+          <div class="pj-q">من سيفوز؟</div>
+          <div class="pj-teams">
+            <span>${esc(f.home_team_name)}</span>
+            <span class="pj-or">أو</span>
+            <span>${esc(f.away_team_name)}</span>
+          </div>
+          <p class="pj-lede">
+            سجّل توقّعك وانضم للمنافسة على العرش. النتيجة المضبوطة
+            <b>${esc(String(predict.points.exact))}</b> نقاط،
+            وفارق الأهداف الصحيح <b>${esc(String(predict.points.diff))}</b>،
+            والفوز الصحيح <b>${esc(String(predict.points.outcome))}</b>.
+          </p>
+          <div class="pj-cta">
+            <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
+            <a class="btn btn-ghost" href="/login">عندي حساب</a>
+          </div>
+        </div>` : predict.open ? `
         <form method="post" action="/predict" class="pf">
           ${csrfField(predict.csrf)}
           <input type="hidden" name="fixture" value="${esc(String(f.id))}">
+
+          <!-- الخطوة الأولى: السؤال الذي يعرف كل مشجّع جوابه.
+               ثلاثة أزرار تحفظ نتيجة افتراضية للاتجاه المختار، ثم
+               تُعدَّل الأرقام لمن يريد الدقة. البدء بحقلي أرقام
+               فارغين يسأل سؤالاً أصعب مما يريد أغلب الناس الإجابة
+               عنه. -->
+          <div class="pq">من سيفوز؟</div>
+          <div class="picks">
+            <button class="pick${predict.pick === 'home' ? ' on' : ''}" type="submit" name="pick" value="home">
+              ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
+              <span>${esc(f.home_team_name)}</span>
+            </button>
+            <button class="pick${predict.pick === 'draw' ? ' on' : ''}" type="submit" name="pick" value="draw">
+              <span class="pick-x">=</span>
+              <span>تعادل</span>
+            </button>
+            <button class="pick${predict.pick === 'away' ? ' on' : ''}" type="submit" name="pick" value="away">
+              ${teamBadge(f.away_team_name, f.away_team_logo, f.away_team_id)}
+              <span>${esc(f.away_team_name)}</span>
+            </button>
+          </div>
+
+          <div class="pq pq-sub">النتيجة بالضبط</div>
           <div class="pf-row">
             <label class="pf-team">
               <span>${esc(f.home_team_name)}</span>
               <input class="num" name="home" type="number" inputmode="numeric"
-                     min="0" max="99" required value="${predict.mine ? esc(String(predict.mine.pred_home)) : ''}">
+                     min="0" max="99" value="${predict.mine ? esc(String(predict.mine.pred_home)) : ''}">
             </label>
             <span class="pf-x">−</span>
             <label class="pf-team">
               <span>${esc(f.away_team_name)}</span>
               <input class="num" name="away" type="number" inputmode="numeric"
-                     min="0" max="99" required value="${predict.mine ? esc(String(predict.mine.pred_away)) : ''}">
+                     min="0" max="99" value="${predict.mine ? esc(String(predict.mine.pred_away)) : ''}">
             </label>
           </div>
           <button class="btn btn-primary" type="submit">${predict.mine ? 'تعديل التوقّع' : 'سجّل التوقّع'}</button>
-          <p class="pf-note">يُقفل التوقّع عند صافرة البداية — ${esc(untilKickoff(f.kickoff_at) || 'الآن')}.</p>
+          <p class="pf-note">
+            يُقفل التوقّع عند صافرة البداية — ${esc(untilKickoff(f.kickoff_at) || 'الآن')}.
+            مضبوطة ${esc(String(predict.points.exact))} · فارق ${esc(String(predict.points.diff))} · فوز ${esc(String(predict.points.outcome))}.
+          </p>
         </form>` : `
-        <p class="section-sub">
-          <a href="/login">سجّل الدخول</a> لتتوقّع نتيجة هذه المباراة وتنافس على العرش.
-        </p>`) : `
         <div class="pf-locked">
           ${predict.mine
             ? `توقّعك كان <b class="num" dir="ltr">${esc(String(predict.mine.pred_home))} - ${esc(String(predict.mine.pred_away))}</b>${predict.mine.points !== null && predict.mine.points !== undefined ? ` — <b>${esc(String(predict.mine.points))}</b> نقطة` : ''}`
