@@ -1351,13 +1351,14 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
         ${f.ht_home !== null && f.ht_home !== undefined
           ? `<div><dt>الشوط الأول</dt><dd class="num" dir="ltr">${esc(String(f.ht_home))} - ${esc(String(f.ht_away))}</dd></div>` : ''}
       </dl>` : ''}
-    </div>
 
-    <nav class="tabs" role="tablist" hidden></nav>
-
-    ${predict ? `
-    <section class="card sec predict" data-tab="توقّعك">
-      <h2>توقعات</h2>
+      ${predict ? `
+      <!-- التوقّع داخل بطاقة المباراة لا في تبويب مستقل.
+           هو الفعل الأساسي في الصفحة، وإخفاؤه خلف تبويب يجعله
+           خياراً ثانوياً بجانب "الإحصاءات" — وهي معلومة تُقرأ لا
+           فعل يُفعل. -->
+      <div class="mh-predict">
+        <div class="pq">من سيفوز؟</div>
       ${predict.saved ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
       ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
 
@@ -1366,7 +1367,6 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
              "سجّل الدخول لتتوقّع" في فقرة رمادية يمرّ عليه القارئ
              كأنه تنبيه لا دعوة. -->
         <div class="pj">
-          <div class="pj-q">من سيفوز؟</div>
           <div class="pj-teams">
             <span>${esc(f.home_team_name)}</span>
             <span class="pj-or">أو</span>
@@ -1393,7 +1393,6 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
                تُعدَّل الأرقام لمن يريد الدقة. البدء بحقلي أرقام
                فارغين يسأل سؤالاً أصعب مما يريد أغلب الناس الإجابة
                عنه. -->
-          <div class="pq">من سيفوز؟</div>
           <div class="picks">
             <button class="pick${predict.pick === 'home' ? ' on' : ''}" type="submit" name="pick" value="home">
               ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
@@ -1426,7 +1425,12 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
             ? `توقّعك كان <b class="num" dir="ltr">${esc(String(predict.mine.pred_home))} - ${esc(String(predict.mine.pred_away))}</b>${predict.mine.points !== null && predict.mine.points !== undefined ? ` — <b>${esc(String(predict.mine.points))}</b> نقطة` : ''}`
             : 'أُقفل التوقّع على هذه المباراة.'}
         </div>`}
-    </section>` : ''}
+      </div>` : ''}
+    </div>
+
+    <nav class="tabs" role="tablist" hidden></nav>
+
+
 
     ${hasEvents ? `
     <section class="card sec" data-tab="الأحداث">

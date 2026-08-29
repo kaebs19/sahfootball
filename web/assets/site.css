@@ -1973,3 +1973,27 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .pick .fx-logo, .pick-x { width: 20px; height: 20px; }
   .picks .pick:nth-child(2) { padding-inline: 14px; }
 }
+
+/* ═══════════════ التوقّع داخل بطاقة المباراة ═══════════════ */
+
+.mh-predict {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+/* البطاقة صارت تحمل معلومة وفعلاً معاً؛ الفاصل وحده لا يكفي
+   لتمييزهما، فنضيف خلفية خفيفة للفعل. */
+.mh-predict {
+  margin-inline: -20px;
+  margin-bottom: -22px;
+  padding: 18px 20px 20px;
+  background: var(--fill);
+  border-radius: 0 0 16px 16px;
+}
+.mh-predict .pq:first-child { margin-bottom: 12px; }
+.mh-predict .note { margin-bottom: 14px; }
+/* الملاحظة والزر لا يحتاجان عرض البطاقة كاملاً على الشاشة الواسعة. */
+.mh-predict .pf, .mh-predict .pj {
+  max-width: 520px;
+  margin-inline: auto;
+}
