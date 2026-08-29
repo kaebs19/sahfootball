@@ -1681,3 +1681,94 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   height: 1px;
   background: var(--border);
 }
+
+/* ═══════════════ حسابي: إحصاءات وسجل ═══════════════ */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+.st {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 16px 8px;
+  text-align: center;
+}
+.st b {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--crown);
+  font-variant-numeric: tabular-nums;
+}
+.st span { font-size: 11.5px; color: var(--text-faint); }
+
+/* توزيع النتائج */
+.dist { display: flex; flex-direction: column; gap: 9px; }
+.dist-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 28px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.dist-label { color: var(--text-muted); }
+.dist-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fill);
+  overflow: hidden;
+}
+.dist-bar i { display: block; height: 100%; background: var(--correct); }
+.dist-n { text-align: center; color: var(--text-faint); }
+
+/* السجل */
+.hx-head, .hx {
+  display: grid;
+  grid-template-columns: 1fr 52px 52px 42px;
+  align-items: center;
+  gap: 8px;
+}
+.hx-head {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+.hx-head span:not(:first-child) { text-align: center; }
+.hx {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+  font-size: 13px;
+}
+.hx:last-child { border-bottom: none; }
+.hx:hover { background: var(--fill); }
+/* النقطة داخل عمود المباراة لا عموداً خاصاً: عمود لثمانية بكسلات
+   يسرق عرضاً تحتاجه أسماء الفرق. */
+.hx-teams {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hx .dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; }
+.hx .dot.w { background: var(--correct); }
+.hx .dot.l { background: var(--wrong); }
+.hx .dot.p { background: var(--text-faint); }
+.hx-mine, .hx-real { text-align: center; font-size: 12.5px; }
+.hx-real { color: var(--text-muted); }
+.hx-pts { text-align: center; font-weight: 700; color: var(--crown); font-size: 12.5px; }
+
+@media (max-width: 560px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .hx-head, .hx { grid-template-columns: 1fr 46px 46px 34px; gap: 5px; }
+  .dist-row { grid-template-columns: 80px 1fr 24px; }
+}

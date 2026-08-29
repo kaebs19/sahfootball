@@ -563,11 +563,15 @@ router.post('/register', async (req, res) => {
 
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
 async function showAccount(req, res, session, extra = {}) {
-  const [settings, user, stats, creds] = await Promise.all([
+  const [settings, user, stats, creds, points, history] = await Promise.all([
     pageContext(req),
     userRepo.findById(session.userId),
     predictionRepo.profileStats(session.userId).catch(() => null),
     authService.credentials(session.userId).catch(() => null),
+    predictionService.points().catch(() => null),
+    // آخر عشرين: السجل الكامل قد يبلغ مئات الصفوف في نهاية الموسم،
+    // ومن يريد أقدم منها يريد تصفّحاً لا صفحة أطول.
+    predictionRepo.findMine(session.userId).then((r) => r.slice(0, 20)).catch(() => []),
   ]);
 
   // الحساب حُذف بينما الجلسة حية (من التطبيق مثلاً).
@@ -577,7 +581,9 @@ async function showAccount(req, res, session, extra = {}) {
   }
 
   res.type('html').send(
-    renderer.renderAccount(settings, { user, stats, creds, csrf: session.csrf, ...extra })
+    renderer.renderAccount(settings, {
+      user, stats, creds, points, history, csrf: session.csrf, ...extra,
+    })
   );
 }
 

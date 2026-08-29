@@ -559,8 +559,65 @@ function renderRegister(settings, { error, values } = {}) {
  * منها تعني واجهتين تتباعدان. الموقع يجيب عن "ماذا في حسابي وكيف
  * أتحكم به" — وهو ما يحتاجه من فقد هاتفه أو أراد حذف حسابه.
  */
-function renderAccount(settings, { user, stats, notice, error, csrf, creds }) {
-  const rank = stats?.rank ? `${stats.rank} من ${stats.totalPlayers}` : '—';
+/** "كلمة مرور · جوجل" — ما يستطيع صاحب الحساب الدخول به. */
+function loginMethods(creds) {
+  const list = [];
+  if (creds?.hasPassword) list.push('كلمة مرور');
+  if (creds?.hasGoogle) list.push('جوجل');
+  if (creds?.hasApple) list.push('Apple');
+  return list.length ? list.join(' · ') : '—';
+}
+
+/**
+ * توزيع النتائج: كم مرة نتيجة مضبوطة، وكم فارق، وكم اتجاه، وكم لا شيء.
+ *
+ * المستودع يرجع صفوف {points, count} — أرقاماً خاماً لا معنى لها
+ * وحدها. نترجمها بجدول النقاط المعمول به: من ينال 5 نقاط أصاب
+ * النتيجة، ومن ينال 0 لم يصب شيئاً. وربطها بالجدول لا برقم مكتوب
+ * يعني أن تعديل الأدمن للنقاط يعيد تسمية الصفوف تلقائياً.
+ */
+function distribution(stats, points) {
+  const rows = stats?.points_distribution || [];
+  if (!rows.length) return [];
+
+  const nameOf = (p) => {
+    if (p === points.exact) return 'نتيجة مضبوطة';
+    if (p === points.diff) return 'فارق صحيح';
+    if (p === points.outcome) return 'اتجاه صحيح';
+    if (p === 0) return 'لم يُصب';
+    return `${p} نقاط`;
+  };
+
+  const total = rows.reduce((sum, r) => sum + r.count, 0) || 1;
+  return rows
+    .slice()
+    .sort((a, b) => b.points - a.points)
+    .map((r) => ({
+      label: nameOf(r.points),
+      count: r.count,
+      pct: Math.round((r.count / total) * 100),
+    }));
+}
+
+/** صف في سجل التوقعات. */
+function historyRow(h) {
+  const settled = h.points !== null && h.points !== undefined;
+  const done = h.status === 'finished';
+  const cls = !settled ? 'p' : h.points > 0 ? 'w' : 'l';
+
+  return `
+<a class="hx" href="/match/${esc(String(h.fixture_id))}">
+  <span class="dot ${cls}"></span>
+  <span class="hx-teams">${esc(h.home_team_name)} — ${esc(h.away_team_name)}</span>
+  <span class="hx-mine num" dir="ltr" title="توقّعك">${esc(String(h.pred_home))}-${esc(String(h.pred_away))}</span>
+  <span class="hx-real num" dir="ltr" title="النتيجة">${done ? `${esc(String(h.goals_home ?? 0))}-${esc(String(h.goals_away ?? 0))}` : '—'}</span>
+  <span class="hx-pts num">${settled ? esc(String(h.points)) : (done ? '…' : 'لم تُلعب')}</span>
+</a>`;
+}
+
+function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history }) {
+  const rank = stats?.rank ? `${stats.rank}` : '—';
+  const dist = distribution(stats, points || { exact: 5, diff: 3, outcome: 2 });
   const body = `
 <div class="page">
   <div class="wrap auth-wrap" style="max-width:560px">
@@ -570,10 +627,31 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds }) {
     <div class="card">
       <h1>${esc(user.display_name || 'حسابي')}</h1>
       <div class="row"><span class="k">البريد</span><span dir="ltr">${esc(user.email)}</span></div>
-      <div class="row"><span class="k">النقاط</span><span>${esc(String(stats?.points ?? 0))}</span></div>
-      <div class="row"><span class="k">المركز</span><span>${esc(rank)}</span></div>
-      <div class="row"><span class="k">التوقعات</span><span>${esc(String(stats?.total ?? 0))}</span></div>
+      <div class="row"><span class="k">طريقة الدخول</span><span>${esc(loginMethods(creds))}</span></div>
     </div>
+
+    <!-- الإحصاءات: أرقام تُقرأ بنظرة لا صفوف تُقرأ سطراً سطراً. -->
+    <div class="stats-grid">
+      <div class="card st"><b class="num">${esc(String(stats?.total_points ?? 0))}</b><span>نقطة</span></div>
+      <div class="card st"><b class="num">${esc(rank)}</b><span>المركز</span></div>
+      <div class="card st"><b class="num">${esc(String(stats?.predictions_count ?? 0))}</b><span>توقّع</span></div>
+      <div class="card st"><b class="num">${stats?.accuracy === null || stats?.accuracy === undefined ? '—' : esc(String(stats.accuracy)) + '٪'}</b><span>الدقّة</span></div>
+      <div class="card st"><b class="num">${esc(String(stats?.longest_streak ?? 0))}</b><span>أطول سلسلة</span></div>
+      <div class="card st"><b class="num">${esc(String(stats?.current_streak ?? 0))}</b><span>السلسلة الحالية</span></div>
+    </div>
+
+    ${dist.length ? `
+    <div class="card" style="margin-top:16px">
+      <h3>توزيع نتائجك</h3>
+      <div class="dist">
+        ${dist.map((d) => `
+          <div class="dist-row">
+            <span class="dist-label">${esc(d.label)}</span>
+            <span class="dist-bar"><i style="width:${d.pct}%"></i></span>
+            <span class="dist-n num">${esc(String(d.count))}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
 
     <div class="card" style="margin-top:16px">
       <h3>${creds?.hasPassword ? 'تغيير كلمة المرور' : 'تعيين كلمة مرور'}</h3>
@@ -624,6 +702,16 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds }) {
         <button class="btn btn-danger" type="submit">حذف حسابي نهائياً</button>
       </form>
     </div>
+
+    ${history && history.length ? `
+    <div class="card" style="margin-top:16px">
+      <h3>سجلّي</h3>
+      <div class="hx-head">
+        <span>المباراة</span><span>توقّعك</span><span>النتيجة</span><span>النقاط</span>
+      </div>
+      <div class="hxs">${history.map(historyRow).join('')}</div>
+      ${history.length >= 20 ? '<p class="section-sub" style="margin-top:10px;text-align:center">آخر 20 توقّعاً</p>' : ''}
+    </div>` : ''}
 
     <form method="post" action="/logout" style="margin-top:16px">
       ${csrfField(csrf)}
