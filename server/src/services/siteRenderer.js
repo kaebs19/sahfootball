@@ -160,6 +160,10 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
           <a href="/contact">اتصل بنا</a>
         </div>
         <div class="foot-col">
+          <h4>حسابك</h4>
+          <a href="/forgot">استعادة كلمة المرور</a>
+        </div>
+        <div class="foot-col">
           <h4>قانوني</h4>
           <a href="/privacy">سياسة الخصوصية</a>
           <a href="/terms">شروط الاستخدام</a>
@@ -364,6 +368,105 @@ function renderContact(page, settings, { sent, error, values } = {}) {
   return layout({ title: page?.title || 'اتصل بنا', body, settings, active: '/contact' });
 }
 
+/**
+ * استعادة كلمة المرور — الخطوة الأولى: البريد.
+ *
+ * لماذا على الموقع أصلاً والتطبيق فيه نفس الشاشة؟ لأن من فقد
+ * كلمته قد يكون فقد الوصول للتطبيق نفسه: حذفه، أو بدّل هاتفه، أو
+ * خرج من حسابه ولا يتذكر شيئاً. رابط يفتح في أي متصفح هو الطريق
+ * الوحيد الذي لا يشترط شيئاً مسبقاً.
+ */
+function renderForgot(settings, { error, values } = {}) {
+  const v = values || {};
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap">
+    <div class="card">
+      <h1>استعادة كلمة المرور</h1>
+      <p class="section-sub" style="margin:10px 0 22px">
+        اكتب بريدك المسجّل ونرسل لك رمزاً من ستة أرقام صالحاً لعشر دقائق.
+      </p>
+      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <form method="post" action="/forgot">
+        <div class="field">
+          <label for="email">البريد الإلكتروني</label>
+          <input id="email" name="email" type="email" dir="ltr" maxlength="160"
+                 autocomplete="email" value="${esc(v.email)}" required>
+        </div>
+        <button class="btn btn-primary" type="submit">أرسل الرمز</button>
+      </form>
+      <p class="section-sub" style="margin-top:18px">
+        وصلك رمز من قبل؟ <a href="/reset">أدخله هنا</a>.
+      </p>
+    </div>
+  </div>
+</div>`;
+  return layout({ title: 'استعادة كلمة المرور', body, settings, active: null });
+}
+
+/**
+ * الخطوة الثانية: الرمز وكلمة السر الجديدة.
+ *
+ * البريد حقل مستقل لا قيمة مخفية مُمرّرة من الخطوة السابقة: من
+ * يفتح بريده على جهاز آخر ويكمل من هناك يجب أن يستطيع ذلك. وأن
+ * يكتبه ثانية أهون من أن يعلق في صفحة لا تقبل إلا مساراً واحداً.
+ */
+function renderReset(settings, { error, values, sent } = {}) {
+  const v = values || {};
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap">
+    <div class="card">
+      <h1>كلمة مرور جديدة</h1>
+      ${sent ? `<div class="note ok">
+        إن كان البريد مسجّلاً عندنا فالرمز في طريقه إليه الآن. تحقق من صندوقك
+        (ومجلد المهملات أحياناً).
+      </div>` : ''}
+      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <form method="post" action="/reset">
+        <div class="field">
+          <label for="email">البريد الإلكتروني</label>
+          <input id="email" name="email" type="email" dir="ltr" maxlength="160"
+                 autocomplete="email" value="${esc(v.email)}" required>
+        </div>
+        <div class="field">
+          <label for="code">الرمز</label>
+          <input id="code" name="code" dir="ltr" inputmode="numeric" pattern="[0-9]{6}"
+                 maxlength="6" autocomplete="one-time-code" placeholder="000000" required>
+        </div>
+        <div class="field">
+          <label for="password">كلمة المرور الجديدة</label>
+          <input id="password" name="password" type="password" minlength="8"
+                 maxlength="200" autocomplete="new-password" required>
+        </div>
+        <button class="btn btn-primary" type="submit">حفظ كلمة المرور</button>
+      </form>
+      <p class="section-sub" style="margin-top:18px">
+        لم يصلك الرمز أو انتهت صلاحيته؟ <a href="/forgot">اطلب رمزاً جديداً</a>.
+      </p>
+    </div>
+  </div>
+</div>`;
+  return layout({ title: 'كلمة مرور جديدة', body, settings, active: null });
+}
+
+/** بعد النجاح — الوجهة هي التطبيق لا الموقع، والصفحة تقول ذلك صراحة. */
+function renderResetDone(settings) {
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap">
+    <div class="card" style="text-align:center">
+      <h1>تم تغيير كلمة المرور</h1>
+      <p class="section-sub" style="margin:12px 0 24px">
+        افتح التطبيق وسجّل الدخول بكلمتك الجديدة.
+      </p>
+      <a class="btn btn-primary" href="/">العودة للرئيسية</a>
+    </div>
+  </div>
+</div>`;
+  return layout({ title: 'تم تغيير كلمة المرور', body, settings, active: null });
+}
+
 /** صفحة 404 بنفس هوية الموقع بدل صفحة Express البيضاء. */
 function renderNotFound(settings) {
   const body = `
@@ -379,4 +482,8 @@ function renderNotFound(settings) {
   return layout({ title: 'الصفحة غير موجودة', body, settings, active: null });
 }
 
-module.exports = { renderHome, renderPage, renderContact, renderNotFound, esc };
+module.exports = {
+  renderHome, renderPage, renderContact, renderNotFound,
+  renderForgot, renderReset, renderResetDone,
+  esc,
+};

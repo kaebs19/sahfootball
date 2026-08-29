@@ -603,3 +603,15 @@ button.btn {
     padding: 42px 0;
   }
 }
+
+/* صفحات الحساب (استعادة كلمة المرور).
+   عمود ضيق في الوسط: نموذج من حقلين أو ثلاثة لا يحتمل عرض الصفحة
+   كاملاً — الحقل الممتد على 1200 بكسل يصعب ملؤه ويبدو خطأً. */
+.auth-wrap {
+  max-width: 460px;
+  margin-inline: auto;
+  padding-block: 40px 70px;
+}
+.auth-wrap h1 { font-size: 1.5rem; }
+.auth-wrap .card { padding: 26px 24px; }
+.auth-wrap .btn { width: 100%; justify-content: center; }

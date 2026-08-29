@@ -11,6 +11,7 @@ const express = require('express');
 const siteRepo = require('../repositories/siteRepo');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
+const authService = require('../services/authService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -104,6 +105,96 @@ router.post('/contact', async (req, res) => {
   }
 
   res.redirect(303, '/contact?sent=1');
+});
+
+// ─────────────────── استعادة كلمة المرور ───────────────────
+//
+// نفس منطق /api/auth/forgot-password تماماً، بواجهة HTML بدل JSON.
+// المنطق كله في authService: الصفحة هنا نموذج ورسائل، ولا تعرف
+// شيئاً عن الرموز ولا Redis ولا التجزئة.
+
+router.get('/forgot', async (req, res) => {
+  res.type('html').send(renderer.renderForgot(await loadSettings()));
+});
+
+router.post('/forgot', async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  const settings = await loadSettings();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).type('html').send(
+      renderer.renderForgot(settings, {
+        error: 'أدخل بريداً إلكترونياً صحيحاً.',
+        values: { email },
+      })
+    );
+  }
+
+  try {
+    await authService.forgotPassword(email);
+  } catch (err) {
+    // فشل المزوّد (حد يومي، انقطاع). authService يمسح الرمز حين
+    // يفشل الإرسال، فلا يبقى المستخدم ينتظر بريداً لن يصل.
+    logger.error('[pages] forgot-password failed:', err.message);
+    return res.status(503).type('html').send(
+      renderer.renderForgot(settings, {
+        error: 'تعذّر إرسال الرمز الآن. جرّب بعد قليل.',
+        values: { email },
+      })
+    );
+  }
+
+  // تحويل 303 (POST/Redirect/GET): تحديث الصفحة بعده لا يعيد
+  // إرسال رمز جديد. ونمرر البريد في الرابط لملء الحقل التالي —
+  // بريد صاحب الطلب نفسه ولا سر فيه بالنسبة له، والرمز وحده هو
+  // السر ولا يمر هنا أبداً.
+  res.redirect(303, `/reset?sent=1&email=${encodeURIComponent(email)}`);
+});
+
+router.get('/reset', async (req, res) => {
+  res.type('html').send(
+    renderer.renderReset(await loadSettings(), {
+      sent: req.query.sent === '1',
+      values: { email: String(req.query.email || '') },
+    })
+  );
+});
+
+router.post('/reset', async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  const code = String(req.body?.code || '').trim();
+  const password = String(req.body?.password || '');
+  const settings = await loadSettings();
+
+  const fail = (error, status = 400) =>
+    res.status(status).type('html').send(
+      renderer.renderReset(settings, { error, values: { email } })
+    );
+
+  if (!email || !/^[0-9]{6}$/.test(code)) {
+    return fail('تحقق من البريد ومن الرمز — الرمز ستة أرقام.');
+  }
+  if (password.length < 8) {
+    return fail('كلمة المرور يجب ألا تقل عن ثمانية أحرف.');
+  }
+
+  // الخدمة ترمي AuthError برسالة موحّدة عمداً ("الرمز غير صحيح أو
+  // منتهي الصلاحية") ولا تفرّق بين رمز خاطئ ورمز منتهٍ وبريد غير
+  // مسجّل — لأن التفريق يحوّل هذه الصفحة إلى أداة تكشف أي البريدات
+  // لها حساب. نعرض رسالتها كما هي ولا نضيف تفصيلاً من عندنا.
+  //
+  // ولا نستعمل التوكنات التي ترجعها (تسجّل الدخول تلقائياً): لا
+  // جلسة على الموقع، والوجهة هي التطبيق. إصدارها هنا بلا ضرر —
+  // تنتهي صلاحيتها بلا استعمال.
+  try {
+    await authService.resetPassword({ email, code, newPassword: password });
+  } catch (err) {
+    if (err.status && err.expose) return fail(err.message, err.status);
+    logger.error('[pages] reset-password failed:', err.message);
+    return fail('تعذّر تغيير كلمة المرور الآن. جرّب بعد قليل.', 503);
+  }
+
+  res.type('html').send(renderer.renderResetDone(settings));
 });
 
 // بقية الصفحات المنشورة
