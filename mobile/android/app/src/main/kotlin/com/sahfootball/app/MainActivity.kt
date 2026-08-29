@@ -10,6 +10,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import io.flutter.embedding.android.FlutterActivity
+import android.content.Intent
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -28,6 +29,14 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
 
+    /**
+     * حمولة إشعار ضُغط عليه قبل أن يجهز Dart.
+     *
+     * الضغط على إشعار والتطبيق مغلق يشغّله من الصفر، فتصل النية
+     * (Intent) قبل أن تُبنى شجرة Flutter بوقت طويل.
+     */
+    private var pendingOpen: Map<String, Any?>? = null
+
     /** ينتظر نتيجة نافذة الصلاحية (أندرويد 13+) ليرد على Dart. */
     private var pendingResult: MethodChannel.Result? = null
 
@@ -37,6 +46,35 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createNotificationChannel()
+        readOpenIntent(intent)
+    }
+
+    /**
+     * التطبيق كان يعمل وضُغط إشعار: أندرويد لا ينشئ نشاطاً جديداً
+     * (launchMode=singleTop) بل يسلّم النية هنا. بلا هذه الدالة
+     * يعمل الانتقال حين يكون التطبيق مغلقاً ولا يعمل حين يكون
+     * مفتوحاً — وهو أسوأ من ألا يعمل أبداً لأنه يبدو عشوائياً.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        readOpenIntent(intent)
+    }
+
+    /**
+     * حقول السيرفر (type وfixtureId) تصل كإضافات على النية:
+     * FCM يضعها هناك سواء عرض الإشعار بنفسه أو عرضته PushService.
+     */
+    private fun readOpenIntent(intent: Intent?) {
+        val extras = intent?.extras ?: return
+        val type = extras.getString("type") ?: return
+
+        val payload = mapOf(
+            "type" to type,
+            "fixtureId" to extras.getString("fixtureId")
+        )
+        pendingOpen = payload
+        channel?.invokeMethod("onOpen", payload)
     }
 
     /**
@@ -70,6 +108,9 @@ class MainActivity : FlutterActivity() {
 
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         this.channel = channel
+        // مرجع ثابت تستعمله PushService حين يتغيّر التوكن والتطبيق
+        // يعمل. الخدمة تعمل في سياق منفصل ولا وصول لها إلى النشاط.
+        liveChannel = channel
 
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -77,6 +118,10 @@ class MainActivity : FlutterActivity() {
                 "pendingToken" -> {
                     result.success(pendingToken)
                     pendingToken = null
+                }
+                "pendingOpen" -> {
+                    result.success(pendingOpen)
+                    pendingOpen = null
                 }
                 else -> result.notImplemented()
             }
@@ -108,6 +153,11 @@ class MainActivity : FlutterActivity() {
         ActivityCompat.requestPermissions(
             this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), PERMISSION_REQUEST
         )
+    }
+
+    override fun onDestroy() {
+        if (liveChannel === channel) liveChannel = null
+        super.onDestroy()
     }
 
     override fun onRequestPermissionsResult(
@@ -154,5 +204,14 @@ class MainActivity : FlutterActivity() {
 
         /** يطابق default_notification_channel_id في AndroidManifest. */
         const val CHANNEL_ID = "malik_default"
+
+        /**
+         * القناة الحية إن كان التطبيق يعمل، وإلا null.
+         *
+         * تُمسح في onDestroy لأن الاحتفاظ بها بعد موت النشاط يسرّب
+         * المحرّك كاملاً، والنداء عليها حينها يذهب إلى العدم.
+         */
+        var liveChannel: MethodChannel? = null
+            private set
     }
 }

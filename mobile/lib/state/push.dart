@@ -9,11 +9,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../api/api_client.dart';
+import 'app_tab.dart';
 
 class Push {
   final ApiClient api;
 
-  Push(this.api) {
+  /// التبويب المعروض. الإشعار يحرّكه عند الضغط عليه.
+  final AppTab tab;
+
+  Push(this.api, this.tab) {
     _channel.setMethodCallHandler(_onCall);
   }
 
@@ -24,10 +28,40 @@ class Push {
   String? _token;
 
   Future<dynamic> _onCall(MethodCall call) async {
-    if (call.method == 'onToken') {
-      await _submit(call.arguments as String?);
+    switch (call.method) {
+      case 'onToken':
+        await _submit(call.arguments as String?);
+      case 'onOpen':
+        _open(call.arguments);
     }
     return null;
+  }
+
+  /// المستخدم ضغط الإشعار — نأخذه حيث يفعل ما يطلبه منه.
+  ///
+  /// إشعار يقول "ادخل قبل صافرة البداية" ثم يفتح آخر شاشة كان
+  /// فيها المستخدم يفقد نصف قيمته: صار عليه أن يتذكر ما قرأه ثم
+  /// يبحث عن مكانه بنفسه.
+  void _open(dynamic arguments) {
+    final data = arguments is Map ? arguments : const {};
+    switch (data['type']) {
+      // التذكير يطلب فعلاً: شاشة المباريات حيث يسجّل توقعه.
+      case 'reminder':
+        tab.select(AppTab.matches);
+      // النتيجة خبر عن أدائه: "ملفي" حيث نقاطه وسلسلته وأوسمته.
+      case 'result':
+        tab.select(AppTab.profile);
+    }
+  }
+
+  /// ما فات قبل أن نصبح جاهزين: ضغطة على إشعار فتحت التطبيق من
+  /// الصفر، فوصل الحدث قبل أن تُبنى شجرة Flutter أصلاً.
+  Future<void> _consumePendingOpen() async {
+    try {
+      _open(await _channel.invokeMethod<Map>('pendingOpen'));
+    } on PlatformException catch (_) {
+      // لا شيء ينتظر — الحالة الطبيعية.
+    }
   }
 
   /// يُنادى بعد تسجيل الدخول وعند كل إقلاع بجلسة قائمة.
@@ -49,6 +83,7 @@ class Push {
       // أجزاء من الثانية، أي قبل أن يسجّل Dart مستمعه. الكود
       // الأصلي يحتفظ به وهذا السطر يلتقطه.
       await _submit(await _channel.invokeMethod<String>('pendingToken'));
+      await _consumePendingOpen();
     } on PlatformException catch (e) {
       debugPrint('[push] تعذّر تفعيل الإشعارات: ${e.message}');
     }

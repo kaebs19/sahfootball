@@ -14,6 +14,7 @@ import 'api/api_client.dart';
 import 'brand.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
+import 'state/app_tab.dart';
 import 'state/session.dart';
 import 'widgets/brand_mark.dart';
 
@@ -24,7 +25,8 @@ Future<void> main() async {
   await initializeDateFormatting('ar');
 
   final api = ApiClient();
-  final session = Session(api);
+  final tab = AppTab();
+  final session = Session(api, tab);
   // نبدأ استعادة الجلسة قبل runApp حتى لا يرى المستخدم وميض شاشة
   // الدخول ثم قفزة للرئيسية. لا ننتظرها (بلا await) — الواجهة تعرض
   // شاشة الانتظار وتتحدث وحدها عند الانتهاء.
@@ -34,6 +36,7 @@ Future<void> main() async {
     MultiProvider(
       providers: [
         Provider.value(value: api),
+        ChangeNotifierProvider.value(value: tab),
         ChangeNotifierProvider.value(value: session),
       ],
       child: const SahApp(),

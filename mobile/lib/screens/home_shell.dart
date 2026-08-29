@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../brand.dart';
+import '../state/app_tab.dart';
 import '../state/session.dart';
 import '../widgets/brand_mark.dart';
 import 'leaderboard_screen.dart';
@@ -24,15 +25,8 @@ import 'matches_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends StatelessWidget {
   const HomeShell({super.key});
-
-  @override
-  State<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
 
   static const _titles = ['المباريات', 'مباشر', 'العرش', 'ملفي'];
   static const _profileTab = 3;
@@ -40,6 +34,9 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<Session>().user;
+    // watch لا read: فتح التطبيق من إشعار يغيّر التبويب من خارج
+    // هذه الشجرة، ولا بد أن يُعاد البناء حينها.
+    final index = context.watch<AppTab>().index;
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 16,
@@ -49,13 +46,13 @@ class _HomeShellState extends State<HomeShell> {
             // تلقائياً (قاعدة الهوية) والحفر بلون الخلفية "ليل".
             const BrandMark(size: 22, carve: Brand.night),
             const SizedBox(width: 9),
-            Text(_titles[_index]),
+            Text(_titles[index]),
           ],
         ),
         actions: [
           // الترس في تبويب ملفي وحده: الإعدادات جزء من "أنا" لا من
           // المباريات، وإظهاره في كل تبويب يجعله زينة تُتجاهل.
-          if (_index == _profileTab)
+          if (index == _profileTab)
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               tooltip: 'الإعدادات',
@@ -67,7 +64,7 @@ class _HomeShellState extends State<HomeShell> {
           // لا يضيف شيئاً — المستخدم يعرف من هو، وثلاث شاشات تعرض
           // مباريات وترتيباً لا علاقة لها باسمه، بينما الشريط أضيق
           // مكان في الشاشة.
-          if (user != null && _index == _profileTab)
+          if (user != null && index == _profileTab)
             Padding(
               padding: const EdgeInsetsDirectional.only(end: 16),
               child: Center(
@@ -83,7 +80,7 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
       body: IndexedStack(
-        index: _index,
+        index: index,
         children: const [
           MatchesScreen(),
           LiveScreen(),
@@ -98,8 +95,8 @@ class _HomeShellState extends State<HomeShell> {
           border: Border(top: BorderSide(color: Brand.borderSoft)),
         ),
         child: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
+          selectedIndex: index,
+          onDestinationSelected: (i) => context.read<AppTab>().select(i),
           destinations: const [
             NavigationDestination(
                 icon: Icon(Icons.sports_soccer_outlined),

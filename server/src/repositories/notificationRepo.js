@@ -162,6 +162,26 @@ async function markSent(userId, kind, refs) {
   );
 }
 
+/**
+ * حذف سجلّات الإرسال القديمة.
+ *
+ * الجدول موجود لمنع التكرار لا للتأريخ، وصف عمره شهر لا يمنع شيئاً:
+ * مباراته انتهت واحتُسبت ولن يُسأل عنها ثانية. بلا هذا ينمو الجدول
+ * بمعدل (مستخدم × مباراة) إلى الأبد.
+ *
+ * الحد ثلاثون يوماً لا يوم واحد: النافذة يجب أن تتجاوز بفارق مريح
+ * أطول مدة يبقى فيها صف "ذا معنى" — وهي هنا يومان (شرط
+ * unnotifiedResults). هامش واسع مقابل صفوف قليلة رخيصة.
+ */
+async function purgeOldSent(days = 30) {
+  const { rowCount } = await db.query(
+    `DELETE FROM sent_notifications
+      WHERE sent_at < now() - ($1 || ' days')::interval`,
+    [String(days)]
+  );
+  return rowCount;
+}
+
 module.exports = {
   registerToken,
   removeToken,
@@ -172,4 +192,5 @@ module.exports = {
   usersNeedingReminder,
   unnotifiedResults,
   markSent,
+  purgeOldSent,
 };

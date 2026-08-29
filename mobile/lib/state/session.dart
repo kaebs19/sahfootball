@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
 import '../models/user.dart';
+import 'app_tab.dart';
 import 'push.dart';
 
 enum SessionStatus {
@@ -19,11 +20,12 @@ enum SessionStatus {
 
 class Session extends ChangeNotifier {
   final ApiClient api;
+  final AppTab tab;
 
   /// جهاز الإشعارات. الجلسة تملكه لأن دورته هي دورتها بالضبط:
   /// يُربط الجهاز بالحساب عند الدخول ويُفكّ عند الخروج. وضعه هنا
   /// يمنع الحالة التي تصل فيها إشعارات حساب سابق لمن دخل بعده.
-  late final Push _push = Push(api);
+  late final Push _push = Push(api, tab);
 
   SessionStatus _status = SessionStatus.restoring;
   User? _user;
@@ -43,7 +45,7 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
-  Session(this.api) {
+  Session(this.api, this.tab) {
     // موت الجلسة قد يحدث في أي طلب (تجديد فاشل) — الربط هنا يجعل
     // العودة لشاشة الدخول تلقائية أينما وقع الفشل.
     api.onSessionExpired = _handleExpired;

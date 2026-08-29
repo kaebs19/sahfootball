@@ -23,6 +23,14 @@ import UserNotifications
   /// أي خطأ ظاهر.
   private var pendingToken: String?
 
+  /// ضغطة على إشعار وصلت قبل أن يصبح Dart جاهزاً.
+  ///
+  /// هذه ليست الحالة النادرة بل الشائعة: الضغط على إشعار والتطبيق
+  /// مغلق يشغّله من الصفر، فيصل didReceive قبل أن تُبنى شجرة
+  /// Flutter بوقت طويل. بلا تخزين هنا يفتح التطبيق على شاشته
+  /// الافتراضية وكأن المستخدم لم يضغط شيئاً.
+  private var pendingOpen: [String: Any]?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -51,6 +59,8 @@ import UserNotifications
       case "pendingToken":
         // Dart يسأل عند الجاهزية عمّا فات قبل أن يستمع.
         result(self?.takePendingToken())
+      case "pendingOpen":
+        result(self?.takePendingOpen())
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -84,6 +94,12 @@ import UserNotifications
     let token = pendingToken
     pendingToken = nil
     return token
+  }
+
+  private func takePendingOpen() -> [String: Any]? {
+    let open = pendingOpen
+    pendingOpen = nil
+    return open
   }
 
   override func application(
@@ -120,6 +136,33 @@ import UserNotifications
   /// الافتراضي في iOS هو الإخفاء التام. وهذا خطأ هنا تحديداً:
   /// تذكير "مباراة تُقفل بعد قليل" يصل غالباً والمستخدم داخل
   /// التطبيق في شاشة أخرى، وإخفاؤه يعني ألا يعرف حتى يخرج ويعود.
+  /// المستخدم ضغط الإشعار.
+  ///
+  /// نمرر الحمولة كما هي إلى Dart وهو يقرر الوجهة: القرار "التذكير
+  /// يفتح المباريات" منطق منتج لا منطق منصة، ووضعه هنا يعني كتابته
+  /// مرتين — مرة بـ Swift ومرة بـ Kotlin — فينحرفان عند أول تعديل.
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    let info = response.notification.request.content.userInfo
+    // aps حمولة النظام نفسها ولا تعني Dart شيئاً؛ ما يهمنا الحقول
+    // التي أضافها السيرفر (type وfixtureId).
+    let payload = info
+      .filter { $0.key as? String != "aps" }
+      .reduce(into: [String: Any]()) { dict, pair in
+        if let key = pair.key as? String { dict[key] = pair.value }
+      }
+
+    if let channel = channel {
+      channel.invokeMethod("onOpen", arguments: payload)
+    }
+    pendingOpen = payload
+
+    completionHandler()
+  }
+
   override func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification,

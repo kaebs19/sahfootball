@@ -22,6 +22,12 @@ const TICK_MS = Number(process.env.NOTIFY_TICK_SECONDS || 300) * 1000;
 
 let running = false;
 
+// آخر تنظيف. الوظيفة تنبض كل خمس دقائق بينما التنظيف يكفيه مرة
+// يومياً — تشغيله في كل نبضة يعني ~288 استعلام حذف يومياً لا يحذف
+// أغلبها شيئاً.
+let lastPurgeAt = 0;
+const PURGE_EVERY_MS = 24 * 3600 * 1000;
+
 // جمع عربي صحيح. نسخة مطابقة لـ Format._counted في
 // mobile/lib/format.dart، ومقصود أن تكون مطابقة: الإشعار والشاشة
 // يقولان نفس الرقم للمستخدم نفسه، و"5 نقطة" في الإشعار بينما
@@ -146,6 +152,16 @@ async function tick() {
       logger.info(
         `[notifier] tick: ${reminders.length} reminder rows, ${results.length} result rows`
       );
+    }
+
+    // التنظيف بعد الإرسال لا قبله: لو حذف شيئاً ما زال ذا معنى
+    // (خطأ في الحد) نريد أن يقع ذلك بعد أن يأخذ الاستعلامان
+    // نسختهما، فلا يتحوّل خطأ الحد إلى إشعار مكرر في نفس الدورة.
+    const now = Date.now();
+    if (now - lastPurgeAt > PURGE_EVERY_MS) {
+      lastPurgeAt = now;
+      const removed = await notificationRepo.purgeOldSent();
+      if (removed) logger.info(`[notifier] purged ${removed} old sent rows`);
     }
   } catch (err) {
     // كالمجدول تماماً: دورة فاشلة تُسجَّل ولا تُسقط شيئاً.

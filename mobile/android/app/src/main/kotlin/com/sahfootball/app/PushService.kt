@@ -33,7 +33,19 @@ class PushService : FirebaseMessagingService() {
      * مرة وتجلب التوكن الحالي أياً كان.
      */
     override fun onNewToken(token: String) {
-        android.util.Log.i(TAG, "توكن FCM تغيّر — سيُسجَّل عند الإقلاع التالي")
+        // التطبيق يعمل: نمرره فوراً فيسجّله عند السيرفر في نفس
+        // الجلسة. بلا هذا يبقى السيرفر يرسل إلى توكن ميت حتى
+        // الإقلاع التالي — وقد لا يفتح المستخدم التطبيق لأيام،
+        // وهي بالضبط الأيام التي كان التذكير سيعيده فيها.
+        val channel = MainActivity.liveChannel
+        if (channel != null) {
+            channel.invokeMethod("onToken", token)
+            return
+        }
+        // التطبيق مغلق ولا جسر إلى Dart. لا حاجة لتخزينه: كل إقلاع
+        // ينادي Push.enable() التي تجلب التوكن الحالي أياً كان،
+        // فالتصحيح يقع تلقائياً عند أول فتح.
+        android.util.Log.i(TAG, "توكن FCM تغيّر والتطبيق مغلق — سيُسجَّل عند الإقلاع")
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -43,6 +55,10 @@ class PushService : FirebaseMessagingService() {
         // نسخة ثانية فوق القائمة.
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // نفس الإضافات التي يضعها FCM حين يعرض الإشعار بنفسه في
+            // الخلفية. بدونها تعمل الضغطة في حالة وتفشل في الأخرى،
+            // والمستخدم يرى سلوكاً عشوائياً لا عطلاً مفهوماً.
+            message.data.forEach { (key, value) -> putExtra(key, value) }
         }
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
