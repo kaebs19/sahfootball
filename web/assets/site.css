@@ -613,5 +613,30 @@ button.btn {
   padding-block: 40px 70px;
 }
 .auth-wrap h1 { font-size: 1.5rem; }
+.auth-wrap h3 { font-size: 1.05rem; margin-bottom: 14px; }
+
+/* صفوف "حسابي": نفس شكل صفوف اتصل بنا، لكن القيمة في الطرف
+   المقابل لا ملاصقة للتسمية — عمود القيم المحاذى يُقرأ بنظرة
+   واحدة، والملاصق يجعل "البريدali@test.com" كلمة واحدة. */
+.auth-wrap .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14.5px;
+}
+.auth-wrap .row:last-child { border-bottom: none; }
+.auth-wrap .row .k { color: var(--text-faint); font-size: 13px; }
+
+/* زر الحذف: محدَّد لا مصمت.
+   الأحمر المصمت يجذب العين ويُضغط بالخطأ، وهذا الفعل بلا تراجع.
+   الحدّ يقول "خطر" لمن يقرأ، ولا ينادي من يمر. */
+.btn-danger {
+  background: transparent;
+  color: var(--wrong);
+  border-color: var(--wrong);
+}
 .auth-wrap .card { padding: 26px 24px; }
 .auth-wrap .btn { width: 100%; justify-content: center; }

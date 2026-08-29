@@ -7,11 +7,15 @@
 //
 // كل محتواه من قاعدة البيانات (site_pages و app_settings)، فتعديل
 // كلمة من لوحة التحكم يظهر في الطلب التالي بلا إعادة بناء ولا نشر.
+const crypto = require('node:crypto');
 const express = require('express');
 const siteRepo = require('../repositories/siteRepo');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
+const webSession = require('../services/webSession');
+const userRepo = require('../repositories/userRepo');
+const predictionRepo = require('../repositories/predictionRepo');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -195,6 +199,180 @@ router.post('/reset', async (req, res) => {
   }
 
   res.type('html').send(renderer.renderResetDone(settings));
+});
+
+// ──────────────── الحساب على الويب ────────────────
+//
+// نطاق مقصود وضيق: الموقع يجيب عن "ماذا في حسابي وكيف أتحكم به".
+// التوقّع والمنافسة تجربة التطبيق، ونسخة ويب منها تعني واجهتين
+// تتباعدان مع كل تعديل.
+
+// الكوكي يحمل علم Secure في الإنتاج فقط، وإلا لم تعمل الجلسة على
+// http://localhost أثناء التطوير. req.secure يقرأ X-Forwarded-Proto
+// وهو صحيح هنا لأن TRUST_PROXY مضبوط ونginx يمرره.
+const isSecure = (req) => req.secure || req.protocol === 'https';
+
+/** يمنع تنفيذ فعل يبدأه موقع آخر نيابة عن المستخدم. */
+function checkCsrf(session, req) {
+  const sent = String(req.body?._csrf || '');
+  // مقارنة بزمن ثابت: المقارنة العادية تتوقف عند أول حرف مختلف،
+  // وفارق التوقيت يسرّب الرمز حرفاً حرفاً لمن يقيسه بدقة.
+  const a = Buffer.from(sent);
+  const b = Buffer.from(String(session?.csrf || ''));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/** يجلب الجلسة أو يحوّل لصفحة الدخول. */
+async function requireSession(req, res) {
+  const session = await webSession.read(req);
+  if (!session) {
+    res.redirect(303, '/login');
+    return null;
+  }
+  return session;
+}
+
+router.get('/login', async (req, res) => {
+  // من هو مسجّل أصلاً لا يرى نموذج دخول.
+  if (await webSession.read(req)) return res.redirect(303, '/account');
+  res.type('html').send(renderer.renderLogin(await loadSettings()));
+});
+
+router.post('/login', async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  const password = String(req.body?.password || '');
+  const settings = await loadSettings();
+
+  try {
+    // نستدعي نفس authService.login الذي يستدعيه التطبيق: هو الذي
+    // يعرف فحص الحساب الموقوف ورسالته، وتكرار المنطق هنا يخلق
+    // بابين بقواعد مختلفة.
+    const { user } = await authService.login({ email, password });
+    await webSession.create(res, user.id, { secure: isSecure(req) });
+    return res.redirect(303, '/account');
+  } catch (err) {
+    if (err.status && err.expose) {
+      return res.status(err.status).type('html').send(
+        renderer.renderLogin(settings, { error: err.message, values: { email } })
+      );
+    }
+    logger.error('[pages] web login failed:', err.message);
+    return res.status(503).type('html').send(
+      renderer.renderLogin(settings, {
+        error: 'تعذّر تسجيل الدخول الآن. جرّب بعد قليل.',
+        values: { email },
+      })
+    );
+  }
+});
+
+router.get('/register', async (req, res) => {
+  if (await webSession.read(req)) return res.redirect(303, '/account');
+  res.type('html').send(renderer.renderRegister(await loadSettings()));
+});
+
+router.post('/register', async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const email = String(req.body?.email || '').trim();
+  const password = String(req.body?.password || '');
+  const settings = await loadSettings();
+  const values = { name, email };
+
+  try {
+    const { user } = await authService.register({
+      email, password, displayName: name,
+    });
+    await webSession.create(res, user.id, { secure: isSecure(req) });
+    return res.redirect(303, '/account');
+  } catch (err) {
+    if (err.status && err.expose) {
+      return res.status(err.status).type('html').send(
+        renderer.renderRegister(settings, { error: err.message, values })
+      );
+    }
+    logger.error('[pages] web register failed:', err.message);
+    return res.status(503).type('html').send(
+      renderer.renderRegister(settings, {
+        error: 'تعذّر إنشاء الحساب الآن. جرّب بعد قليل.', values,
+      })
+    );
+  }
+});
+
+/** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
+async function showAccount(req, res, session, extra = {}) {
+  const [settings, user, stats] = await Promise.all([
+    loadSettings(),
+    userRepo.findById(session.userId),
+    predictionRepo.profileStats(session.userId).catch(() => null),
+  ]);
+
+  // الحساب حُذف بينما الجلسة حية (من التطبيق مثلاً).
+  if (!user) {
+    await webSession.destroy(req, res);
+    return res.redirect(303, '/login');
+  }
+
+  res.type('html').send(
+    renderer.renderAccount(settings, { user, stats, csrf: session.csrf, ...extra })
+  );
+}
+
+router.get('/account', async (req, res) => {
+  const session = await requireSession(req, res);
+  if (!session) return;
+  await showAccount(req, res, session);
+});
+
+router.post('/account/password', async (req, res) => {
+  const session = await requireSession(req, res);
+  if (!session) return;
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  try {
+    await authService.changePassword(session.userId, {
+      currentPassword: String(req.body?.current || ''),
+      newPassword: String(req.body?.next || ''),
+    });
+  } catch (err) {
+    const error = err.status && err.expose ? err.message : 'تعذّر تغيير كلمة المرور.';
+    return await showAccount(req, res, session, { error });
+  }
+
+  // كلمة السر تغيّرت: كل جلسة أخرى (جهاز آخر، أو من سرقها) يجب أن
+  // تسقط. ثم ننشئ جلسة جديدة لصاحب الطلب كي لا يُخرج نفسه.
+  await webSession.destroyAllForUser(session.userId);
+  const csrf = await webSession.create(res, session.userId, { secure: isSecure(req) });
+  await showAccount(req, res, { userId: session.userId, csrf },
+    { notice: 'تغيّرت كلمة المرور. أُنهيت الجلسات الأخرى.' });
+});
+
+router.post('/account/delete', async (req, res) => {
+  const session = await requireSession(req, res);
+  if (!session) return;
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  try {
+    await authService.deleteAccount(session.userId, {
+      password: String(req.body?.password || ''),
+    });
+  } catch (err) {
+    const error = err.status && err.expose ? err.message : 'تعذّر حذف الحساب.';
+    return await showAccount(req, res, session, { error });
+  }
+
+  await webSession.destroyAllForUser(session.userId);
+  await webSession.destroy(req, res);
+  res.redirect(303, '/');
+});
+
+router.post('/logout', async (req, res) => {
+  const session = await webSession.read(req);
+  // فحص CSRF على الخروج أيضاً: إخراج المستخدم من موقع آخر مضايقة
+  // لا سرقة، لكنها ما زالت فعلاً لم يطلبه.
+  if (session && !checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+  await webSession.destroy(req, res);
+  res.redirect(303, '/');
 });
 
 // بقية الصفحات المنشورة

@@ -161,6 +161,8 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
         </div>
         <div class="foot-col">
           <h4>حسابك</h4>
+          <a href="/login">تسجيل الدخول</a>
+          <a href="/register">حساب جديد</a>
           <a href="/forgot">استعادة كلمة المرور</a>
         </div>
         <div class="foot-col">
@@ -467,6 +469,150 @@ function renderResetDone(settings) {
   return layout({ title: 'تم تغيير كلمة المرور', body, settings, active: null });
 }
 
+/** حقل CSRF المخفي — يُوضع في كل نموذج يغيّر شيئاً. */
+function csrfField(csrf) {
+  return `<input type="hidden" name="_csrf" value="${esc(csrf)}">`;
+}
+
+function renderLogin(settings, { error, values } = {}) {
+  const v = values || {};
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap">
+    <div class="card">
+      <h1>تسجيل الدخول</h1>
+      <p class="section-sub" style="margin:10px 0 22px">
+        ادخل لإدارة حسابك. التوقّع والمنافسة في التطبيق.
+      </p>
+      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <form method="post" action="/login">
+        <div class="field">
+          <label for="email">البريد الإلكتروني</label>
+          <input id="email" name="email" type="email" dir="ltr" maxlength="160"
+                 autocomplete="email" value="${esc(v.email)}" required>
+        </div>
+        <div class="field">
+          <label for="password">كلمة المرور</label>
+          <input id="password" name="password" type="password" maxlength="200"
+                 autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary" type="submit">دخول</button>
+      </form>
+      <p class="section-sub" style="margin-top:18px">
+        <a href="/forgot">نسيت كلمة المرور؟</a> · ما عندك حساب؟
+        <a href="/register">سجّل الآن</a>
+      </p>
+    </div>
+  </div>
+</div>`;
+  return layout({ title: 'تسجيل الدخول', body, settings, active: null });
+}
+
+function renderRegister(settings, { error, values } = {}) {
+  const v = values || {};
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap">
+    <div class="card">
+      <h1>حساب جديد</h1>
+      <p class="section-sub" style="margin:10px 0 22px">
+        أنشئ حسابك هنا ثم حمّل التطبيق وابدأ التوقّع بنفس البيانات.
+      </p>
+      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <form method="post" action="/register">
+        <div class="field">
+          <label for="name">الاسم الظاهر</label>
+          <input id="name" name="name" maxlength="50" value="${esc(v.name)}" required>
+        </div>
+        <div class="field">
+          <label for="email">البريد الإلكتروني</label>
+          <input id="email" name="email" type="email" dir="ltr" maxlength="160"
+                 autocomplete="email" value="${esc(v.email)}" required>
+        </div>
+        <div class="field">
+          <label for="password">كلمة المرور</label>
+          <input id="password" name="password" type="password" minlength="8"
+                 maxlength="200" autocomplete="new-password" required>
+        </div>
+        <button class="btn btn-primary" type="submit">إنشاء الحساب</button>
+      </form>
+      <p class="section-sub" style="margin-top:18px">
+        عندك حساب؟ <a href="/login">سجّل الدخول</a>
+      </p>
+    </div>
+  </div>
+</div>`;
+  return layout({ title: 'حساب جديد', body, settings, active: null });
+}
+
+/**
+ * حسابي — ما يملكه المستخدم على الويب.
+ *
+ * لا توقّع هنا ولا جداول مباريات: تلك تجربة التطبيق، ونسخة ويب
+ * منها تعني واجهتين تتباعدان. الموقع يجيب عن "ماذا في حسابي وكيف
+ * أتحكم به" — وهو ما يحتاجه من فقد هاتفه أو أراد حذف حسابه.
+ */
+function renderAccount(settings, { user, stats, notice, error, csrf }) {
+  const rank = stats?.rank ? `${stats.rank} من ${stats.totalPlayers}` : '—';
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap" style="max-width:560px">
+    ${notice ? `<div class="note ok">${esc(notice)}</div>` : ''}
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+
+    <div class="card">
+      <h1>${esc(user.display_name || 'حسابي')}</h1>
+      <div class="row"><span class="k">البريد</span><span dir="ltr">${esc(user.email)}</span></div>
+      <div class="row"><span class="k">النقاط</span><span>${esc(String(stats?.points ?? 0))}</span></div>
+      <div class="row"><span class="k">المركز</span><span>${esc(rank)}</span></div>
+      <div class="row"><span class="k">التوقعات</span><span>${esc(String(stats?.total ?? 0))}</span></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>تغيير كلمة المرور</h3>
+      <form method="post" action="/account/password">
+        ${csrfField(csrf)}
+        <div class="field">
+          <label for="current">كلمة المرور الحالية</label>
+          <input id="current" name="current" type="password" maxlength="200"
+                 autocomplete="current-password" required>
+        </div>
+        <div class="field">
+          <label for="next">الجديدة</label>
+          <input id="next" name="next" type="password" minlength="8" maxlength="200"
+                 autocomplete="new-password" required>
+        </div>
+        <button class="btn btn-primary" type="submit">حفظ</button>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>حذف الحساب</h3>
+      <p class="section-sub" style="margin:8px 0 16px">
+        يُحذف حسابك وتوقعاتك ونقاطك نهائياً ولا يمكن التراجع. مجموعاتك
+        التي تملكها تنتقل لأقدم عضو فيها.
+      </p>
+      <form method="post" action="/account/delete"
+            onsubmit="return confirm('حذف نهائي بلا تراجع. متأكد؟')">
+        ${csrfField(csrf)}
+        <div class="field">
+          <label for="delpass">أكّد بكلمة المرور</label>
+          <input id="delpass" name="password" type="password" maxlength="200"
+                 autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-danger" type="submit">حذف حسابي نهائياً</button>
+      </form>
+    </div>
+
+    <form method="post" action="/logout" style="margin-top:16px">
+      ${csrfField(csrf)}
+      <button class="btn" type="submit">تسجيل الخروج</button>
+    </form>
+  </div>
+</div>`;
+  return layout({ title: 'حسابي', body, settings, active: null });
+}
+
 /** صفحة 404 بنفس هوية الموقع بدل صفحة Express البيضاء. */
 function renderNotFound(settings) {
   const body = `
@@ -485,5 +631,6 @@ function renderNotFound(settings) {
 module.exports = {
   renderHome, renderPage, renderContact, renderNotFound,
   renderForgot, renderReset, renderResetDone,
+  renderLogin, renderRegister, renderAccount,
   esc,
 };
