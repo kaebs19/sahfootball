@@ -197,14 +197,17 @@ async function changePassword(userId, { currentPassword, newPassword }) {
   const user = await userRepo.findById(userId);
   const withHash = await userRepo.findByEmailWithHash(user.email);
 
-  // حساب Apple فقط: لا كلمة حالية للتحقق منها أصلاً. هنا الرسالة
-  // الصريحة آمنة — المستخدم مسجل دخول بالفعل، لا شيء نخفيه عنه.
-  if (!withHash.password_hash) {
-    throw new AuthError(400, 'هذا الحساب مسجل عبر Apple وليس له كلمة سر');
+  // حساب دخل بجوجل أو Apple: لا كلمة حالية ليتحقق منها أحد.
+  //
+  // كان هذا يرمي خطأً، فيبقى صاحب الحساب بلا طريقة لإضافة كلمة سر
+  // إطلاقاً — ولو فقد وصوله لحساب جوجل فقد حسابه عندنا معه.
+  //
+  // نسمح بالتعيين بلا كلمة حالية: الجلسة نفسها إثبات هوية، والمستخدم
+  // مسجّل دخول بالفعل. لا نطلب ما لا وجود له.
+  if (withHash.password_hash) {
+    const ok = await bcrypt.compare(currentPassword || '', withHash.password_hash);
+    if (!ok) throw new AuthError(401, 'كلمة السر الحالية غير صحيحة');
   }
-
-  const ok = await bcrypt.compare(currentPassword || '', withHash.password_hash);
-  if (!ok) throw new AuthError(401, 'كلمة السر الحالية غير صحيحة');
 
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   await userRepo.updatePassword(userId, passwordHash);
@@ -453,16 +456,19 @@ async function resetPassword({ email, code, newPassword }) {
 //
 // حساب Apple لا كلمة له: إعادة إثبات الهوية عنده تكون بتوكن Apple
 // جديد، وهو ما يرسله التطبيق في appleIdentityToken.
-async function deleteAccount(userId, { password, appleIdentityToken }) {
+async function deleteAccount(userId, { password, appleIdentityToken, confirmEmail }) {
   const user = await userRepo.findById(userId);
   if (!user) throw new AuthError(401, 'الحساب لم يعد موجوداً');
 
   const withHash = await userRepo.findByEmailWithHash(user.email);
 
+  // تأكيد إضافي قبل فعل لا رجعة فيه. الجلسة وحدها لا تكفي: جهاز
+  // مفتوح تركه صاحبه لحظة يكفي لمحو حسابه. لكن شكل التأكيد يتبع ما
+  // يملكه الحساب فعلاً — وطلبُ ما لا وجود له يجعل الحذف مستحيلاً.
   if (withHash?.password_hash) {
     const ok = await bcrypt.compare(password || '', withHash.password_hash);
     if (!ok) throw new AuthError(401, 'كلمة السر غير صحيحة');
-  } else {
+  } else if (withHash?.apple_sub) {
     // حساب Apple: نتحقق أن التوكن الجديد يخص نفس الحساب — توكن
     // صالح لشخص آخر لا يأذن بحذف هذا الحساب.
     if (!appleIdentityToken) {
@@ -471,6 +477,18 @@ async function deleteAccount(userId, { password, appleIdentityToken }) {
     const claims = await appleAuth.verifyIdentityToken(appleIdentityToken);
     if (!claims?.sub || claims.sub !== withHash.apple_sub) {
       throw new AuthError(401, 'تأكيد Apple لا يخص هذا الحساب');
+    }
+  } else {
+    // حساب جوجل (أو أي مزوّد بلا كلمة سر): لا كلمة نتحقق منها ولا
+    // توكن نطلبه في المتصفح. كان هذا الفرع يطلب توكن Apple فيصير
+    // الحساب غير قابل للحذف إطلاقاً — وهو خرق لحق المستخدم في محو
+    // بياناته، ومخالف لشرط App Store الذي بُني عليه هذا المسار.
+    //
+    // البديل: كتابة البريد كاملاً. لا يمنع صاحب الجلسة، ويمنع
+    // الضغطة العابرة — وهو الخطر الحقيقي هنا.
+    const typed = String(confirmEmail || '').trim().toLowerCase();
+    if (typed !== String(user.email).toLowerCase()) {
+      throw new AuthError(400, 'اكتب بريد حسابك كاملاً لتأكيد الحذف');
     }
   }
 
@@ -489,8 +507,26 @@ async function deleteAccount(userId, { password, appleIdentityToken }) {
   return result;
 }
 
+/**
+ * ما الذي يملكه هذا الحساب؟ تستعمله الواجهة لتعرض النموذج الصحيح:
+ * "تعيين كلمة مرور" لمن لا يملكها، و"تغييرها" لمن يملكها، وتأكيد
+ * الحذف بالبريد لمن لا كلمة له.
+ */
+async function credentials(userId) {
+  const user = await userRepo.findById(userId);
+  if (!user) return null;
+  const withHash = await userRepo.findByEmailWithHash(user.email);
+  return {
+    email: user.email,
+    hasPassword: Boolean(withHash?.password_hash),
+    hasApple: Boolean(withHash?.apple_sub),
+    hasGoogle: Boolean(withHash?.google_sub),
+  };
+}
+
 module.exports = {
   register, login, loginWithApple, loginWithGoogle, refresh, logout,
+  credentials,
   changePassword, changeEmail, forgotPassword, resetPassword,
   deleteAccount,
   AuthError,

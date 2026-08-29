@@ -48,7 +48,7 @@ async function setSuspension(id, { suspendedAt, reason }) {
 // hash هو حساب Apple، وإثبات هويته يكون بمطابقة sub لا بكلمة سر.
 async function findByEmailWithHash(email) {
   const { rows } = await db.query(
-    `SELECT ${PUBLIC_COLUMNS}, password_hash, apple_sub FROM users WHERE email = $1`,
+    `SELECT ${PUBLIC_COLUMNS}, password_hash, apple_sub, google_sub FROM users WHERE email = $1`,
     [email]
   );
   return rows[0] ?? null;

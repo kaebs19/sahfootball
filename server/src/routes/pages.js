@@ -563,10 +563,11 @@ router.post('/register', async (req, res) => {
 
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
 async function showAccount(req, res, session, extra = {}) {
-  const [settings, user, stats] = await Promise.all([
+  const [settings, user, stats, creds] = await Promise.all([
     pageContext(req),
     userRepo.findById(session.userId),
     predictionRepo.profileStats(session.userId).catch(() => null),
+    authService.credentials(session.userId).catch(() => null),
   ]);
 
   // الحساب حُذف بينما الجلسة حية (من التطبيق مثلاً).
@@ -576,7 +577,7 @@ async function showAccount(req, res, session, extra = {}) {
   }
 
   res.type('html').send(
-    renderer.renderAccount(settings, { user, stats, csrf: session.csrf, ...extra })
+    renderer.renderAccount(settings, { user, stats, creds, csrf: session.csrf, ...extra })
   );
 }
 
@@ -606,7 +607,7 @@ router.post('/account/password', async (req, res) => {
   await webSession.destroyAllForUser(session.userId);
   const csrf = await webSession.create(res, session.userId, { secure: isSecure(req) });
   await showAccount(req, res, { userId: session.userId, csrf },
-    { notice: 'تغيّرت كلمة المرور. أُنهيت الجلسات الأخرى.' });
+    { notice: 'حُفظت كلمة المرور. أُنهيت الجلسات الأخرى.' });
 });
 
 router.post('/account/delete', async (req, res) => {
@@ -617,6 +618,7 @@ router.post('/account/delete', async (req, res) => {
   try {
     await authService.deleteAccount(session.userId, {
       password: String(req.body?.password || ''),
+      confirmEmail: String(req.body?.confirmEmail || ''),
     });
   } catch (err) {
     const error = err.status && err.expose ? err.message : 'تعذّر حذف الحساب.';

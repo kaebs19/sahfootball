@@ -559,7 +559,7 @@ function renderRegister(settings, { error, values } = {}) {
  * منها تعني واجهتين تتباعدان. الموقع يجيب عن "ماذا في حسابي وكيف
  * أتحكم به" — وهو ما يحتاجه من فقد هاتفه أو أراد حذف حسابه.
  */
-function renderAccount(settings, { user, stats, notice, error, csrf }) {
+function renderAccount(settings, { user, stats, notice, error, csrf, creds }) {
   const rank = stats?.rank ? `${stats.rank} من ${stats.totalPlayers}` : '—';
   const body = `
 <div class="page">
@@ -576,16 +576,22 @@ function renderAccount(settings, { user, stats, notice, error, csrf }) {
     </div>
 
     <div class="card" style="margin-top:16px">
-      <h3>تغيير كلمة المرور</h3>
+      <h3>${creds?.hasPassword ? 'تغيير كلمة المرور' : 'تعيين كلمة مرور'}</h3>
+      ${!creds?.hasPassword ? `
+        <p class="section-sub" style="margin:6px 0 14px">
+          دخلت بحساب ${esc(creds?.hasGoogle ? 'جوجل' : 'Apple')} ولا كلمة مرور لحسابك.
+          عيّن واحدة لتستطيع الدخول بها أيضاً.
+        </p>` : ''}
       <form method="post" action="/account/password">
         ${csrfField(csrf)}
+        ${creds?.hasPassword ? `
         <div class="field">
           <label for="current">كلمة المرور الحالية</label>
           <input id="current" name="current" type="password" maxlength="200"
                  autocomplete="current-password" required>
-        </div>
+        </div>` : ''}
         <div class="field">
-          <label for="next">الجديدة</label>
+          <label for="next">${creds?.hasPassword ? 'الجديدة' : 'كلمة المرور'}</label>
           <input id="next" name="next" type="password" minlength="8" maxlength="200"
                  autocomplete="new-password" required>
         </div>
@@ -602,11 +608,19 @@ function renderAccount(settings, { user, stats, notice, error, csrf }) {
       <form method="post" action="/account/delete"
             onsubmit="return confirm('حذف نهائي بلا تراجع. متأكد؟')">
         ${csrfField(csrf)}
+        ${creds?.hasPassword ? `
         <div class="field">
           <label for="delpass">أكّد بكلمة المرور</label>
           <input id="delpass" name="password" type="password" maxlength="200"
                  autocomplete="current-password" required>
-        </div>
+        </div>` : `
+        <!-- حساب بلا كلمة سر: التأكيد بكتابة البريد. طلبُ كلمة لا
+             وجود لها كان يجعل الحساب غير قابل للحذف إطلاقاً. -->
+        <div class="field">
+          <label for="delmail">اكتب بريدك لتأكيد الحذف</label>
+          <input id="delmail" name="confirmEmail" type="email" dir="ltr"
+                 maxlength="160" placeholder="${esc(creds?.email || '')}" required>
+        </div>`}
         <button class="btn btn-danger" type="submit">حذف حسابي نهائياً</button>
       </form>
     </div>
