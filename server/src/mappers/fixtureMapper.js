@@ -80,6 +80,15 @@ function mapFixture(apiItem) {
     // بالضبط (انظر migrations/010).
     elapsed: fixture.status?.elapsed ?? null,
     round: league.round ?? null,
+    // الملعب والحكم: كان الـ mapper يرميهما صراحةً حين كان المنتج
+    // تطبيق توقّعات فقط. صفحة المباراة على الموقع تسألهما.
+    venue_name: fixture.venue?.name ?? null,
+    venue_city: fixture.venue?.city ?? null,
+    referee: fixture.referee ?? null,
+    // نتيجة الشوط الأول. null قبل نهايته لا صفر — نفس منطق goals
+    // أعلاه: "0 - 0" لشوط لم ينته يُقرأ تعادلاً لا غياب بيانات.
+    ht_home: apiItem.score?.halftime?.home ?? null,
+    ht_away: apiItem.score?.halftime?.away ?? null,
   };
 }
 

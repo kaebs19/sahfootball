@@ -640,6 +640,38 @@ function riyadhDay(value) {
   return new Date(value).toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 }
 
+/** جمع عربي — نفس قاعدة Format._counted في التطبيق. */
+function counted(n, one, two, few, many) {
+  if (n === 1) return one;
+  if (n === 2) return two;
+  if (n >= 3 && n <= 10) return `${n} ${few}`;
+  return `${n} ${many}`;
+}
+
+/**
+ * "تنطلق بعد 3 ساعات و20 دقيقة".
+ *
+ * الساعة الرقمية وحدها لا تكفي قبل المباراة: "9:00 م" تعني وقتاً
+ * في اليوم لا مدة، والقارئ في توقيت آخر يحسبها ذهنياً. المدة تجيب
+ * السؤال الحقيقي — كم بقي؟
+ */
+function untilKickoff(kickoffAt) {
+  const ms = new Date(kickoffAt) - Date.now();
+  if (ms <= 0) return null;
+
+  const mins = Math.floor(ms / 60000);
+  const days = Math.floor(mins / 1440);
+  if (days >= 1) return `بعد ${counted(days, 'يوم', 'يومين', 'أيام', 'يوماً')}`;
+
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h >= 1) {
+    const hs = `بعد ${counted(h, 'ساعة', 'ساعتين', 'ساعات', 'ساعة')}`;
+    return m ? `${hs} و${counted(m, 'دقيقة', 'دقيقتين', 'دقائق', 'دقيقة')}` : hs;
+  }
+  return `بعد ${counted(Math.max(mins, 1), 'دقيقة', 'دقيقتين', 'دقائق', 'دقيقة')}`;
+}
+
 /** وقت الانطلاق بتوقيت الرياض: "9:00 م". */
 function kickoffTime(kickoffAt) {
   return new Date(kickoffAt).toLocaleTimeString('ar-SA-u-nu-latn', {
@@ -663,8 +695,11 @@ function fixtureCenter(f) {
     return `<div class="fx-score num">${esc(String(f.goals_home ?? 0))} - ${esc(String(f.goals_away ?? 0))}</div>
             <div class="fx-min">انتهت</div>`;
   }
+  // قبل الانطلاق: المدة أنفع من كلمة "لم تبدأ" — الأخيرة تكرر ما
+  // يقوله غياب النتيجة أصلاً.
+  const soon = f.status === 'scheduled' ? untilKickoff(f.kickoff_at) : null;
   return `<div class="fx-time num">${esc(kickoffTime(f.kickoff_at))}</div>
-          <div class="fx-min">${esc(f.status === 'postponed' ? 'مؤجلة' : 'لم تبدأ')}</div>`;
+          <div class="fx-min">${esc(f.status === 'postponed' ? 'مؤجلة' : (soon || 'لم تبدأ'))}</div>`;
 }
 
 /**
@@ -1029,7 +1064,19 @@ function renderMatch(settings, { fixture: f, detail }) {
         </div>
       </div>
 
-      <div class="mh-when">${esc(arabicDate(riyadhDay(f.kickoff_at)))} — ${esc(kickoffTime(f.kickoff_at))}</div>
+      <div class="mh-when">
+        ${esc(arabicDate(riyadhDay(f.kickoff_at)))} — ${esc(kickoffTime(f.kickoff_at))}
+        ${f.status === 'scheduled' && untilKickoff(f.kickoff_at)
+          ? `<span class="mh-soon">${esc(untilKickoff(f.kickoff_at))}</span>` : ''}
+      </div>
+
+      ${(f.venue_name || f.referee || f.ht_home !== null) ? `
+      <dl class="mh-facts">
+        ${f.venue_name ? `<div><dt>الملعب</dt><dd>${esc(f.venue_name)}${f.venue_city ? ` — ${esc(f.venue_city)}` : ''}</dd></div>` : ''}
+        ${f.referee ? `<div><dt>الحكم</dt><dd>${esc(f.referee)}</dd></div>` : ''}
+        ${f.ht_home !== null && f.ht_home !== undefined
+          ? `<div><dt>الشوط الأول</dt><dd class="num" dir="ltr">${esc(String(f.ht_home))} - ${esc(String(f.ht_away))}</dd></div>` : ''}
+      </dl>` : ''}
     </div>
 
     ${hasEvents ? `
