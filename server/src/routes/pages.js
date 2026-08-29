@@ -49,6 +49,25 @@ async function loadSettings() {
   }
 }
 
+/**
+ * سياق أي صفحة: إعدادات الموقع + هل الزائر مسجّل.
+ *
+ * الترويسة تعرض "حسابي" أو "دخول/حساب جديد"، وهذا يحتاج معرفة
+ * الجلسة في كل صفحة لا في صفحات الحساب وحدها. تمريرها داخل نفس
+ * كائن الإعدادات بدل وسيط ثانٍ لكل دالة عرض: الكائن أصلاً هو
+ * "سياق الصفحة" المشترك، وإضافة وسيط ثالث لتسع دوالّ عرض تعني
+ * تعديل تسعة توقيعات لأجل حقل واحد.
+ *
+ * وفشل قراءة الجلسة لا يُسقط الصفحة: تُعرض كزائر غير مسجّل.
+ */
+async function pageContext(req) {
+  const [settings, session] = await Promise.all([
+    loadSettings(),
+    webSession.read(req).catch(() => null),
+  ]);
+  return { ...settings, viewer: session ? { id: session.userId } : null };
+}
+
 // الصفحة الرئيسية
 // الصفحة الرئيسية = مباريات اليوم.
 //
@@ -63,7 +82,7 @@ router.get('/', async (req, res) => {
   const league = /^\d+$/.test(String(req.query.league || '')) ? Number(req.query.league) : null;
 
   const [settings, all, days, leagues] = await Promise.all([
-    loadSettings(),
+    pageContext(req),
     siteFixtureRepo.byDate(day),
     siteFixtureRepo.daysAround(renderer.riyadhToday()),
     leagueRepo.findEnabled(),
@@ -80,7 +99,7 @@ router.get('/', async (req, res) => {
 // صفحة اتصل بنا — قبل /:slug لأن لها معالجاً خاصاً (نموذج + POST)
 router.get('/contact', async (req, res) => {
   const [settings, page] = await Promise.all([
-    loadSettings(),
+    pageContext(req),
     siteRepo.getPage('contact'),
   ]);
   res.type('html').send(
@@ -103,7 +122,7 @@ router.post('/contact', async (req, res) => {
     message: String(message || '').trim(),
   };
 
-  const settings = await loadSettings();
+  const settings = await pageContext(req);
   const page = await siteRepo.getPage('contact');
 
   const fail = (error) =>
@@ -161,7 +180,7 @@ router.get('/standings', async (req, res) => {
     ? Number(asked)
     : leagues[0]?.id;
 
-  const settings = await loadSettings();
+  const settings = await pageContext(req);
   const current = leagues.find((l) => l.id === league);
 
   let rows = [];
@@ -188,12 +207,12 @@ router.get('/standings', async (req, res) => {
 // شيئاً عن الرموز ولا Redis ولا التجزئة.
 
 router.get('/forgot', async (req, res) => {
-  res.type('html').send(renderer.renderForgot(await loadSettings()));
+  res.type('html').send(renderer.renderForgot(await pageContext(req)));
 });
 
 router.post('/forgot', async (req, res) => {
   const email = String(req.body?.email || '').trim();
-  const settings = await loadSettings();
+  const settings = await pageContext(req);
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).type('html').send(
@@ -227,7 +246,7 @@ router.post('/forgot', async (req, res) => {
 
 router.get('/reset', async (req, res) => {
   res.type('html').send(
-    renderer.renderReset(await loadSettings(), {
+    renderer.renderReset(await pageContext(req), {
       sent: req.query.sent === '1',
       values: { email: String(req.query.email || '') },
     })
@@ -238,7 +257,7 @@ router.post('/reset', async (req, res) => {
   const email = String(req.body?.email || '').trim();
   const code = String(req.body?.code || '').trim();
   const password = String(req.body?.password || '');
-  const settings = await loadSettings();
+  const settings = await pageContext(req);
 
   const fail = (error, status = 400) =>
     res.status(status).type('html').send(
@@ -305,13 +324,13 @@ async function requireSession(req, res) {
 router.get('/login', async (req, res) => {
   // من هو مسجّل أصلاً لا يرى نموذج دخول.
   if (await webSession.read(req)) return res.redirect(303, '/account');
-  res.type('html').send(renderer.renderLogin(await loadSettings()));
+  res.type('html').send(renderer.renderLogin(await pageContext(req)));
 });
 
 router.post('/login', async (req, res) => {
   const email = String(req.body?.email || '').trim();
   const password = String(req.body?.password || '');
-  const settings = await loadSettings();
+  const settings = await pageContext(req);
 
   try {
     // نستدعي نفس authService.login الذي يستدعيه التطبيق: هو الذي
@@ -338,14 +357,14 @@ router.post('/login', async (req, res) => {
 
 router.get('/register', async (req, res) => {
   if (await webSession.read(req)) return res.redirect(303, '/account');
-  res.type('html').send(renderer.renderRegister(await loadSettings()));
+  res.type('html').send(renderer.renderRegister(await pageContext(req)));
 });
 
 router.post('/register', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   const email = String(req.body?.email || '').trim();
   const password = String(req.body?.password || '');
-  const settings = await loadSettings();
+  const settings = await pageContext(req);
   const values = { name, email };
 
   try {
@@ -372,7 +391,7 @@ router.post('/register', async (req, res) => {
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
 async function showAccount(req, res, session, extra = {}) {
   const [settings, user, stats] = await Promise.all([
-    loadSettings(),
+    pageContext(req),
     userRepo.findById(session.userId),
     predictionRepo.profileStats(session.userId).catch(() => null),
   ]);
@@ -458,7 +477,7 @@ router.get('/match/:id', async (req, res, next) => {
   if (!fixture) return next(); // 404 بهوية الموقع
 
   const [settings, detail] = await Promise.all([
-    loadSettings(),
+    pageContext(req),
     matchDetailService.get(fixture),
   ]);
 
@@ -473,7 +492,7 @@ router.get('/scorers', async (req, res) => {
     ? Number(asked)
     : leagues[0]?.id;
 
-  const settings = await loadSettings();
+  const settings = await pageContext(req);
   const current = leagues.find((l) => l.id === league);
 
   let scorers = [];
@@ -495,7 +514,7 @@ router.get('/:slug', async (req, res, next) => {
   const { slug } = req.params;
   if (!PUBLIC_SLUGS.has(slug)) return next();
 
-  const [settings, page] = await Promise.all([loadSettings(), siteRepo.getPage(slug)]);
+  const [settings, page] = await Promise.all([pageContext(req), siteRepo.getPage(slug)]);
   if (!page) return next();
 
   res.type('html').send(renderer.renderPage(page, settings));

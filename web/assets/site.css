@@ -1042,3 +1042,52 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .sc-sub { display: none; }  /* الأهداف وحدها تكفي على الجوال */
   .sc-photo { display: none; }
 }
+
+/* ═══════════════ ترويسة بثلاثة أقسام ═══════════════ */
+
+.topbar .wrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.topnav { margin-inline-start: auto; }
+
+.topauth {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.auth-link {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.auth-link:hover { color: var(--text); }
+
+/* زر مصغّر للترويسة: نفس الزر بحجم لا يطغى على الشريط. */
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 13.5px;
+  border-radius: 11px;
+}
+
+/* على الجوال: الأزرار تحت الشعار والقائمة تمرَّر أفقياً.
+   إخفاء الدخول والتسجيل على الشاشة الصغيرة يخفي أهم فعلين. */
+@media (max-width: 760px) {
+  .topbar .wrap {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .topnav {
+    order: 3;
+    width: 100%;
+    margin-inline-start: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+  .topnav::-webkit-scrollbar { display: none; }
+  .topauth { margin-inline-start: auto; }
+}

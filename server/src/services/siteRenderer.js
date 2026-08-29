@@ -104,6 +104,33 @@ const NAV = [
   { href: '/contact', label: 'اتصل بنا' },
 ];
 
+/**
+ * بصمة محتوى site.css — تُلحق بالرابط كـ ?v=…
+ *
+ * بدونها يبقى العنوان ثابتاً بينما يتغير المحتوى، فيخدم كاش
+ * Cloudflare (وكاش المتصفح) النسخة القديمة بعد كل نشر. وقع هذا
+ * فعلاً: صفحة كاملة بلا تنسيق لساعة و40 دقيقة، وcf-cache-status
+ * يقول HIT بينما الملف على الخادم صحيح — عطل لا يظهر في أي فحص
+ * على السيرفر لأن السيرفر بريء.
+ *
+ * تُحسب مرة عند الإقلاع لا عند كل طلب: الملف لا يتغير في أثناء
+ * تشغيل العملية، وقراءته مع كل صفحة عمل بلا مقابل.
+ */
+const ASSET_V = (() => {
+  try {
+    const file = require('node:path').join(__dirname, '..', '..', '..', 'web', 'assets', 'site.css');
+    return require('node:crypto')
+      .createHash('sha1')
+      .update(require('node:fs').readFileSync(file))
+      .digest('hex')
+      .slice(0, 10);
+  } catch {
+    // الملف غير مقروء لسبب ما: بصمة زمن الإقلاع تبقى أفضل من لا شيء
+    // (تتغير مع كل إعادة تشغيل، فتُبطل الكاش عند النشر على الأقل).
+    return String(Date.now());
+  }
+})();
+
 /** التخطيط المشترك: ترويسة وتذييل حول أي محتوى. */
 function layout({ title, description, body, settings, active, canonicalPath }) {
   const siteName = settings?.siteName || 'ملك التوقعات';
@@ -131,18 +158,26 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/site.css?v=${ASSET_V}">
 </head>
 <body>
 
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="/">${brandMark(28, '#080f0c')}<span>${esc(siteName)}</span></a>
+
     <nav class="topnav">
       ${NAV.map((n) =>
         `<a href="${n.href}"${n.href === active ? ' class="active"' : ''}>${esc(n.label)}</a>`
       ).join('')}
     </nav>
+
+    <div class="topauth">
+      ${settings?.viewer
+        ? `<a class="btn btn-sm btn-ghost" href="/account">حسابي</a>`
+        : `<a class="auth-link" href="/login">دخول</a>
+           <a class="btn btn-sm btn-primary" href="/register">حساب جديد</a>`}
+    </div>
   </div>
 </header>
 
