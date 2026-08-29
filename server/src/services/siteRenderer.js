@@ -833,16 +833,24 @@ function renderStandings(settings, { leagues, league, rows, error }) {
  * ومختصرة عمداً — ثمانية صفوف وخمسة هدافين — والباقي خلف رابط:
  * الجدول الكامل في العمود الجانبي يزاحم المباريات وهي المحتوى.
  */
-function sidePanel({ league, standings, scorers }) {
+/**
+ * اللوحة الجانبية: ترتيب الدوري وحده.
+ *
+ * كانت تحمل الهدافين أيضاً فتصير ضعف ارتفاع كتلة المباريات، ويبقى
+ * تحتها فراغ طويل في العمود المقابل. والهدافون سؤال يُسأل مرة في
+ * الأسبوع لا كل يوم، وله صفحته الكاملة في /scorers — بينما الترتيب
+ * هو ما يُقرأ مع كل نتيجة.
+ *
+ * وحذفها وفّر نصف نداءات اللوحة: نداء واحد لكل دوري بدل اثنين.
+ */
+function sidePanel({ league, standings }) {
   if (!league) return '';
 
-  const table = (standings || []).slice(0, 8);
-  const top = (scorers || []).slice(0, 5);
-  if (!table.length && !top.length) return '';
+  const table = (standings || []).slice(0, 10);
+  if (!table.length) return '';
 
   return `
 <aside class="side">
-  ${table.length ? `
   <section class="card side-card">
     <header class="side-head">
       <h3>الترتيب</h3>
@@ -859,24 +867,7 @@ function sidePanel({ league, standings, scorers }) {
         </li>`).join('')}
     </ol>
     <div class="mini-legend"><span>لعب</span><span>نقاط</span></div>
-  </section>` : ''}
-
-  ${top.length ? `
-  <section class="card side-card">
-    <header class="side-head">
-      <h3>الهدافون</h3>
-      <a href="/scorers?league=${esc(String(league))}">الكل</a>
-    </header>
-    <ol class="mini">
-      ${top.map((p) => `
-        <li>
-          <span class="mini-rank num">${esc(String(p.rank))}</span>
-          ${teamBadge(p.team, null, p.teamId)}
-          <span class="mini-name">${esc(p.name)}</span>
-          <span class="mini-pts num">${esc(String(p.goals))}</span>
-        </li>`).join('')}
-    </ol>
-  </section>` : ''}
+  </section>
 </aside>`;
 }
 

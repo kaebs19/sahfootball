@@ -95,14 +95,13 @@ async function pageContext(req) {
 async function buildSide(league) {
   if (!league) return null;
 
-  const [standings, scorers] = await Promise.all([
-    standingsService.getStandings({ leagueId: league.id, season: league.season })
-      .catch(() => []),
-    matchDetailService.topScorers({ leagueId: league.id, season: league.season })
-      .catch(() => []),
-  ]);
+  // الترتيب وحده: الهدافون خرجوا من اللوحة (لهم صفحتهم في /scorers)،
+  // فصار نداء واحد لكل دوري بدل اثنين — نصف التكلفة على الحصة.
+  const standings = await standingsService
+    .getStandings({ leagueId: league.id, season: league.season })
+    .catch(() => []);
 
-  return { league: league.id, standings, scorers };
+  return { league: league.id, standings };
 }
 
 /**
@@ -111,10 +110,9 @@ async function buildSide(league) {
  * القارئ الذي ينزل إلى الدوري الإيطالي يريد ترتيب الإيطالي بجانبه،
  * لا ترتيب دوري روشن الذي بقي ملتصقاً بأعلى الصفحة.
  *
- * التكلفة نداءان لكل دوري، وكلاهما مخزّن (ساعة للترتيب وست ساعات
- * للهدافين). ستة دوريات في يوم مزدحم = اثنا عشر نداءً في الساعة
- * على الأكثر، أي ~288 يومياً من حصة 7500. والنداءات كلها على
- * التوازي فزمنها زمن أبطأها.
+ * التكلفة نداء واحد لكل دوري، مخزّن ساعة. ستة دوريات في يوم مزدحم
+ * = ستة نداءات في الساعة على الأكثر، أي ~144 يومياً من حصة 7500.
+ * وكلها على التوازي فزمنها زمن أبطأها.
  *
  * ويقتصر على الدوريات التي لها مباريات اليوم: بناء لوحة لدوري لا
  * يظهر أصلاً إنفاق حصة على ما لا يُرى.
