@@ -1345,3 +1345,121 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* ═══════════════ الملعب والمواجهات ═══════════════ */
+
+.mh-pens {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.mh-pens b { color: var(--crown); margin-inline-start: 4px; }
+
+.lu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13.5px;
+  padding-bottom: 9px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.lu-head .num { color: var(--crown); font-size: 12.5px; }
+
+/* الملعب: خطوط عشب وخط منتصف.
+   التدرّج يعطي إحساس العشب المقصوص بلا صورة تُحمَّل. */
+.pitch {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 6px;
+  padding: 14px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(18, 224, 126, 0.05) 0 26px,
+      transparent 26px 52px
+    ),
+    var(--fill);
+  min-height: 260px;
+}
+/* خط المنتصف: علامة الملعب الوحيدة التي تستحق الرسم — البقية
+   (دوائر ومناطق جزاء) زينة تزاحم أسماء اللاعبين. */
+.pitch::after {
+  content: '';
+  position: absolute;
+  inset-inline: 8px;
+  top: 50%;
+  border-top: 1px dashed var(--border);
+}
+
+.prow {
+  display: flex;
+  justify-content: space-around;
+  gap: 4px;
+  position: relative;
+  z-index: 1;
+}
+.pp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.pp-num {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.pp-name {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bench { margin-top: 10px; }
+.bench summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+.bench summary:hover { color: var(--text); }
+.bench .lineup-list { margin-top: 6px; }
+
+/* المواجهات السابقة */
+.h2hs { display: flex; flex-direction: column; }
+.h2h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+  font-size: 13.5px;
+}
+.h2h:last-child { border-bottom: none; }
+.h2h:hover { background: var(--fill); }
+.h2h .dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+.h2h .dot.w { background: var(--correct); }
+.h2h .dot.l { background: var(--wrong); }
+.h2h .dot.d { background: var(--text-faint); }
+.h2h-date { flex: 0 0 74px; font-size: 11.5px; color: var(--text-faint); }
+.h2h-teams { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h2h-teams b { color: var(--crown); margin: 0 6px; }

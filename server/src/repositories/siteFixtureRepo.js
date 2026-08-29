@@ -22,6 +22,8 @@ const COLUMNS = `
   f.referee,
   f.ht_home,
   f.ht_away,
+  f.pen_home,
+  f.pen_away,
   f.kickoff_at,
   f.status,
   f.elapsed,

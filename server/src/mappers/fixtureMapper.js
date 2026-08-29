@@ -89,6 +89,9 @@ function mapFixture(apiItem) {
     // أعلاه: "0 - 0" لشوط لم ينته يُقرأ تعادلاً لا غياب بيانات.
     ht_home: apiItem.score?.halftime?.home ?? null,
     ht_away: apiItem.score?.halftime?.away ?? null,
+    // ركلات الترجيح: null لغير الإقصائية.
+    pen_home: apiItem.score?.penalty?.home ?? null,
+    pen_away: apiItem.score?.penalty?.away ?? null,
   };
 }
 

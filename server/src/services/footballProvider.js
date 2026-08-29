@@ -28,6 +28,7 @@ const TTL = {
   LEAGUES_SEARCH: 24 * 3600, // بحث الدوريات: قائمة المزود شبه ثابتة
   STATISTICS: 120,     // إحصاءات مباراة: تتغير أثناء اللعب كالأحداث
   SCORERS: 6 * 3600,   // الهدافون: ترتيب لا يتغير إلا بعد جولة
+  H2H: 24 * 3600,      // المواجهات السابقة: تاريخ لا يتغير إلا بمباراة جديدة
 };
 
 // ---------------------------------------------------------------
@@ -187,6 +188,21 @@ function getFixtureLineups(fixtureId) {
   });
 }
 
+/**
+ * آخر مواجهات بين فريقين.
+ *
+ * كاش يوم كامل: القائمة لا تتغير إلا حين يلتقيان مجدداً، وذلك
+ * مرة أو مرتين في الموسم. الترتيب في المفتاح موحّد (الأصغر أولاً)
+ * كي لا تُخزَّن نسختان لنفس المواجهة حسب من كان مضيفاً.
+ */
+function getHeadToHead(a, b, last = 5) {
+  const [x, y] = [a, b].sort((m, n) => m - n);
+  return request('fixtures/headtohead', { h2h: `${a}-${b}`, last }, {
+    cacheKey: `football:h2h:${x}:${y}:${last}`,
+    ttl: TTL.H2H,
+  });
+}
+
 // إحصاءات المباراة: استحواذ، تسديدات، ركنيات، بطاقات.
 function getFixtureStatistics(fixtureId) {
   return request('fixtures/statistics', { fixture: fixtureId }, {
@@ -277,6 +293,7 @@ module.exports = {
   getFixtureLineups,
   getFixtureStatistics,
   getTopScorers,
+  getHeadToHead,
   getStatus,
   getTeams,
   getStandings,

@@ -1013,15 +1013,56 @@ function eventRow(e) {
 </div>`;
 }
 
-/** عمود تشكيلة فريق واحد. */
-function lineupColumn(title, side) {
-  if (!side) return '';
+/**
+ * التشكيلة مرسومة على ملعب.
+ *
+ * المزوّد يرسل لكل لاعب grid بصيغة "صف:عمود" — الصف 1 هو الحارس
+ * ثم الدفاع فالوسط فالهجوم. نبني منه صفوفاً ونوزّع كل صف بالتساوي،
+ * فتظهر الخطة (5-3-2) شكلاً لا رقماً.
+ *
+ * وحين لا يرسل المزوّد الشبكة (يحدث في الدوريات الأصغر) نعود إلى
+ * القائمة النصية: نصف معلومة أفضل من ملعب فارغ.
+ */
+function pitchRows(starters) {
+  const withGrid = starters.filter((p) => p.row && p.col);
+  if (withGrid.length !== starters.length) return null;
+
+  const byRow = new Map();
+  for (const p of withGrid) {
+    if (!byRow.has(p.row)) byRow.set(p.row, []);
+    byRow.get(p.row).push(p);
+  }
+  return [...byRow.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, players]) => players.sort((a, b) => a.col - b.col));
+}
+
+function pitchPlayer(p) {
+  // الاسم الأخير وحده: "Antonio Sivera" لا يتسع في خانة على ملعب
+  // بعرض الهاتف، والاسم الأول هو ما يُسقَط في كل بث رياضي.
+  const short = (p.name || '').split(' ').slice(-1)[0];
   return `
-<div class="lineup">
-  <div class="lineup-head">
+<div class="pp" title="${esc(p.name)}">
+  <span class="pp-num num">${p.number ?? ''}</span>
+  <span class="pp-name">${esc(short)}</span>
+</div>`;
+}
+
+function lineupSide(title, side, variant) {
+  if (!side) return '';
+  const rows = pitchRows(side.starters);
+
+  return `
+<div class="lu lu-${esc(variant)}">
+  <div class="lu-head">
     <strong>${esc(title)}</strong>
     ${side.formation ? `<span class="num" dir="ltr">${esc(side.formation)}</span>` : ''}
   </div>
+
+  ${rows ? `
+  <div class="pitch">
+    ${rows.map((r) => `<div class="prow">${r.map(pitchPlayer).join('')}</div>`).join('')}
+  </div>` : `
   <ol class="lineup-list">
     ${side.starters.map((p) => `
       <li>
@@ -1029,9 +1070,37 @@ function lineupColumn(title, side) {
         <span class="sn">${esc(p.name)}</span>
         <span class="sp">${esc(p.pos || '')}</span>
       </li>`).join('')}
-  </ol>
+  </ol>`}
+
+  ${side.bench.length ? `
+  <details class="bench">
+    <summary>البدلاء (${side.bench.length})</summary>
+    <ol class="lineup-list">
+      ${side.bench.map((p) => `
+        <li><span class="sh num">${p.number ?? ''}</span><span class="sn">${esc(p.name)}</span></li>`).join('')}
+    </ol>
+  </details>` : ''}
+
   ${side.coach ? `<div class="lineup-coach">المدرب: ${esc(side.coach)}</div>` : ''}
 </div>`;
+}
+
+/** المواجهات السابقة. */
+function h2hRows(list, homeId) {
+  return list.map((m) => {
+    // من فاز؟ نلوّن من منظور صاحب الأرض في المباراة الحالية كي
+    // يقرأ القارئ سلسلة نتائج فريق واحد لا نتائج متفرقة.
+    const ourGoals = m.homeId === homeId ? m.goalsHome : m.goalsAway;
+    const theirGoals = m.homeId === homeId ? m.goalsAway : m.goalsHome;
+    const cls = ourGoals > theirGoals ? 'w' : ourGoals < theirGoals ? 'l' : 'd';
+
+    return `
+<a class="h2h" href="/match/${esc(String(m.id))}">
+  <span class="dot ${cls}"></span>
+  <span class="h2h-date num">${esc(arabicDate(riyadhDay(m.date), { withWeekday: false }))}</span>
+  <span class="h2h-teams">${esc(m.home)} <b class="num" dir="ltr">${esc(String(m.goalsHome))} - ${esc(String(m.goalsAway))}</b> ${esc(m.away)}</span>
+</a>`;
+  }).join('');
 }
 
 function renderMatch(settings, { fixture: f, detail }) {
@@ -1039,6 +1108,7 @@ function renderMatch(settings, { fixture: f, detail }) {
   const hasEvents = detail.events.length > 0;
   const hasStats = detail.statistics.length > 0;
   const hasLineups = Boolean(detail.lineups.home || detail.lineups.away);
+  const hasH2H = Boolean(detail.h2h && detail.h2h.length);
 
   const body = `
 <div class="page">
@@ -1057,7 +1127,12 @@ function renderMatch(settings, { fixture: f, detail }) {
           ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
           <span>${esc(f.home_team_name)}</span>
         </div>
-        <div class="mh-center">${fixtureCenter(f)}</div>
+        <div class="mh-center">
+          ${fixtureCenter(f)}
+          ${f.pen_home !== null && f.pen_home !== undefined
+            ? `<div class="mh-pens">ركلات الترجيح <b class="num" dir="ltr">${esc(String(f.pen_home))} - ${esc(String(f.pen_away))}</b></div>`
+            : ''}
+        </div>
         <div class="mh-side">
           ${teamBadge(f.away_team_name, f.away_team_logo, f.away_team_id)}
           <span>${esc(f.away_team_name)}</span>
@@ -1095,12 +1170,18 @@ function renderMatch(settings, { fixture: f, detail }) {
     <section class="card sec">
       <h2>التشكيلتان</h2>
       <div class="lineups">
-        ${lineupColumn(f.home_team_name, detail.lineups.home)}
-        ${lineupColumn(f.away_team_name, detail.lineups.away)}
+        ${lineupSide(f.home_team_name, detail.lineups.home, 'home')}
+        ${lineupSide(f.away_team_name, detail.lineups.away, 'away')}
       </div>
     </section>` : ''}
 
-    ${!hasEvents && !hasStats && !hasLineups ? `
+    ${detail.h2h && detail.h2h.length ? `
+    <section class="card sec">
+      <h2>المواجهات السابقة</h2>
+      <div class="h2hs">${h2hRows(detail.h2h, f.home_team_id)}</div>
+    </section>` : ''}
+
+    ${!hasEvents && !hasStats && !hasLineups && !hasH2H ? `
     <div class="card" style="text-align:center;padding:40px 20px">
       <h3>لم تُنشر التفاصيل بعد</h3>
       <p class="section-sub" style="margin-top:8px">

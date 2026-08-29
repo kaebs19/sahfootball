@@ -96,6 +96,10 @@ function shapeLineups(raw, homeTeamId) {
       number: p.player?.number ?? null,
       name: p.player?.name || '',
       pos: p.player?.pos || '',
+      // "صف:عمود" من المزوّد — الصف 1 هو الحارس. نحتاجهما رقمين
+      // لرسم الملعب، وnull حين لا يرسلهما (بعض الدوريات الصغيرة).
+      row: Number(String(p.player?.grid || '').split(':')[0]) || null,
+      col: Number(String(p.player?.grid || '').split(':')[1]) || null,
     })),
     bench: (side.substitutes || []).map((p) => ({
       number: p.player?.number ?? null,
@@ -113,20 +117,50 @@ function shapeLineups(raw, homeTeamId) {
  * تفاصيل مباراة. لا يرمي أبداً: كل جزء يفشل وحده ويعود فارغاً،
  * فعطل في نداء الإحصاءات لا يمنع عرض الأهداف.
  */
+/**
+ * المواجهات السابقة، بأسماء عربية ونتيجة كل لقاء.
+ *
+ * نستبعد المباراة الحالية من النتيجة: المزوّد يدرجها ضمن التاريخ
+ * حين تكون منتهية، فتظهر للقارئ مرتين — مرة في أعلى الصفحة ومرة
+ * في "المواجهات السابقة" وكأنها لقاء آخر.
+ */
+async function shapeH2H(raw, fixtureId, nameById) {
+  return raw
+    .filter((r) => r.fixture?.id !== fixtureId && r.fixture?.status?.short === 'FT')
+    .slice(0, 5)
+    .map((r) => ({
+      id: r.fixture.id,
+      date: r.fixture.date,
+      league: r.league?.name || '',
+      homeId: r.teams?.home?.id ?? null,
+      awayId: r.teams?.away?.id ?? null,
+      home: nameById.get(r.teams?.home?.id) ?? r.teams?.home?.name ?? '',
+      away: nameById.get(r.teams?.away?.id) ?? r.teams?.away?.name ?? '',
+      goalsHome: r.goals?.home ?? 0,
+      goalsAway: r.goals?.away ?? 0,
+    }));
+}
+
 async function get(fixture) {
   const id = fixture.id;
   const homeId = fixture.home_team_id;
+  const awayId = fixture.away_team_id;
 
-  const [events, stats, lineups] = await Promise.all([
+  const [events, stats, lineups, h2hRaw, teams] = await Promise.all([
     provider.getFixtureEvents(id).catch((e) => { logger.warn('[match] events:', e.message); return []; }),
     provider.getFixtureStatistics(id).catch((e) => { logger.warn('[match] stats:', e.message); return []; }),
     provider.getFixtureLineups(id).catch((e) => { logger.warn('[match] lineups:', e.message); return []; }),
+    provider.getHeadToHead(homeId, awayId).catch((e) => { logger.warn('[match] h2h:', e.message); return []; }),
+    teamRepo.findAll().catch(() => []),
   ]);
+
+  const nameById = new Map(teams.map((t) => [t.id, t.name]));
 
   return {
     events: shapeEvents(events, homeId),
     statistics: shapeStatistics(stats, homeId),
     lineups: shapeLineups(lineups, homeId),
+    h2h: await shapeH2H(h2hRaw, id, nameById),
   };
 }
 

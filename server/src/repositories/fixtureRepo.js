@@ -51,9 +51,10 @@ async function upsertMany(fixtures) {
         `INSERT INTO fixtures
            (id, league_id, season, home_team_id, away_team_id,
             kickoff_at, status, goals_home, goals_away, elapsed, round,
-            venue_name, venue_city, referee, ht_home, ht_away, updated_at)
+            venue_name, venue_city, referee, ht_home, ht_away,
+            pen_home, pen_away, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                 $12, $13, $14, $15, $16, now())
+                 $12, $13, $14, $15, $16, $17, $18, now())
          ON CONFLICT (id) DO UPDATE SET
            kickoff_at = EXCLUDED.kickoff_at,  -- قد تتأجل المباراة لموعد جديد
            status     = EXCLUDED.status,
@@ -74,11 +75,14 @@ async function upsertMany(fixtures) {
            referee    = EXCLUDED.referee,
            ht_home    = EXCLUDED.ht_home,
            ht_away    = EXCLUDED.ht_away,
+           pen_home   = EXCLUDED.pen_home,
+           pen_away   = EXCLUDED.pen_away,
            updated_at = now()`,
         [f.id, f.league_id, f.season, f.home_team_id, f.away_team_id,
          f.kickoff_at, f.status, f.goals_home, f.goals_away, f.elapsed ?? null, f.round,
          f.venue_name ?? null, f.venue_city ?? null, f.referee ?? null,
-         f.ht_home ?? null, f.ht_away ?? null]
+         f.ht_home ?? null, f.ht_away ?? null,
+         f.pen_home ?? null, f.pen_away ?? null]
       );
     }
     await client.query('COMMIT');
