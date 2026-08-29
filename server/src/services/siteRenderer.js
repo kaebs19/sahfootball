@@ -118,12 +118,14 @@ const NAV = [
  */
 const ASSET_V = (() => {
   try {
-    const file = require('node:path').join(__dirname, '..', '..', '..', 'web', 'assets', 'site.css');
-    return require('node:crypto')
-      .createHash('sha1')
-      .update(require('node:fs').readFileSync(file))
-      .digest('hex')
-      .slice(0, 10);
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const dir = path.join(__dirname, '..', '..', '..', 'web', 'assets');
+    // بصمة الملفين معاً: تغيير أيهما يبطل كاش الاثنين. عنوانان
+    // ببصمتين منفصلتين عمل زائد لأجل ملف واحد صغير.
+    const hash = require('node:crypto').createHash('sha1');
+    for (const f of ['site.css', 'app.js']) hash.update(fs.readFileSync(path.join(dir, f)));
+    return hash.digest('hex').slice(0, 10);
   } catch {
     // الملف غير مقروء لسبب ما: بصمة زمن الإقلاع تبقى أفضل من لا شيء
     // (تتغير مع كل إعادة تشغيل، فتُبطل الكاش عند النشر على الأقل).
@@ -159,6 +161,7 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/assets/site.css?v=${ASSET_V}">
+<script src="/assets/app.js?v=${ASSET_V}" defer></script>
 </head>
 <body>
 
@@ -615,6 +618,16 @@ function historyRow(h) {
 </a>`;
 }
 
+/**
+ * حسابي.
+ *
+ * بطاقة "تعيين كلمة مرور" حُذفت عن حسابات المزوّدين: من دخل بجوجل
+ * لا يحتاج كلمة سر، وعرض النموذج له يسأل سؤالاً لم يطرحه.
+ *
+ * وهذا لا يحبسه: من فقد وصوله لحساب جوجل يستعمل "نسيت كلمة المرور"
+ * على بريده نفسه، فيصله رمز ويعيّن كلمة — نفس المسار القائم بلا
+ * بطاقة إضافية.
+ */
 function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history }) {
   const rank = stats?.rank ? `${stats.rank}` : '—';
   const dist = distribution(stats, points || { exact: 5, diff: 3, outcome: 2 });
@@ -624,94 +637,113 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
     ${notice ? `<div class="note ok">${esc(notice)}</div>` : ''}
     ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
 
-    <div class="card">
-      <h1>${esc(user.display_name || 'حسابي')}</h1>
-      <div class="row"><span class="k">البريد</span><span dir="ltr">${esc(user.email)}</span></div>
-      <div class="row"><span class="k">طريقة الدخول</span><span>${esc(loginMethods(creds))}</span></div>
-    </div>
+    <!-- ترويسة الحساب: من أنت وأين موقعك، في نظرة واحدة. -->
+    <header class="acc-head card">
+      <div class="acc-id">
+        <span class="acc-avatar">${esc((user.display_name || user.email || '?').trim().charAt(0))}</span>
+        <div>
+          <h1>${esc(user.display_name || 'حسابي')}</h1>
+          <span class="acc-mail" dir="ltr">${esc(user.email)}</span>
+        </div>
+      </div>
+      <div class="acc-rank">
+        <b class="num">${esc(rank)}</b>
+        <span>${stats?.total_competitors ? `من ${esc(String(stats.total_competitors))}` : 'المركز'}</span>
+      </div>
+    </header>
 
-    <!-- الإحصاءات: أرقام تُقرأ بنظرة لا صفوف تُقرأ سطراً سطراً. -->
-    <div class="stats-grid">
-      <div class="card st"><b class="num">${esc(String(stats?.total_points ?? 0))}</b><span>نقطة</span></div>
-      <div class="card st"><b class="num">${esc(rank)}</b><span>المركز</span></div>
-      <div class="card st"><b class="num">${esc(String(stats?.predictions_count ?? 0))}</b><span>توقّع</span></div>
-      <div class="card st"><b class="num">${stats?.accuracy === null || stats?.accuracy === undefined ? '—' : esc(String(stats.accuracy)) + '٪'}</b><span>الدقّة</span></div>
-      <div class="card st"><b class="num">${esc(String(stats?.longest_streak ?? 0))}</b><span>أطول سلسلة</span></div>
-      <div class="card st"><b class="num">${esc(String(stats?.current_streak ?? 0))}</b><span>السلسلة الحالية</span></div>
-    </div>
+    <section class="acc-sec">
+      <h2>إحصاءاتي</h2>
+      <div class="stats-grid">
+        <div class="card st"><b class="num">${esc(String(stats?.total_points ?? 0))}</b><span>نقطة</span></div>
+        <div class="card st"><b class="num">${esc(String(stats?.predictions_count ?? 0))}</b><span>توقّع</span></div>
+        <div class="card st"><b class="num">${stats?.accuracy === null || stats?.accuracy === undefined ? '—' : esc(String(stats.accuracy)) + '٪'}</b><span>الدقّة</span></div>
+        <div class="card st"><b class="num">${esc(String(stats?.settled_predictions ?? 0))}</b><span>محتسَب</span></div>
+        <div class="card st"><b class="num">${esc(String(stats?.longest_streak ?? 0))}</b><span>أطول سلسلة</span></div>
+        <div class="card st"><b class="num">${esc(String(stats?.current_streak ?? 0))}</b><span>سلسلة حالية</span></div>
+      </div>
+    </section>
 
     ${dist.length ? `
-    <div class="card" style="margin-top:16px">
-      <h3>توزيع نتائجك</h3>
-      <div class="dist">
-        ${dist.map((d) => `
-          <div class="dist-row">
-            <span class="dist-label">${esc(d.label)}</span>
-            <span class="dist-bar"><i style="width:${d.pct}%"></i></span>
-            <span class="dist-n num">${esc(String(d.count))}</span>
-          </div>`).join('')}
-      </div>
-    </div>` : ''}
-
-    <div class="card" style="margin-top:16px">
-      <h3>${creds?.hasPassword ? 'تغيير كلمة المرور' : 'تعيين كلمة مرور'}</h3>
-      ${!creds?.hasPassword ? `
-        <p class="section-sub" style="margin:6px 0 14px">
-          دخلت بحساب ${esc(creds?.hasGoogle ? 'جوجل' : 'Apple')} ولا كلمة مرور لحسابك.
-          عيّن واحدة لتستطيع الدخول بها أيضاً.
-        </p>` : ''}
-      <form method="post" action="/account/password">
-        ${csrfField(csrf)}
-        ${creds?.hasPassword ? `
-        <div class="field">
-          <label for="current">كلمة المرور الحالية</label>
-          <input id="current" name="current" type="password" maxlength="200"
-                 autocomplete="current-password" required>
-        </div>` : ''}
-        <div class="field">
-          <label for="next">${creds?.hasPassword ? 'الجديدة' : 'كلمة المرور'}</label>
-          <input id="next" name="next" type="password" minlength="8" maxlength="200"
-                 autocomplete="new-password" required>
+    <section class="acc-sec">
+      <h2>توزيع نتائجي</h2>
+      <div class="card">
+        <div class="dist">
+          ${dist.map((d) => `
+            <div class="dist-row">
+              <span class="dist-label">${esc(d.label)}</span>
+              <span class="dist-bar"><i style="width:${d.pct}%"></i></span>
+              <span class="dist-n num">${esc(String(d.count))}</span>
+            </div>`).join('')}
         </div>
-        <button class="btn btn-primary" type="submit">حفظ</button>
-      </form>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h3>حذف الحساب</h3>
-      <p class="section-sub" style="margin:8px 0 16px">
-        يُحذف حسابك وتوقعاتك ونقاطك نهائياً ولا يمكن التراجع. مجموعاتك
-        التي تملكها تنتقل لأقدم عضو فيها.
-      </p>
-      <form method="post" action="/account/delete"
-            onsubmit="return confirm('حذف نهائي بلا تراجع. متأكد؟')">
-        ${csrfField(csrf)}
-        ${creds?.hasPassword ? `
-        <div class="field">
-          <label for="delpass">أكّد بكلمة المرور</label>
-          <input id="delpass" name="password" type="password" maxlength="200"
-                 autocomplete="current-password" required>
-        </div>` : `
-        <!-- حساب بلا كلمة سر: التأكيد بكتابة البريد. طلبُ كلمة لا
-             وجود لها كان يجعل الحساب غير قابل للحذف إطلاقاً. -->
-        <div class="field">
-          <label for="delmail">اكتب بريدك لتأكيد الحذف</label>
-          <input id="delmail" name="confirmEmail" type="email" dir="ltr"
-                 maxlength="160" placeholder="${esc(creds?.email || '')}" required>
-        </div>`}
-        <button class="btn btn-danger" type="submit">حذف حسابي نهائياً</button>
-      </form>
-    </div>
-
-    ${history && history.length ? `
-    <div class="card" style="margin-top:16px">
-      <h3>سجلّي</h3>
-      <div class="hx-head">
-        <span>المباراة</span><span>توقّعك</span><span>النتيجة</span><span>النقاط</span>
       </div>
-      <div class="hxs">${history.map(historyRow).join('')}</div>
-      ${history.length >= 20 ? '<p class="section-sub" style="margin-top:10px;text-align:center">آخر 20 توقّعاً</p>' : ''}
-    </div>` : ''}
+    </section>` : ''}
+
+    <section class="acc-sec">
+      <h2>سجلّي</h2>
+      ${history && history.length ? `
+      <div class="card">
+        <div class="hx-head">
+          <span>المباراة</span><span>توقّعي</span><span>النتيجة</span><span>النقاط</span>
+        </div>
+        <div class="hxs">${history.map(historyRow).join('')}</div>
+        ${history.length >= 20 ? '<p class="section-sub" style="margin-top:10px;text-align:center">آخر 20 توقّعاً</p>' : ''}
+      </div>` : `
+      <div class="card" style="text-align:center;padding:32px 20px">
+        <p class="section-sub">ما سجّلت توقّعاً بعد — <a href="/">ابدأ من المباريات</a>.</p>
+      </div>`}
+    </section>
+
+    <section class="acc-sec">
+      <h2>إعدادات الحساب</h2>
+
+      <div class="card">
+        <div class="row"><span class="k">طريقة الدخول</span><span>${esc(loginMethods(creds))}</span></div>
+      </div>
+
+      ${creds?.hasPassword ? `
+      <div class="card" style="margin-top:12px">
+        <h3>تغيير كلمة المرور</h3>
+        <form method="post" action="/account/password">
+          ${csrfField(csrf)}
+          <div class="field">
+            <label for="current">كلمة المرور الحالية</label>
+            <input id="current" name="current" type="password" maxlength="200"
+                   autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="next">الجديدة</label>
+            <input id="next" name="next" type="password" minlength="8" maxlength="200"
+                   autocomplete="new-password" required>
+          </div>
+          <button class="btn btn-primary" type="submit">حفظ</button>
+        </form>
+      </div>` : ''}
+
+      <div class="card danger" style="margin-top:12px">
+        <h3>حذف الحساب</h3>
+        <p class="section-sub" style="margin:8px 0 16px">
+          يُحذف حسابك وتوقعاتك ونقاطك نهائياً ولا يمكن التراجع. مجموعاتك
+          التي تملكها تنتقل لأقدم عضو فيها.
+        </p>
+        <form method="post" action="/account/delete"
+              onsubmit="return confirm('حذف نهائي بلا تراجع. متأكد؟')">
+          ${csrfField(csrf)}
+          ${creds?.hasPassword ? `
+          <div class="field">
+            <label for="delpass">أكّد بكلمة المرور</label>
+            <input id="delpass" name="password" type="password" maxlength="200"
+                   autocomplete="current-password" required>
+          </div>` : `
+          <div class="field">
+            <label for="delmail">اكتب بريدك لتأكيد الحذف</label>
+            <input id="delmail" name="confirmEmail" type="email" dir="ltr"
+                   maxlength="160" placeholder="${esc(creds?.email || '')}" required>
+          </div>`}
+          <button class="btn btn-danger" type="submit">حذف حسابي نهائياً</button>
+        </form>
+      </div>
+    </section>
 
     <form method="post" action="/logout" style="margin-top:16px">
       ${csrfField(csrf)}
@@ -1238,6 +1270,28 @@ function h2hRows(list, homeId) {
   }).join('');
 }
 
+/**
+ * حقل نتيجة فريق واحد: − ورقم و+.
+ *
+ * الأزرار type="button" لا submit — داخل نموذج، الافتراضي هو
+ * الإرسال، وضغطة على + كانت سترسل التوقّع بدل أن تزيد الرقم.
+ *
+ * والحقل يبقى قابلاً للكتابة: من يريد 4-3 يكتبها بدل سبع ضغطات،
+ * ومن يعطّل JavaScript لا يفقد إلا الزرّين.
+ */
+function scoreField(name, teamName, value) {
+  return `
+<label class="pf-team">
+  <span>${esc(teamName)}</span>
+  <span class="stepper">
+    <button class="step" type="button" data-step="down" aria-label="إنقاص">−</button>
+    <input class="num" name="${esc(name)}" type="number" inputmode="numeric"
+           min="0" max="99" value="${value === null || value === undefined ? '' : esc(String(value))}">
+    <button class="step" type="button" data-step="up" aria-label="زيادة">+</button>
+  </span>
+</label>`;
+}
+
 function renderMatch(settings, { fixture: f, detail, predict }) {
   const title = `${f.home_team_name} ضد ${f.away_team_name}`;
   const hasEvents = detail.events.length > 0;
@@ -1343,19 +1397,11 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
             </button>
           </div>
 
-          <div class="pq pq-sub">النتيجة بالضبط</div>
+          <div class="pq pq-sub">أو حدّد النتيجة</div>
           <div class="pf-row">
-            <label class="pf-team">
-              <span>${esc(f.home_team_name)}</span>
-              <input class="num" name="home" type="number" inputmode="numeric"
-                     min="0" max="99" value="${predict.mine ? esc(String(predict.mine.pred_home)) : ''}">
-            </label>
+            ${scoreField('home', f.home_team_name, predict.mine?.pred_home)}
             <span class="pf-x">−</span>
-            <label class="pf-team">
-              <span>${esc(f.away_team_name)}</span>
-              <input class="num" name="away" type="number" inputmode="numeric"
-                     min="0" max="99" value="${predict.mine ? esc(String(predict.mine.pred_away)) : ''}">
-            </label>
+            ${scoreField('away', f.away_team_name, predict.mine?.pred_away)}
           </div>
           <button class="btn btn-primary" type="submit">${predict.mine ? 'تعديل التوقّع' : 'سجّل التوقّع'}</button>
           <p class="pf-note">

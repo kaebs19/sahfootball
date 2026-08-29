@@ -1772,3 +1772,92 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .hx-head, .hx { grid-template-columns: 1fr 46px 46px 34px; gap: 5px; }
   .dist-row { grid-template-columns: 80px 1fr 24px; }
 }
+
+/* ═══════════════ أزرار النتيجة ═══════════════ */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.step {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--fill);
+  color: var(--text-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+.step:hover { color: var(--text); border-color: var(--text-faint); }
+.step:active { transform: scale(.94); }
+
+/* ═══════════════ حسابي ═══════════════ */
+
+.acc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+}
+.acc-id { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.acc-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--crown-wash);
+  border: 1px solid var(--crown-line);
+  color: var(--crown);
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+}
+.acc-head h1 { font-size: 1.15rem; margin: 0 0 2px; }
+.acc-mail { font-size: 12px; color: var(--text-faint); }
+.acc-rank {
+  flex: 0 0 auto;
+  text-align: center;
+  padding-inline-start: 16px;
+  border-inline-start: 1px solid var(--border);
+}
+.acc-rank b {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--crown);
+  line-height: 1.1;
+}
+.acc-rank span { font-size: 10.5px; color: var(--text-faint); }
+
+/* أقسام بعناوين: الصفحة صارت طويلة، وعناوينها هي ما يجعلها
+   قابلة للمسح بالعين بدل قراءتها من أولها. */
+.acc-sec { margin-top: 24px; }
+.acc-sec > h2 {
+  font-size: 0.95rem;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+.acc-sec .stats-grid { margin-top: 0; }
+
+/* منطقة الخطر: حدّ أحمر خافت يفصلها عمّا فوقها بلا صراخ. */
+.danger { border-color: rgba(255, 90, 78, 0.28); }
+.danger h3 { color: var(--wrong); }
+
+@media (max-width: 560px) {
+  .acc-head { flex-direction: column; align-items: stretch; text-align: center; }
+  .acc-id { flex-direction: column; }
+  .acc-rank {
+    padding-inline-start: 0;
+    border-inline-start: none;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+}
