@@ -13,7 +13,10 @@ const badgeService = require('./badgeService');
 const logger = require('../utils/logger');
 
 // القيم الاحتياطية لو غاب صف الإعدادات لأي سبب — النظام لا يتوقف.
-const DEFAULT_SCORING = { exact: 5, diff: 3, outcome: 2 };
+const DEFAULT_SCORING = { exact: 100, diff: 75, outcome: 50 };
+
+// أداة المضاعِف: قيمها الفعلية من app_settings كذلك، وهذه احتياطية.
+const DEFAULT_MULTIPLIERS = { factor: 2, free_per_season: 5 };
 
 // تصنيف التوقع مقابل نتيجة: 'exact' | 'diff' | 'outcome' | 'none'.
 //
@@ -58,11 +61,21 @@ async function settleFinished() {
 
   const touchedUsers = new Set();
   for (const p of pending) {
+    // الضرب هنا وحده — نقطة المنح الوحيدة في النظام.
+    //
+    // ولا يدخل المضاعِف في computeState ولا computePoints عمداً:
+    // تلك تجيب "هل أصاب وبأي دقة"، وهو سؤال لا علاقة له بالرهان.
+    // خلطهما يجعل شارة "نتيجة مضبوطة!" في التبويب المباشر تعتمد
+    // على أداة، ويجعل توزيع الإصابات في صفحة الحساب يعدّ النقاط
+    // بدل المرات.
+    //
+    // multiplier غير قابل للعدم في القاعدة (NOT NULL DEFAULT 1)،
+    // فلا حاجة لاحتياطٍ هنا يخفي عموداً ناقصاً لو تغيّر ذلك يوماً.
     const points = computePoints(
       { home: p.pred_home, away: p.pred_away },
       { home: p.goals_home, away: p.goals_away },
       cfg
-    );
+    ) * p.multiplier;
     await predictionRepo.settle(p.id, points);
     touchedUsers.add(p.user_id); // Set لأن للمستخدم توقعات كثيرة في الدورة الواحدة
   }
@@ -91,4 +104,7 @@ async function settleFinished() {
   return pending.length;
 }
 
-module.exports = { computePoints, computeState, settleFinished, DEFAULT_SCORING };
+module.exports = {
+  computePoints, computeState, settleFinished,
+  DEFAULT_SCORING, DEFAULT_MULTIPLIERS,
+};

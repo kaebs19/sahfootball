@@ -5,25 +5,72 @@ const db = require('../config/db');
 // قبل انطلاق المباراة تحديثاً للصف نفسه.
 // الشرط WHERE settled_at IS NULL في جهة UPDATE حزام أمان أخير:
 // حتى لو أخطأت طبقة أعلى، توقع محتسب لا يُعدَّل أبداً.
-async function upsert({ userId, fixtureId, predHome, predAway }) {
+async function upsert({ userId, fixtureId, predHome, predAway, multiplier = null }) {
+  // multiplier = null معناه "لا تلمسه"، لا "أرجعه إلى 1".
+  //
+  // للتوقّع بابان: الموقع يرسل الحقل دائماً (مربّع الاختيار
+  // المضاعِف جزء من نموذجه)، والتطبيق لا يعرفه بعد. ولولا هذا
+  // التمييز لكان أي تعديل من التطبيق على توقّع مضاعَف من الموقع
+  // يُسقط المضاعِف بصمت — يخسر اللاعب أداة نادرة لأنه رفع هدفاً
+  // من هاتفه. COALESCE على $5 صراحةً لا على EXCLUDED: قيمة
+  // EXCLUDED محسوبة سلفاً بـ 1 عند الإدراج، فتضيع نية "اتركه".
   const { rows } = await db.query(
-    `INSERT INTO predictions (user_id, fixture_id, pred_home, pred_away)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO predictions (user_id, fixture_id, pred_home, pred_away, multiplier)
+     VALUES ($1, $2, $3, $4, COALESCE($5, 1))
      ON CONFLICT (user_id, fixture_id) DO UPDATE SET
        pred_home  = EXCLUDED.pred_home,
        pred_away  = EXCLUDED.pred_away,
+       multiplier = COALESCE($5, predictions.multiplier),
        updated_at = now()
      WHERE predictions.settled_at IS NULL
-     RETURNING id, fixture_id, pred_home, pred_away, points, created_at, updated_at`,
-    [userId, fixtureId, predHome, predAway]
+     RETURNING id, fixture_id, pred_home, pred_away, multiplier, points, created_at, updated_at`,
+    [userId, fixtureId, predHome, predAway, multiplier]
   );
   return rows[0] ?? null; // null = الصف محتسب فرفض التحديث
+}
+
+/**
+ * كم مضاعِفاً استعمل هذا اللاعب في هذا الدوري وهذا الموسم؟
+ *
+ * exceptFixture يُستثنى عمداً: من يعدّل توقّعاً مضاعَفاً أصلاً لا
+ * ينفق مضاعِفاً ثانياً. واستثناؤه في الاستعلام بدل قراءة الصف
+ * الحالي أولاً يجعل الإنشاء والتعديل سؤالاً واحداً — والحالتان
+ * تسلكان نفس المسار في submit، فالتفريق بينهما هنا خطأ ينتظر.
+ */
+async function countMultiplied(userId, leagueId, season, exceptFixture = 0) {
+  // فحص صريح لأن الصمت هنا يمنح مضاعفات بلا حدّ.
+  //
+  // مرّ فعلاً: صفحة المباراة تقرأ المباراة من siteFixtureRepo لا من
+  // fixtureRepo، وقائمة أعمدة الأولى لم تكن تضم season. فوصلت
+  // undefined فأرسلتها pg كـ NULL، و`f.season = NULL` لا يطابق
+  // شيئاً أبداً — فرجع العدّ صفراً، وقرأ كل لاعب "باقٍ لك 5 من 5"
+  // مهما أنفق. لا خطأ ولا سطر في السجل: حصةٌ تحرسها القاعدة صارت
+  // مفتوحة لأن عموداً غاب عن SELECT.
+  //
+  // القاعدة العامة: مدخلٌ ناقصٌ في استعلام يحرس حصة يجب أن يصرخ،
+  // لا أن يُقرأ كـ"لا شيء منفَق".
+  if (!Number.isInteger(leagueId) || !Number.isInteger(season)) {
+    throw new Error(`countMultiplied: league/season ناقصان (${leagueId}/${season})`);
+  }
+
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS used
+       FROM predictions p
+       JOIN fixtures f ON f.id = p.fixture_id
+      WHERE p.user_id = $1
+        AND p.multiplier > 1
+        AND f.league_id = $2
+        AND f.season = $3
+        AND p.fixture_id <> $4`,
+    [userId, leagueId, season, exceptFixture]
+  );
+  return rows[0].used;
 }
 
 // توقعات المستخدم مع معلومات المباراة للعرض مباشرة في التطبيق.
 async function findMine(userId) {
   const { rows } = await db.query(
-    `SELECT p.id, p.fixture_id, p.pred_home, p.pred_away, p.points, p.settled_at,
+    `SELECT p.id, p.fixture_id, p.pred_home, p.pred_away, p.multiplier, p.points, p.settled_at,
             f.kickoff_at, f.status, f.goals_home, f.goals_away, f.round,
             COALESCE(ht.name_ar, ht.name_en) AS home_team_name,
             COALESCE(at.name_ar, at.name_en) AS away_team_name
@@ -49,7 +96,7 @@ async function findMine(userId) {
 async function findByUserAndFixtures(userId, fixtureIds) {
   if (fixtureIds.length === 0) return []; // لا داعي لجولة إلى القاعدة
   const { rows } = await db.query(
-    `SELECT fixture_id, pred_home, pred_away
+    `SELECT fixture_id, pred_home, pred_away, multiplier
      FROM predictions
      WHERE user_id = $1 AND fixture_id = ANY($2::int[])`,
     [userId, fixtureIds]
@@ -65,7 +112,7 @@ async function findByUserAndFixtures(userId, fixtureIds) {
 // "من أصحاب هذه التوقعات؟" بعد أن كانت الإجابة في يدنا أصلاً.
 async function findUnsettled() {
   const { rows } = await db.query(
-    `SELECT p.id, p.user_id, p.pred_home, p.pred_away,
+    `SELECT p.id, p.user_id, p.pred_home, p.pred_away, p.multiplier,
             f.goals_home, f.goals_away
      FROM predictions p
      JOIN fixtures f ON f.id = p.fixture_id
@@ -221,11 +268,17 @@ async function profileStats(userId) {
     // app_settings، وأي قائمة مكتوبة هنا تصير كذباً بعد أول تعديل.
     // نسأل القاعدة عمّا حدث فعلاً فتأتي القيم الصحيحة دائماً.
     db.query(
-      `SELECT points, COUNT(*)::int AS count
+      // points / multiplier لا points: التوزيع يجيب "كم مرة أصبتُ"
+      // لا "كم جمعتُ". ولولا القسمة لانشقّ صفّ "نتيجة مضبوطة" إلى
+      // صفّين (100 و200) يقولان الشيء نفسه، ولاصطدم المضاعَف
+      // الأدنى بالمفرد الأعلى: اتجاه صحيح ×2 يساوي 100 وهو نفسه
+      // ثمن النتيجة المضبوطة — فيُقرأ إصابةٌ لم تقع.
+      // القسمة صحيحة تماماً لأن points حاصل ضرب في multiplier.
+      `SELECT (points / multiplier) AS points, COUNT(*)::int AS count
          FROM predictions
         WHERE user_id = $1 AND settled_at IS NOT NULL
-        GROUP BY points
-        ORDER BY points DESC`,
+        GROUP BY 1
+        ORDER BY 1 DESC`,
       [userId]
     ),
 
@@ -307,6 +360,7 @@ async function profileStats(userId) {
 
 module.exports = {
   upsert,
+  countMultiplied,
   findMine,
   findByUserAndFixtures,
   findUnsettled,

@@ -504,6 +504,13 @@ button.btn {
   color: var(--wrong);
 }
 
+/* تحذير: العملية نجحت وجزء منها لم يُطبَّق. لونه لون التاج لا
+   لون الخطأ — الأحمر يقول "أعد المحاولة" وليس ثمة ما يُعاد. */
+.note.warn {
+  background: var(--crown-wash);
+  color: var(--crown);
+}
+
 .contact-side .row {
   display: flex;
   align-items: center;
@@ -2096,4 +2103,90 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .mh-side .stepper { gap: 4px; margin-top: 8px; }
   .mh-side .stepper input { width: 42px; font-size: 17px; }
   .mh-side .step { width: 26px; height: 26px; font-size: 15px; }
+}
+
+/* ═══════════════ جدول النقاط وأداة المضاعِف ═══════════════ */
+
+/* الجدول وصفٌ لا زينة: يُقرأ مرة واحدة ثم يصير معروفاً، فيأخذ
+   خطاً صغيراً وحدوداً باهتة ولا ينافس الأرقام في البطاقة. */
+.ptbl {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--fill);
+}
+.ptbl-h {
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.ptbl-r {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+}
+.ptbl-r + .ptbl-r { border-top: 1px solid var(--border); }
+.ptbl-l {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+}
+.ptbl-l small { font-size: 11px; font-weight: 400; color: var(--text-faint); }
+.ptbl-r > b { font-size: 17px; color: var(--crown); flex: none; }
+/* صفّ المضاعِف يُقرأ كسقفٍ أعلى، فيأخذ لون الأداة لا لون الجدول. */
+.ptbl-x { background: var(--crown-wash); }
+.ptbl-x .ptbl-l b { color: var(--crown); }
+
+/* الأداة: مربّع اختيار بمساحة ضغط كاملة الصفّ — الهدف إصبع لا فأرة. */
+.mx {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--crown-line);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.mx input { width: 18px; height: 18px; accent-color: var(--crown); flex: none; cursor: pointer; }
+.mx-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mx-body b { font-size: 13.5px; }
+.mx-body b .num { color: var(--crown); }
+.mx-body small { font-size: 11.5px; color: var(--text-faint); }
+.mx-body small b { color: var(--crown); font-size: inherit; }
+.mx:hover { background: var(--crown-wash); }
+/* المؤشَّر يُضاء: قرار اتُّخذ، والبطاقة تقوله بلا قراءة. */
+.mx-on { background: var(--crown-wash); border-color: var(--crown); }
+/* المُنفَد يبقى ظاهراً معطّلاً — إخفاؤه يخفي وجود الأداة أصلاً. */
+.mx-off { opacity: .55; cursor: default; border-color: var(--border); }
+.mx-off:hover { background: none; }
+.mx-off input { cursor: default; }
+
+/* علامة المضاعَفة في السجل: بلا هذه يقرأ اللاعب رقماً مضاعفاً
+   ولا يعرف من أين جاء. */
+.hx-x {
+  display: inline-block;
+  margin-inline-end: 4px;
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: var(--crown-wash);
+  color: var(--crown);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+@media (max-width: 560px) {
+  .ptbl-l { font-size: 12.5px; }
+  .ptbl-r > b { font-size: 15px; }
+  .mx { padding: 9px 10px; }
 }

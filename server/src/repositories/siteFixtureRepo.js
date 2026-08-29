@@ -13,6 +13,7 @@ const db = require('../config/db');
 const COLUMNS = `
   f.id,
   f.league_id,
+  f.season,
   l.sort_order        AS league_order,
   COALESCE(l.name_ar, l.name_en) AS league_name,
   l.logo_url          AS league_logo,

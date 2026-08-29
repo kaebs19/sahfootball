@@ -99,11 +99,15 @@ router.get('/stats', async (req, res) => {
     // 3) توزيع النقاط على التوقعات المحتسبة — يُظهر للأدمن كيف
     // تعمل إعدادات النقاط فعلياً (هل التوقع الدقيق نادر فعلاً؟).
     db.query(`
-      SELECT points, COUNT(*)::int AS count
+      -- بالنقاط الأساسية (points / multiplier): السؤال هنا "هل
+      -- التوقّع الدقيق نادر فعلاً؟"، والمضاعِف يخلط الجواب — يشقّ
+      -- كل صنف إلى صفّين، ويجعل اتجاهاً مضاعَفاً يساوي نتيجة
+      -- مضبوطة مفردة فيُعدّ معها.
+      SELECT (points / multiplier) AS points, COUNT(*)::int AS count
       FROM predictions
       WHERE settled_at IS NOT NULL AND points IS NOT NULL
-      GROUP BY points
-      ORDER BY points
+      GROUP BY 1
+      ORDER BY 1
     `),
 
     // 4) أفضل خمسة. JOIN وليس LEFT JOIN هنا: قائمة "الأفضل" لا
@@ -620,8 +624,10 @@ router.put('/settings/scoring', async (req, res) => {
   // الحقول الثلاثة فقط — لو أرسل أحدهم حقولاً إضافية لا تتسرب
   // للإعدادات المخزنة.
   for (const [name, v] of [['exact', exact], ['diff', diff], ['outcome', outcome]]) {
-    if (!Number.isInteger(v) || v < 0 || v > 100) {
-      return res.status(400).json({ error: `${name} يجب أن يكون عدداً صحيحاً بين 0 و 100` });
+    // السقف 1000 لا 100: المقياس صار 100/75/50، وسقفٌ يساوي أعلى
+    // قيمة معمول بها يمنع رفعها ولو نقطة واحدة.
+    if (!Number.isInteger(v) || v < 0 || v > 1000) {
+      return res.status(400).json({ error: `${name} يجب أن يكون عدداً صحيحاً بين 0 و 1000` });
     }
   }
   // فحص منطقي: الأدق يستحق أكثر. نمنع إعدادات مقلوبة تفسد عدالة

@@ -8,7 +8,7 @@
 //
 // القاعدة الذهبية هنا: لا توقّع بعد الانطلاق. كل ما عداها تفاصيل.
 const settingsRepo = require('../repositories/settingsRepo');
-const { DEFAULT_SCORING } = require('./scoringService');
+const { DEFAULT_SCORING, DEFAULT_MULTIPLIERS } = require('./scoringService');
 const predictionRepo = require('../repositories/predictionRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
 
@@ -30,7 +30,7 @@ const MAX_GOALS = 99;
  * فالتوقّع على دوري يُعرض في الموقع ولا يدخل اللعبة يرد 404 من
  * نفسه — بلا فحص إضافي هنا يمكن نسيانه.
  */
-async function submit({ userId, fixtureId, home, away }) {
+async function submit({ userId, fixtureId, home, away, multiplier = null }) {
   // Number.isInteger ترفض "2" النصية و 2.5 و null دفعة واحدة.
   if (!Number.isInteger(fixtureId) ||
       !Number.isInteger(home) || !Number.isInteger(away) ||
@@ -47,9 +47,96 @@ async function submit({ userId, fixtureId, home, away }) {
     throw new PredictionError(409, 'أُغلق التوقّع — المباراة انطلقت أو انتهت');
   }
 
-  return predictionRepo.upsert({
-    userId, fixtureId, predHome: home, predAway: away,
+  // المضاعِف بعد فحص الإقفال لا قبله: من تأخر عن الصافرة يُردّ
+  // بـ"أُغلق التوقّع" لا بـ"نفدت مضاعفاتك" — الثانية تصفه بمشكلة
+  // لا يملكها وتخفي عنه المشكلة التي يملكها.
+  const mult = await resolveMultiplier(userId, fixture, multiplier);
+
+  const row = await predictionRepo.upsert({
+    userId, fixtureId, predHome: home, predAway: away, multiplier: mult.value,
   });
+  // العلم على الصف لا استثناء: التوقّع نجح، وأداةٌ وحدها لم تتوفّر.
+  if (row && mult.denied) row.multiplierDenied = mult.denied;
+  return row;
+}
+
+/**
+ * يتحقق من المضاعِف المطلوب ويرجعه، أو null معناه "لا تغيّره".
+ *
+ * الحصة لكل (لاعب، دوري، موسم): خمسة في الدوري السعودي لا تُنقص
+ * شيئاً من خمسة في دوري الأبطال. وهذا ليس سخاءً بل اتساق — لوحة
+ * كل دوري مستقلة، فأداة تُنفق في لوحة وتنقص في أخرى تربط منافستين
+ * لا تربطهما نتيجة.
+ */
+async function resolveMultiplier(userId, fixture, requested) {
+  if (requested === null || requested === undefined) return { value: null };
+
+  const cfg = await multipliers();
+  const value = Number(requested);
+
+  if (value === 1) return { value: 1 }; // الإلغاء مسموح دائماً، ويردّ الأداة
+  if (value !== cfg.factor) {
+    throw new PredictionError(400, 'مضاعِف غير معروف');
+  }
+
+  const used = await predictionRepo.countMultiplied(
+    userId, fixture.league_id, fixture.season, fixture.id
+  );
+
+  // نفاد الحصة لا يُسقط التوقّع.
+  //
+  // الحالة واقعية لا نظرية: صفحتان مفتوحتان في لسانين، أُنفق آخر
+  // مضاعِف في إحداهما، ثم أُرسلت الأخرى بمربّع كان مؤشَّراً حين
+  // رُسمت. ورفض الطلب كله هنا يمسح توقّعاً صحيحاً تماماً بسبب
+  // أداة اختيارية — ويترك اللاعب أمام رسالة خطأ قد يغادر بعدها
+  // بلا توقّع أصلاً، وهو أسوأ ما يمكن أن نفعله بمن جاء ليلعب.
+  //
+  // فنحفظ التوقّع مفرداً ونخبره أن المضاعِف وحده لم يُطبَّق.
+  if (used >= cfg.free_per_season) {
+    return {
+      value: 1,
+      denied: `حُفظ توقّعك بلا مضاعِف — استعملت مضاعفاتك ${counted(cfg.free_per_season)} في هذا الدوري لهذا الموسم.`,
+    };
+  }
+  return { value };
+}
+
+/**
+ * حالة الأداة أمام هذا اللاعب في هذه المباراة — للعرض.
+ *
+ * exceptFixture مرة أخرى: من فتح مباراة مضاعَفة يجب أن يقرأ
+ * "باقٍ 2 من 5" لا "باقٍ 1"، فمضاعِف هذه المباراة ليس منفقاً في
+ * غيرها — وإلغاؤه هنا يعيده إليه فوراً.
+ */
+async function multiplierState(userId, fixture, mine) {
+  const cfg = await multipliers();
+  const used = await predictionRepo.countMultiplied(
+    userId, fixture.league_id, fixture.season, fixture.id
+  );
+  // المعروض يعدّ هذه المباراة، والمفروض لا يعدّها — وهذا ليس
+  // تناقضاً بل سؤالان مختلفان. الفحص يسأل "هل يملك أداة ينفقها
+  // هنا؟" فيستثني ما أنفقه هنا سلفاً كي لا يُمنع من تعديل توقّعه.
+  // والعرض يجيب "كم بقي لي لمباريات أخرى؟" فيعدّ هذه واحدةً
+  // منفَقة ما دامت مؤشَّرة — وإلا قرأ "باقٍ 5 من 5" فوق مربّع
+  // مؤشَّر، فظنّ الأداة مجانية بلا حدّ حتى تنفد فجأة.
+  const on = (mine?.multiplier ?? 1) > 1;
+  return {
+    factor: cfg.factor,
+    free: cfg.free_per_season,
+    used,
+    left: Math.max(0, cfg.free_per_season - used - (on ? 1 : 0)),
+    on,
+  };
+}
+
+/** "خمسة" لا "5 مضاعفات" — الرقم بعد فعل ماضٍ يصح مكتوباً. */
+function counted(n) {
+  return ['', 'الواحد', 'الاثنين', 'الثلاثة', 'الأربعة', 'الخمسة'][n] ?? `الـ${n}`;
+}
+
+/** إعدادات المضاعِف المعمول بها. */
+async function multipliers() {
+  return (await settingsRepo.get('multipliers').catch(() => null)) ?? DEFAULT_MULTIPLIERS;
 }
 
 /** هل ما زال التوقّع مفتوحاً على هذه المباراة؟ */
@@ -84,6 +171,6 @@ async function points() {
 }
 
 module.exports = {
-  submit, isOpen, outcomeOf, points,
+  submit, isOpen, outcomeOf, points, multipliers, multiplierState,
   DEFAULT_SCORELINE, PredictionError, MAX_GOALS,
 };

@@ -680,17 +680,28 @@ router.post('/predict', async (req, res) => {
     && Number.isInteger(typed.home) && Number.isInteger(typed.away);
   const preset = predictionService.DEFAULT_SCORELINE[String(req.body?.pick || '')];
 
+  // المضاعِف: مربّع اختيار، ومربّع الاختيار غير المؤشَّر لا يُرسل
+  // شيئاً — فلا يمكن التفريق بين "ألغيتُه" و"لا أعرفه". لهذا يسبقه
+  // حقل مخفي بقيمة 1، فيصل الاسم دائماً: مفرداً عند الإلغاء،
+  // ومصفوفة ['1','2'] عند التأشير. الأخير هو المقصود.
+  const multRaw = Array.isArray(req.body?.mult)
+    ? req.body.mult[req.body.mult.length - 1]
+    : req.body?.mult;
+  const multiplier = multRaw === undefined ? null : Number(multRaw);
+
   const score = hasTyped ? typed : preset;
   if (!score) {
     return back('?err=' + encodeURIComponent('اختر الفائز أو اكتب النتيجة.'));
   }
 
+  let saved;
   try {
-    await predictionService.submit({
+    saved = await predictionService.submit({
       userId: session.userId,
       fixtureId,
       home: score.home,
       away: score.away,
+      multiplier,
     });
   } catch (err) {
     if (err.status && err.expose) {
@@ -701,7 +712,9 @@ router.post('/predict', async (req, res) => {
   }
 
   // تحويل بعد النجاح: تحديث الصفحة لا يعيد الإرسال.
-  back('?saved=1');
+  back(saved?.multiplierDenied
+    ? `?saved=1&warn=${encodeURIComponent(saved.multiplierDenied)}`
+    : '?saved=1');
 });
 
 // ─────────────────── صفحة المباراة ───────────────────
@@ -756,7 +769,20 @@ async function buildPredict(req, settings, fixture) {
     // من اللوحة، ووعدٌ بخمس نقاط بينما النظام يمنح ثلاثاً هو أسوأ
     // ما يمكن أن يقرأه لاعب.
     points: await predictionService.points(),
+    // حالة المضاعِف تُقرأ فقط لمن يستطيع التوقّع فعلاً: استعلام عدّ
+    // إضافي على كل زائر لصفحة مباراة انتهت لا يُعرض ناتجه لأحد.
+    mult: settings.viewer && predictionService.isOpen(fixture)
+      ? await predictionService.multiplierState(settings.viewer.id, fixture, mine)
+        // الفشل يخفي الأداة ولا يُسقط الصفحة — لكنه يُسجَّل: أداة
+        // تختفي بلا أثر في السجل عطلٌ لا يبلّغ عنه أحد.
+        .catch((err) => {
+          logger.error('[pages] multiplier state failed:', err.message);
+          return null;
+        })
+      : null,
     saved: req.query.saved === '1',
+    // تحذير لا خطأ: العملية نجحت وشيء فيها لم يُطبَّق.
+    warn: req.query.warn ? String(req.query.warn).slice(0, 160) : null,
     error: req.query.err ? String(req.query.err).slice(0, 120) : null,
   };
 }

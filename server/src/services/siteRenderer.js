@@ -13,6 +13,7 @@
 // وطبقة تعلّم. دوال تعيد نصاً تكفي، والهروب من HTML صريح في
 // esc() بدل أن يكون سلوكاً ضمنياً في محرك قد نظنه يفعله.
 
+const { DEFAULT_SCORING } = require('./scoringService');
 const { render: renderMarkdown } = require('../utils/safeMarkdown');
 
 // الهروب من HTML لكل قيمة تدخل الصفحة.
@@ -614,7 +615,7 @@ function historyRow(h) {
   <span class="hx-teams">${esc(h.home_team_name)} — ${esc(h.away_team_name)}</span>
   <span class="hx-mine num" dir="ltr" title="توقّعك">${esc(String(h.pred_home))}-${esc(String(h.pred_away))}</span>
   <span class="hx-real num" dir="ltr" title="النتيجة">${done ? `${esc(String(h.goals_home ?? 0))}-${esc(String(h.goals_away ?? 0))}` : '—'}</span>
-  <span class="hx-pts num">${settled ? esc(String(h.points)) : (done ? '…' : 'لم تُلعب')}</span>
+  <span class="hx-pts num">${h.multiplier > 1 ? '<span class="hx-x" dir="ltr" title="مضاعَفة">×2</span>' : ''}${settled ? esc(String(h.points)) : (done ? '…' : 'لم تُلعب')}</span>
 </a>`;
 }
 
@@ -630,7 +631,7 @@ function historyRow(h) {
  */
 function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history }) {
   const rank = stats?.rank ? `${stats.rank}` : '—';
-  const dist = distribution(stats, points || { exact: 5, diff: 3, outcome: 2 });
+  const dist = distribution(stats, points || DEFAULT_SCORING);
   const body = `
 <div class="page">
   <div class="wrap auth-wrap" style="max-width:560px">
@@ -1293,21 +1294,65 @@ function stepper(field, name, value) {
 </span>`;
 }
 
-function teamScoreRow(field, name, logo, id, value) {
+/**
+ * جدول النقاط — صريحاً لا جملةً.
+ *
+ * كان سطراً واحداً يقول "مضبوطة 100 · فارق 75 · فوز 50"، وهو
+ * يفترض أن القارئ يعرف سلفاً ما الفرق بين الثلاثة. اللاعب الجديد
+ * لا يعرف أن "فارق صحيح" شيء يُكافأ أصلاً، فيقرأ الأرقام ولا يقرأ
+ * القاعدة — والقاعدة هي ما يغيّر طريقة لعبه.
+ *
+ * وكل قيمة من الإعدادات: تعديل الأدمن يعيد كتابة الجدول والوصف
+ * معاً، فلا يبقى في الصفحة رقم يخالف ما يمنحه النظام.
+ */
+function pointsTable(points, mult) {
+  const rows = [
+    ['النتيجة المضبوطة', 'الفائز والأهداف معاً', points.exact],
+    ['فارق الأهداف', 'أخطأت الأهداف وأصبت الفارق', points.diff],
+    ['الفائز الصحيح', 'عرفت من يفوز لا كم', points.outcome],
+  ];
   return `
-<div class="tr">
-  <div class="tr-team">
-    ${teamBadge(name, logo, id)}
-    <span class="tr-name">${esc(name)}</span>
-  </div>
-  <span class="stepper">
-    <button class="step" type="button" data-step="down" aria-label="إنقاص ${esc(name)}">−</button>
-    <input class="num" name="${esc(field)}" type="number" inputmode="numeric"
-           min="0" max="99" aria-label="أهداف ${esc(name)}"
-           value="${value === null || value === undefined ? '' : esc(String(value))}">
-    <button class="step" type="button" data-step="up" aria-label="زيادة ${esc(name)}">+</button>
-  </span>
+<div class="ptbl">
+  <div class="ptbl-h">كم تساوي إصابتك؟</div>
+  ${rows.map(([label, hint, value]) => `
+  <div class="ptbl-r">
+    <span class="ptbl-l">${esc(label)}<small>${esc(hint)}</small></span>
+    <b class="num">${esc(String(value))}</b>
+  </div>`).join('')}
+  ${mult ? `
+  <div class="ptbl-r ptbl-x">
+    <span class="ptbl-l">مع المضاعِف <b dir="ltr" class="num">×${esc(String(mult.factor))}</b><small>يتضاعف كل ما سبق</small></span>
+    <b class="num">${esc(String(points.exact * mult.factor))}</b>
+  </div>` : ''}
 </div>`;
+}
+
+/**
+ * أداة المضاعِف داخل بطاقة التوقّع.
+ *
+ * الحقل المخفي قبل المربّع مقصود: مربّع اختيار غير مؤشَّر لا يُرسل
+ * اسمه إطلاقاً، فلا يستطيع الخادم تمييز "ألغيتُه" من "لم يصلني
+ * الحقل". الحقلان معاً يجعلان الاسم يصل دائماً — والمتصفح يرسل
+ * الاثنين بالترتيب حين يكون مؤشَّراً، فيغلب الأخير.
+ *
+ * ومن نفدت مضاعفاته لا يُخفى عنه الصندوق: من لا يرى الأداة لا
+ * يعرف أنها موجودة ولا متى تعود. يراها معطّلة ومعها سببها.
+ */
+function multiplierBox(mult) {
+  if (!mult) return '';
+  const spent = !mult.on && mult.left === 0;
+  return `
+<input type="hidden" name="mult" value="1">
+<label class="mx${spent ? ' mx-off' : ''}${mult.on ? ' mx-on' : ''}">
+  <input type="checkbox" name="mult" value="${esc(String(mult.factor))}"
+         ${mult.on ? 'checked' : ''} ${spent ? 'disabled' : ''}>
+  <span class="mx-body">
+    <b>ضاعِف نقاط هذه المباراة <span class="num" dir="ltr">×${esc(String(mult.factor))}</span></b>
+    <small>${spent
+      ? `استعملت مضاعفاتك ${esc(String(mult.free))} في هذا الدوري — تعود في الموسم القادم`
+      : `باقٍ لك <b class="num">${esc(String(mult.left))}</b> من <span class="num">${esc(String(mult.free))}</span> في هذا الدوري`}</small>
+  </span>
+</label>`;
 }
 
 /** "فوز القادسية" أو "تعادل" — مشتقّ من الأرقام لا مخزّن معها. */
@@ -1391,18 +1436,15 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
            والزر أسفلها. كان صفّان مستقلان يكرران اسمي الفريقين
            الموجودين فوقهما بالفعل. -->
       <div class="mh-predict">
-        ${predict.saved ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
+        ${predict.saved && !predict.warn ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
+        ${predict.warn ? `<div class="note warn">${esc(predict.warn)}</div>` : ''}
         ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
 
         ${!predict.viewer ? `
           <div class="pj">
             <div class="pj-q">من سيفوز؟</div>
-            <p class="pj-lede">
-              سجّل توقّعك وانضم للمنافسة على العرش. النتيجة المضبوطة
-              <b>${esc(String(predict.points.exact))}</b> نقاط،
-              وفارق الأهداف الصحيح <b>${esc(String(predict.points.diff))}</b>،
-              والفوز الصحيح <b>${esc(String(predict.points.outcome))}</b>.
-            </p>
+            <p class="pj-lede">سجّل توقّعك وانضم للمنافسة على العرش.</p>
+            ${pointsTable(predict.points, null)}
             <div class="pj-cta">
               ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
               <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
@@ -1410,10 +1452,11 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
             </div>
           </div>` : canPredict ? `
           <div class="tr-pick" data-pick>${esc(pickLabel(f, predict.mine))}</div>
+          ${multiplierBox(predict.mult)}
           <button class="btn btn-primary" type="submit">${predict.mine ? 'تعديل التوقّع' : 'سجّل التوقّع'}</button>
+          ${pointsTable(predict.points, predict.mult)}
           <p class="pf-note">
             يُقفل التوقّع عند صافرة البداية — ${esc(untilKickoff(f.kickoff_at) || 'الآن')}.
-            مضبوطة ${esc(String(predict.points.exact))} · فارق ${esc(String(predict.points.diff))} · فوز ${esc(String(predict.points.outcome))}.
           </p>` : `
           <div class="pf-locked">
             ${predict.mine
