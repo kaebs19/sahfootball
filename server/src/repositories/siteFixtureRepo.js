@@ -24,6 +24,10 @@ const COLUMNS = `
   f.ht_away,
   f.pen_home,
   f.pen_away,
+  -- هل يدخل هذا الدوري لعبة التوقّعات؟ الموقع يعرض ثماني بطولات
+  -- بينما اللعبة على دوري روشن وحده، والعَلَم يمنع عرض زر توقّع
+  -- على مباراة سيرفضها السيرفر.
+  l.in_app AS predictable,
   f.kickoff_at,
   f.status,
   f.elapsed,

@@ -2,40 +2,19 @@
 const express = require('express');
 const requireAuth = require('../middleware/requireAuth');
 const predictionRepo = require('../repositories/predictionRepo');
-const fixtureRepo = require('../repositories/fixtureRepo');
+const predictionService = require('../services/predictionService');
 
 const router = express.Router();
 
 // POST /api/predictions — { fixtureId, home, away }
-// إنشاء أو تعديل — نفس المسار للاثنين (UPSERT). التعديل مسموح
-// حتى لحظة الانطلاق حرفياً.
+//
+// القواعد كلها في predictionService: الموقع يستدعيها أيضاً، ونسختان
+// منها تنحرفان عند أول تعديل. والخطأ يصعد كما هو — معالج الأخطاء
+// في app.js يعرف AuthError/PredictionError (status + expose).
 router.post('/', requireAuth, async (req, res) => {
   const { fixtureId, home, away } = req.body || {};
-
-  // Number.isInteger ترفض "2" النصية و 2.5 و null دفعة واحدة.
-  if (!Number.isInteger(fixtureId) ||
-      !Number.isInteger(home) || !Number.isInteger(away) ||
-      home < 0 || home > 99 || away < 0 || away > 99) {
-    return res.status(400).json({ error: 'fixtureId و home و away أعداد صحيحة مطلوبة (0-99)' });
-  }
-
-  const fixture = await fixtureRepo.findById(fixtureId);
-  if (!fixture) {
-    return res.status(404).json({ error: 'المباراة غير موجودة' });
-  }
-
-  // القاعدة الذهبية للنزاهة: لا توقع بعد الانطلاق.
-  // نفحص الحالة والوقت معاً: الحالة قد تتأخر 30 ثانية (دورة الكاش)
-  // عن الواقع، لكن kickoff_at لا يكذب.
-  if (fixture.status !== 'scheduled' || new Date(fixture.kickoff_at) <= new Date()) {
-    return res.status(409).json({ error: 'أُغلق التوقع — المباراة انطلقت أو انتهت' });
-  }
-
-  const prediction = await predictionRepo.upsert({
-    userId: req.userId,
-    fixtureId,
-    predHome: home,
-    predAway: away,
+  const prediction = await predictionService.submit({
+    userId: req.userId, fixtureId, home, away,
   });
   res.status(201).json({ prediction });
 });

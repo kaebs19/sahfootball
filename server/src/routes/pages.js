@@ -14,6 +14,7 @@ const siteFixtureRepo = require('../repositories/siteFixtureRepo');
 const leagueRepo = require('../repositories/leagueRepo');
 const standingsService = require('../services/standingsService');
 const matchDetailService = require('../services/matchDetailService');
+const predictionService = require('../services/predictionService');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
@@ -173,10 +174,20 @@ router.get('/', async (req, res) => {
   // نفسه يخدم "الكل" و"دوري واحد" فلا يتفرّع.
   const fixtures = league ? all.filter((f) => f.league_id === league) : all;
 
-  const sides = await buildSides(leagues, fixtures);
+  const [sides, mine] = await Promise.all([
+    buildSides(leagues, fixtures),
+    // توقعات هذا الزائر لمباريات اليوم، في استعلام واحد. زائر غير
+    // مسجّل لا يكلّف شيئاً.
+    settings.viewer
+      ? predictionRepo
+          .findByUserAndFixtures(settings.viewer.id, fixtures.map((f) => f.id))
+          .then((rows) => Object.fromEntries(rows.map((r) => [r.fixture_id, r])))
+          .catch(() => ({}))
+      : Promise.resolve({}),
+  ]);
 
   res.type('html').send(
-    renderer.renderMatches(settings, { day, fixtures, days, leagues, league, sides })
+    renderer.renderMatches(settings, { day, fixtures, days, leagues, league, sides, mine })
   );
 });
 // صفحة اتصل بنا — قبل /:slug لأن لها معالجاً خاصاً (نموذج + POST)
@@ -547,6 +558,38 @@ router.post('/logout', async (req, res) => {
   res.redirect(303, '/');
 });
 
+// تسجيل توقّع من الموقع.
+//
+// نفس predictionService الذي يستدعيه التطبيق — بابان بنفس القواعد
+// لا بقاعدتين تنحرفان. والقاعدة الحاسمة (لا توقّع بعد الانطلاق)
+// تُفحص هناك لا هنا، فلا يمكن أن ينساها باب.
+router.post('/predict', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  const fixtureId = Number(req.body?.fixture);
+  const back = (suffix) => res.redirect(303, `/match/${fixtureId}${suffix}`);
+
+  try {
+    await predictionService.submit({
+      userId: session.userId,
+      fixtureId,
+      home: Number(req.body?.home),
+      away: Number(req.body?.away),
+    });
+  } catch (err) {
+    if (err.status && err.expose) {
+      return back(`?err=${encodeURIComponent(err.message)}`);
+    }
+    logger.error('[pages] predict failed:', err.message);
+    return back('?err=' + encodeURIComponent('تعذّر حفظ التوقّع الآن.'));
+  }
+
+  // تحويل بعد النجاح: تحديث الصفحة لا يعيد الإرسال.
+  back('?saved=1');
+});
+
 // ─────────────────── صفحة المباراة ───────────────────
 //
 // ثلاثة نداءات للمزوّد لكل مباراة تُفتح (أحداث، إحصاءات، تشكيلات)،
@@ -564,8 +607,38 @@ router.get('/match/:id', async (req, res, next) => {
     matchDetailService.get(fixture),
   ]);
 
-  res.type('html').send(renderer.renderMatch(settings, { fixture, detail }));
+  const predict = await buildPredict(req, settings, fixture);
+
+  res.type('html').send(renderer.renderMatch(settings, { fixture, detail, predict }));
 });
+
+/**
+ * سياق بطاقة التوقّع في صفحة المباراة.
+ *
+ * ترجع null للمباريات التي لا تدخل اللعبة (predictable = false):
+ * الموقع يعرض ثماني بطولات واللعبة على دوري روشن وحده، وبطاقة
+ * توقّع على مباراة إسبانية تَعِد بما سيرفضه السيرفر.
+ */
+async function buildPredict(req, settings, fixture) {
+  if (!fixture.predictable) return null;
+
+  const session = settings.viewer ? await webSession.read(req).catch(() => null) : null;
+
+  const mine = settings.viewer
+    ? (await predictionRepo
+        .findByUserAndFixtures(settings.viewer.id, [fixture.id])
+        .catch(() => []))[0] || null
+    : null;
+
+  return {
+    open: predictionService.isOpen(fixture),
+    viewer: Boolean(settings.viewer),
+    csrf: session?.csrf || '',
+    mine,
+    saved: req.query.saved === '1',
+    error: req.query.err ? String(req.query.err).slice(0, 120) : null,
+  };
+}
 
 // ─────────────────── الهدافون ───────────────────
 router.get('/scorers', async (req, res) => {

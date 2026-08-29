@@ -729,9 +729,21 @@ function teamBadge(name, logo, id) {
  * RTL، ونفس ما يفعله التطبيق. الاتجاه يأتي من CSS لا من عكس
  * الحقول، فيبقى ترتيب النتيجة "المضيف - الضيف" سليماً.
  */
-function fixtureRow(f) {
+/**
+ * صف مباراة. mine = توقّع المستخدم لها إن وُجد.
+ *
+ * الشارة صغيرة ولا تفتح نموذجاً في الصف: أحد عشر صفاً بأحد عشر
+ * نموذجاً يحوّل قائمة نتائج إلى استمارة. الصف يقول "توقّعت 2-1"
+ * أو "توقّع"، والفعل نفسه في صفحة المباراة حيث المساحة والسياق.
+ */
+function fixtureRow(f, mine) {
+  const badge = mine
+    ? `<span class="fx-pred" title="توقّعك"><b class="num" dir="ltr">${esc(String(mine.pred_home))} - ${esc(String(mine.pred_away))}</b></span>`
+    : (f.predictable ? '<span class="fx-pred fx-pred-empty">توقّع</span>' : '');
+
   return `
 <a class="fx" href="/match/${esc(String(f.id))}" data-status="${esc(f.status)}">
+  ${badge}
   <div class="fx-side fx-home">
     ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
     <span class="fx-name">${esc(f.home_team_name)}</span>
@@ -906,7 +918,7 @@ function sidePanel({ league, standings }) {
 </aside>`;
 }
 
-function renderMatches(settings, { day, fixtures, days, leagues, league, sides }) {
+function renderMatches(settings, { day, fixtures, days, leagues, league, sides, mine }) {
   const today = riyadhToday();
   const groups = groupByLeague(fixtures);
 
@@ -961,7 +973,7 @@ function renderMatches(settings, { day, fixtures, days, leagues, league, sides }
           <span class="lg-count num">${esc(String(g.fixtures.length))}</span>
         </header>
         <div class="layout">
-          <div class="col-main"><div class="lg-body">${g.fixtures.map(fixtureRow).join('')}</div></div>
+          <div class="col-main"><div class="lg-body">${g.fixtures.map((x) => fixtureRow(x, mine && mine[x.id])).join('')}</div></div>
           ${sidePanel((sides && sides[g.id]) || {})}
         </div>
       </section>`).join('')}
@@ -1103,7 +1115,7 @@ function h2hRows(list, homeId) {
   }).join('');
 }
 
-function renderMatch(settings, { fixture: f, detail }) {
+function renderMatch(settings, { fixture: f, detail, predict }) {
   const title = `${f.home_team_name} ضد ${f.away_team_name}`;
   const hasEvents = detail.events.length > 0;
   const hasStats = detail.statistics.length > 0;
@@ -1153,6 +1165,42 @@ function renderMatch(settings, { fixture: f, detail }) {
           ? `<div><dt>الشوط الأول</dt><dd class="num" dir="ltr">${esc(String(f.ht_home))} - ${esc(String(f.ht_away))}</dd></div>` : ''}
       </dl>` : ''}
     </div>
+
+    ${predict ? `
+    <section class="card sec predict">
+      <h2>توقّعك</h2>
+      ${predict.saved ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
+      ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
+
+      ${predict.open ? (predict.viewer ? `
+        <form method="post" action="/predict" class="pf">
+          ${csrfField(predict.csrf)}
+          <input type="hidden" name="fixture" value="${esc(String(f.id))}">
+          <div class="pf-row">
+            <label class="pf-team">
+              <span>${esc(f.home_team_name)}</span>
+              <input class="num" name="home" type="number" inputmode="numeric"
+                     min="0" max="99" required value="${predict.mine ? esc(String(predict.mine.pred_home)) : ''}">
+            </label>
+            <span class="pf-x">−</span>
+            <label class="pf-team">
+              <span>${esc(f.away_team_name)}</span>
+              <input class="num" name="away" type="number" inputmode="numeric"
+                     min="0" max="99" required value="${predict.mine ? esc(String(predict.mine.pred_away)) : ''}">
+            </label>
+          </div>
+          <button class="btn btn-primary" type="submit">${predict.mine ? 'تعديل التوقّع' : 'سجّل التوقّع'}</button>
+          <p class="pf-note">يُقفل التوقّع عند صافرة البداية — ${esc(untilKickoff(f.kickoff_at) || 'الآن')}.</p>
+        </form>` : `
+        <p class="section-sub">
+          <a href="/login">سجّل الدخول</a> لتتوقّع نتيجة هذه المباراة وتنافس على العرش.
+        </p>`) : `
+        <div class="pf-locked">
+          ${predict.mine
+            ? `توقّعك كان <b class="num" dir="ltr">${esc(String(predict.mine.pred_home))} - ${esc(String(predict.mine.pred_away))}</b>${predict.mine.points !== null && predict.mine.points !== undefined ? ` — <b>${esc(String(predict.mine.points))}</b> نقطة` : ''}`
+            : 'أُقفل التوقّع على هذه المباراة.'}
+        </div>`}
+    </section>` : ''}
 
     ${hasEvents ? `
     <section class="card sec">

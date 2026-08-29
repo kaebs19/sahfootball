@@ -1,0 +1,58 @@
+// predictionService — قواعد التوقّع، في مكان واحد.
+//
+// كانت هذه القواعد داخل routes/predictions مباشرة، وذلك كافٍ ما دام
+// للتطبيق باب واحد. ثم صار للموقع باب ثانٍ — ونسخ القواعد في
+// الملفين يعني أن أول تعديل عليها (تغيير حد الأرقام، أو السماح
+// بالتعديل بعد الانطلاق بدقيقة) يجب تذكّره مرتين، وأن نسيانه يفتح
+// ثغرة نزاهة في الباب المنسي لا خطأ ظاهراً.
+//
+// القاعدة الذهبية هنا: لا توقّع بعد الانطلاق. كل ما عداها تفاصيل.
+const predictionRepo = require('../repositories/predictionRepo');
+const fixtureRepo = require('../repositories/fixtureRepo');
+
+/** خطأ متوقّع برمز HTTP ورسالة صالحة للعرض — نفس عقد AuthError. */
+class PredictionError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+    this.expose = true;
+  }
+}
+
+const MAX_GOALS = 99;
+
+/**
+ * تسجيل توقّع أو تعديله. UPSERT: نفس المسار للاثنين.
+ *
+ * fixtureRepo.findById مقيّد بدوريات in_app (راجع FIXTURE_FROM)،
+ * فالتوقّع على دوري يُعرض في الموقع ولا يدخل اللعبة يرد 404 من
+ * نفسه — بلا فحص إضافي هنا يمكن نسيانه.
+ */
+async function submit({ userId, fixtureId, home, away }) {
+  // Number.isInteger ترفض "2" النصية و 2.5 و null دفعة واحدة.
+  if (!Number.isInteger(fixtureId) ||
+      !Number.isInteger(home) || !Number.isInteger(away) ||
+      home < 0 || home > MAX_GOALS || away < 0 || away > MAX_GOALS) {
+    throw new PredictionError(400, `التوقّع يجب أن يكون رقمين صحيحين بين 0 و${MAX_GOALS}`);
+  }
+
+  const fixture = await fixtureRepo.findById(fixtureId);
+  if (!fixture) throw new PredictionError(404, 'المباراة غير موجودة');
+
+  // نفحص الحالة والوقت معاً: الحالة قد تتأخر ثلاثين ثانية (دورة
+  // الكاش) عن الواقع، لكن kickoff_at لا يكذب.
+  if (fixture.status !== 'scheduled' || new Date(fixture.kickoff_at) <= new Date()) {
+    throw new PredictionError(409, 'أُغلق التوقّع — المباراة انطلقت أو انتهت');
+  }
+
+  return predictionRepo.upsert({
+    userId, fixtureId, predHome: home, predAway: away,
+  });
+}
+
+/** هل ما زال التوقّع مفتوحاً على هذه المباراة؟ */
+function isOpen(fixture) {
+  return fixture.status === 'scheduled' && new Date(fixture.kickoff_at) > new Date();
+}
+
+module.exports = { submit, isOpen, PredictionError, MAX_GOALS };
