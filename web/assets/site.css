@@ -1091,3 +1091,128 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .topnav::-webkit-scrollbar { display: none; }
   .topauth { margin-inline-start: auto; }
 }
+
+/* ═══════════════ تخطيط صفحة المباريات ═══════════════ */
+
+/* ترويسة الصفحة: عنوان بحجم عنوان لا بحجم لافتة.
+   كان يستعمل .section-title (حجم قسم تسويقي) فأخذ ثلث الشاشة
+   قبل أن يرى القارئ مباراة واحدة. */
+.page-head { margin-bottom: 18px; }
+.page-head h1 {
+  font-size: 1.35rem;
+  line-height: 1.3;
+  margin: 0 0 4px;
+}
+.page-head p {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+/* عمودان: المباريات هي المحتوى، والجانب مكمّل.
+   340 بكسل تكفي لجدول مصغّر ولا تزاحم أسماء الفرق في العمود
+   الرئيسي. */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 22px;
+  align-items: start;
+}
+.col-main { min-width: 0; }
+
+/* الجانب يلاحق التمرير: القارئ يتصفح مباريات اليوم بينما يبقى
+   الترتيب أمامه — وهو سبب وجوده بجانبها أصلاً. */
+.side {
+  position: sticky;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.side-card { padding: 14px 16px; }
+.side-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.side-head h3 { font-size: 0.95rem; margin: 0; }
+.side-head a {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.side-head a:hover { color: var(--correct); }
+
+/* الصفوف المصغّرة */
+.mini { list-style: none; margin: 0; padding: 0; }
+.mini li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.mini li:last-child { border-bottom: none; }
+.mini .fx-logo { width: 20px; height: 20px; border-radius: 4px; }
+.mini-rank {
+  flex: 0 0 16px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.mini li:nth-child(-n+3) .mini-rank { color: var(--crown); font-weight: 700; }
+.mini-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mini-pl {
+  flex: 0 0 22px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.mini-pts {
+  flex: 0 0 26px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--crown);
+  font-size: 13px;
+}
+.mini-legend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.mini-legend span:first-child { margin-inline-end: 2px; }
+
+/* ── بطاقات الأيام: مضغوطة ── */
+.daystrip { gap: 6px; margin-bottom: 20px; }
+.daystrip .day {
+  min-width: 58px;
+  padding: 7px 9px;
+  border-radius: 11px;
+  gap: 1px;
+}
+.daystrip .dw { font-size: 10px; }
+.daystrip .dl { font-size: 12px; }
+.daystrip .dc { font-size: 10px; }
+
+/* ── الشرائح: أصغر قليلاً لتتسع الثماني ── */
+.chips { gap: 6px; margin-bottom: 14px; }
+.chips .chip { padding: 6px 13px; font-size: 12.5px; }
+
+@media (max-width: 980px) {
+  /* الجانب ينزل تحت المباريات: عمود 340 بكسل بجانب عمود ضيق
+     يخنق الاثنين. */
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; }
+}

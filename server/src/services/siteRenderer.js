@@ -666,7 +666,11 @@ const localLogo = (kind, id) => `/logos/${kind}-${id}.png`;
 
 /** شعار فريق، أو حرفه الأول حين لا شعار. */
 function teamBadge(name, logo, id) {
-  if (logo) {
+  // المعرّف وحده يكفي: العنوان مشتق منه حسابياً، والمسار يحوّل
+  // للمزوّد إن لم يكن الشعار منزّلاً بعد. اشتراط logo كان يجعل
+  // القوائم التي لا تحمله (الهدافون المصغّرون) تعرض حرفاً بديلاً
+  // بينما الشعار موجود عندنا فعلاً.
+  if (logo || id) {
     const src = id ? localLogo('team', id) : logo;
     return `<img class="fx-logo" src="${esc(src)}" alt="" loading="lazy" width="30" height="30">`;
   }
@@ -808,7 +812,65 @@ function renderStandings(settings, { leagues, league, rows, error }) {
   });
 }
 
-function renderMatches(settings, { day, fixtures, days, leagues, league }) {
+/**
+ * اللوحة الجانبية: ترتيب الدوري المعروض وهدافوه.
+ *
+ * لماذا بجانب المباريات لا في صفحة مستقلة؟ لأن الأسئلة الثلاثة
+ * تُسأل معاً: من يلعب اليوم، وأين صار فريقي، ومن يتصدّر الهدافين.
+ * إجبار القارئ على ثلاث صفحات لثلاثة أسطر من البيانات هو ما يجعل
+ * موقعاً يبدو بطيئاً وهو سريع.
+ *
+ * ومختصرة عمداً — ثمانية صفوف وخمسة هدافين — والباقي خلف رابط:
+ * الجدول الكامل في العمود الجانبي يزاحم المباريات وهي المحتوى.
+ */
+function sidePanel({ league, leagueName, standings, scorers }) {
+  if (!league) return '';
+
+  const table = (standings || []).slice(0, 8);
+  const top = (scorers || []).slice(0, 5);
+  if (!table.length && !top.length) return '';
+
+  return `
+<aside class="side">
+  ${table.length ? `
+  <section class="card side-card">
+    <header class="side-head">
+      <h3>الترتيب</h3>
+      <a href="/standings?league=${esc(String(league))}">الكل</a>
+    </header>
+    <ol class="mini">
+      ${table.map((r) => `
+        <li>
+          <span class="mini-rank num">${esc(String(r.rank))}</span>
+          ${teamBadge(r.team_name, r.logo_url, r.team_id)}
+          <span class="mini-name">${esc(r.team_name)}</span>
+          <span class="mini-pl num">${esc(String(r.played))}</span>
+          <span class="mini-pts num">${esc(String(r.points))}</span>
+        </li>`).join('')}
+    </ol>
+    <div class="mini-legend"><span>لعب</span><span>نقاط</span></div>
+  </section>` : ''}
+
+  ${top.length ? `
+  <section class="card side-card">
+    <header class="side-head">
+      <h3>الهدافون</h3>
+      <a href="/scorers?league=${esc(String(league))}">الكل</a>
+    </header>
+    <ol class="mini">
+      ${top.map((p) => `
+        <li>
+          <span class="mini-rank num">${esc(String(p.rank))}</span>
+          ${teamBadge(p.team, null, p.teamId)}
+          <span class="mini-name">${esc(p.name)}</span>
+          <span class="mini-pts num">${esc(String(p.goals))}</span>
+        </li>`).join('')}
+    </ol>
+  </section>` : ''}
+</aside>`;
+}
+
+function renderMatches(settings, { day, fixtures, days, leagues, league, side }) {
   const today = riyadhToday();
   const groups = groupByLeague(fixtures);
 
@@ -831,11 +893,10 @@ function renderMatches(settings, { day, fixtures, days, leagues, league }) {
   const body = `
 <div class="page">
   <div class="wrap">
-    <div class="section-label">المباريات</div>
-    <h1 class="section-title" style="margin-bottom:6px">${esc(arabicDate(day))}</h1>
-    <p class="section-sub" style="margin-bottom:22px">
-      كل الأوقات بتوقيت الرياض. النتائج تُحدَّث أثناء اللعب.
-    </p>
+    <div class="page-head">
+      <h1>${esc(arabicDate(day))}</h1>
+      <p>كل الأوقات بتوقيت الرياض · النتائج تُحدَّث أثناء اللعب</p>
+    </div>
 
     ${leagueChips(leagues, {
       active: league,
@@ -851,6 +912,8 @@ function renderMatches(settings, { day, fixtures, days, leagues, league }) {
         </a>`).join('')}
     </nav>
 
+    <div class="layout">
+      <main class="col-main">
     ${groups.length === 0 ? `
       <div class="card" style="text-align:center;padding:44px 20px">
         <h3>لا مباريات في هذا اليوم</h3>
@@ -865,6 +928,9 @@ function renderMatches(settings, { day, fixtures, days, leagues, league }) {
         </header>
         <div class="lg-body">${g.fixtures.map(fixtureRow).join('')}</div>
       </section>`).join('')}
+      </main>
+      ${sidePanel(side || {})}
+    </div>
   </div>
 </div>`;
 

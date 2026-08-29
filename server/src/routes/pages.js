@@ -69,6 +69,31 @@ async function pageContext(req) {
 }
 
 // الصفحة الرئيسية
+/**
+ * بيانات اللوحة الجانبية. لا ترمي أبداً: عطل عند المزوّد يخفي
+ * اللوحة ولا يمنع عرض المباريات — وهي المحتوى الأساسي.
+ *
+ * النداءان مخزّنان مؤقتاً (ساعة للترتيب وست ساعات للهدافين)، فزوار
+ * الساعة الواحدة يقرؤون نسخة واحدة مهما كثروا.
+ */
+async function buildSide(league) {
+  if (!league) return null;
+
+  const [standings, scorers] = await Promise.all([
+    standingsService.getStandings({ leagueId: league.id, season: league.season })
+      .catch(() => []),
+    matchDetailService.topScorers({ leagueId: league.id, season: league.season })
+      .catch(() => []),
+  ]);
+
+  return {
+    league: league.id,
+    leagueName: league.name_ar || league.name_en,
+    standings,
+    scorers,
+  };
+}
+
 // الصفحة الرئيسية = مباريات اليوم.
 //
 // كل البيانات من قاعدتنا لا من المزوّد: المزامن يملؤها دورياً،
@@ -92,8 +117,12 @@ router.get('/', async (req, res) => {
   // نفسه يخدم "الكل" و"دوري واحد" فلا يتفرّع.
   const fixtures = league ? all.filter((f) => f.league_id === league) : all;
 
+  // اللوحة الجانبية تتبع الترشيح، وإلا فأول دوري (روشن).
+  const sideLeague = leagues.find((l) => l.id === (league || leagues[0]?.id));
+  const side = await buildSide(sideLeague);
+
   res.type('html').send(
-    renderer.renderMatches(settings, { day, fixtures, days, leagues, league })
+    renderer.renderMatches(settings, { day, fixtures, days, leagues, league, side })
   );
 });
 // صفحة اتصل بنا — قبل /:slug لأن لها معالجاً خاصاً (نموذج + POST)
