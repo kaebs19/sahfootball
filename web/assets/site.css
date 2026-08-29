@@ -33,6 +33,36 @@
   --wrap: 1080px;
 }
 
+/* ═══════════════ الثيم الفاتح ═══════════════
+ *
+ * قواعد الهوية الثلاث تبقى كما هي — الذهبي للرتب، والأخضر للصح،
+ * ولا لون ثالث في العلامة. المتغيّر وحده القيم لا القواعد.
+ *
+ * لكن لونين لا يُنقلان كما هما: الأخضر #12e07e والذهبي #f2c14e
+ * صُمّما ليلمعا على خلفية ليلية، وعلى الأبيض يفقدان التباين فيصير
+ * الرقم المهم أضعف ما في الصفحة. لهما هنا نسختان أغمق للنص، بينما
+ * تبقى النسخة الأصلية للتعبئة (زر، شريحة نشطة) حيث النص فوقها داكن.
+ *
+ * والخلفية ليست بيضاء نقية: #f6f8f7 يخفّض وهج الشاشة ويجعل حواف
+ * البطاقات البيضاء مرئية بلا حدود ثقيلة.
+ */
+:root[data-theme="light"] {
+  --night: #f6f8f7;
+  --surface: #ffffff;
+  --crown: #9a6f14;
+  --correct: #0a8f4d;
+  --wrong: #c8352a;
+  --text: #0d1512;
+  --text-muted: #4d5f57;
+  --text-faint: #7d8f86;
+  --on-accent: #ffffff;
+
+  --fill: rgba(13, 21, 18, 0.04);
+  --border: rgba(13, 21, 18, 0.11);
+  --crown-wash: rgba(242, 193, 78, 0.18);
+  --crown-line: rgba(154, 111, 20, 0.28);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -1216,3 +1246,30 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .layout { grid-template-columns: minmax(0, 1fr); }
   .side { position: static; }
 }
+
+/* مبدّل الثيم */
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--fill);
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  text-decoration: none;
+}
+.theme-toggle:hover { color: var(--text); border-color: var(--text-faint); }
+
+/* في الوضع الفاتح: شعارات الأندية مصممة لخلفيات فاتحة أصلاً،
+   لكن حدّاً خفيفاً يفصل الشعار الأبيض عن البطاقة البيضاء. */
+:root[data-theme="light"] .fx-logo,
+:root[data-theme="light"] .sc-photo {
+  background: #fff;
+}
+
+/* الشريط الحيّ للإحصاءات: النصف الثاني أفتح في الوضع الفاتح
+   وإلا بدا الأحمر عدوانياً على أبيض. */
+:root[data-theme="light"] .stat-bar { opacity: .9; }

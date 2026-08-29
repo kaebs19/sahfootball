@@ -142,13 +142,13 @@ function layout({ title, description, body, settings, active, canonicalPath }) {
   const year = new Date().getFullYear();
 
   return `<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl"${settings?.theme === 'light' ? ' data-theme="light"' : ''}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(fullTitle)}</title>
 <meta name="description" content="${esc(description || settings?.description || '')}">
-<meta name="theme-color" content="#080f0c">
+<meta name="theme-color" content="${settings?.theme === 'light' ? '#f6f8f7' : '#080f0c'}">
 <meta property="og:title" content="${esc(fullTitle)}">
 <meta property="og:description" content="${esc(description || settings?.description || '')}">
 <meta property="og:type" content="website">
@@ -173,6 +173,16 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
     </nav>
 
     <div class="topauth">
+      <!-- التبديل رابط لا زر JavaScript.
+           الثيم يُرسَل مع HTML من الخادم (سمة data-theme على html)،
+           فلا وميض للثيم الخاطئ قبل تنفيذ سكربت — وهو العيب الذي
+           يجعل المبدّلات تبدو رخيصة. وسياسة المحتوى عندنا تمنع
+           السكربت المضمّن أصلاً، فالحل بلا JS ليس تنازلاً بل الأنسب. -->
+      <a class="theme-toggle" href="/theme?to=${settings?.theme === 'light' ? 'dark' : 'light'}&amp;next=${esc(encodeURIComponent(settings?.canonicalPath || '/'))}"
+         title="${settings?.theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}"
+         aria-label="${settings?.theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}">
+        ${settings?.theme === 'light' ? '☾' : '☀'}
+      </a>
       ${settings?.viewer
         ? `<a class="btn btn-sm btn-ghost" href="/account">حسابي</a>`
         : `<a class="auth-link" href="/login">دخول</a>
@@ -823,7 +833,7 @@ function renderStandings(settings, { leagues, league, rows, error }) {
  * ومختصرة عمداً — ثمانية صفوف وخمسة هدافين — والباقي خلف رابط:
  * الجدول الكامل في العمود الجانبي يزاحم المباريات وهي المحتوى.
  */
-function sidePanel({ league, leagueName, standings, scorers }) {
+function sidePanel({ league, standings, scorers }) {
   if (!league) return '';
 
   const table = (standings || []).slice(0, 8);
@@ -870,7 +880,7 @@ function sidePanel({ league, leagueName, standings, scorers }) {
 </aside>`;
 }
 
-function renderMatches(settings, { day, fixtures, days, leagues, league, side }) {
+function renderMatches(settings, { day, fixtures, days, leagues, league, sides }) {
   const today = riyadhToday();
   const groups = groupByLeague(fixtures);
 
@@ -912,8 +922,6 @@ function renderMatches(settings, { day, fixtures, days, leagues, league, side })
         </a>`).join('')}
     </nav>
 
-    <div class="layout">
-      <main class="col-main">
     ${groups.length === 0 ? `
       <div class="card" style="text-align:center;padding:44px 20px">
         <h3>لا مباريات في هذا اليوم</h3>
@@ -926,11 +934,11 @@ function renderMatches(settings, { day, fixtures, days, leagues, league, side })
           <a class="lg-link" href="/standings?league=${esc(String(g.id))}">الترتيب</a>
           <span class="lg-count num">${esc(String(g.fixtures.length))}</span>
         </header>
-        <div class="lg-body">${g.fixtures.map(fixtureRow).join('')}</div>
+        <div class="layout">
+          <div class="col-main"><div class="lg-body">${g.fixtures.map(fixtureRow).join('')}</div></div>
+          ${sidePanel((sides && sides[g.id]) || {})}
+        </div>
       </section>`).join('')}
-      </main>
-      ${sidePanel(side || {})}
-    </div>
   </div>
 </div>`;
 

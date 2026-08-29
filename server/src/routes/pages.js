@@ -60,12 +60,28 @@ async function loadSettings() {
  *
  * وفشل قراءة الجلسة لا يُسقط الصفحة: تُعرض كزائر غير مسجّل.
  */
+/** يقرأ كوكي الثيم من الترويسة الخام. */
+function readTheme(req) {
+  const header = req.headers.cookie || '';
+  const m = /(?:^|;\s*)sah_theme=([^;]+)/.exec(header);
+  return m && decodeURIComponent(m[1]) === 'light' ? 'light' : 'dark';
+}
+
 async function pageContext(req) {
   const [settings, session] = await Promise.all([
     loadSettings(),
     webSession.read(req).catch(() => null),
   ]);
-  return { ...settings, viewer: session ? { id: session.userId } : null };
+  return {
+    ...settings,
+    viewer: session ? { id: session.userId } : null,
+    // الثيم من كوكي: يُقرأ قبل بناء HTML فتصل الصفحة بلونها الصحيح
+    // من أول بايت. القيمة الوحيدة المقبولة 'light'؛ ما عداها داكن
+    // (الافتراضي، وهوية العلامة).
+    theme: readTheme(req),
+    // المسار الحالي — يعود إليه زر التبديل.
+    canonicalPath: req.originalUrl || '/',
+  };
 }
 
 // الصفحة الرئيسية
@@ -86,13 +102,55 @@ async function buildSide(league) {
       .catch(() => []),
   ]);
 
-  return {
-    league: league.id,
-    leagueName: league.name_ar || league.name_en,
-    standings,
-    scorers,
-  };
+  return { league: league.id, standings, scorers };
 }
+
+/**
+ * لوحة لكل دوري ظاهر في الصفحة، لا لوحة واحدة.
+ *
+ * القارئ الذي ينزل إلى الدوري الإيطالي يريد ترتيب الإيطالي بجانبه،
+ * لا ترتيب دوري روشن الذي بقي ملتصقاً بأعلى الصفحة.
+ *
+ * التكلفة نداءان لكل دوري، وكلاهما مخزّن (ساعة للترتيب وست ساعات
+ * للهدافين). ستة دوريات في يوم مزدحم = اثنا عشر نداءً في الساعة
+ * على الأكثر، أي ~288 يومياً من حصة 7500. والنداءات كلها على
+ * التوازي فزمنها زمن أبطأها.
+ *
+ * ويقتصر على الدوريات التي لها مباريات اليوم: بناء لوحة لدوري لا
+ * يظهر أصلاً إنفاق حصة على ما لا يُرى.
+ */
+async function buildSides(leagues, fixtures) {
+  const shown = new Set(fixtures.map((f) => f.league_id));
+  const wanted = leagues.filter((l) => shown.has(l.id));
+
+  const panels = await Promise.all(wanted.map((l) => buildSide(l)));
+
+  return Object.fromEntries(
+    panels.filter(Boolean).map((p) => [p.league, p])
+  );
+}
+
+// تبديل الثيم: يضبط الكوكي ويعود من حيث جاء.
+//
+// GET لا POST: هو تفضيل عرض لا فعل يغيّر بيانات، ورابط بسيط يعمل
+// بلا JS وبلا رمز CSRF. وأسوأ ما يفعله من ينتحله أن يبدّل لون
+// صفحة الزائر.
+router.get('/theme', (req, res) => {
+  const to = req.query.to === 'light' ? 'light' : 'dark';
+
+  // سنة كاملة: التفضيل لا ينتهي. وSameSite=Lax يكفي — لا شيء
+  // حسّاس هنا. وبلا HttpOnly عمداً: لا ضرر، وقد نحتاج قراءته من
+  // سكربت لاحقاً.
+  res.setHeader('Set-Cookie',
+    `sah_theme=${to}; Path=/; Max-Age=${365 * 24 * 3600}; SameSite=Lax` +
+    (req.secure ? '; Secure' : ''));
+
+  // الوجهة من داخل موقعنا فقط: قيمة تبدأ بـ // أو http تعني تحويلاً
+  // مفتوحاً يستعمله المخادع ليجعل رابطنا يقود لموقعه.
+  const next = String(req.query.next || '/');
+  const safe = /^\/(?!\/)/.test(next) ? next : '/';
+  res.redirect(303, safe);
+});
 
 // الصفحة الرئيسية = مباريات اليوم.
 //
@@ -117,12 +175,10 @@ router.get('/', async (req, res) => {
   // نفسه يخدم "الكل" و"دوري واحد" فلا يتفرّع.
   const fixtures = league ? all.filter((f) => f.league_id === league) : all;
 
-  // اللوحة الجانبية تتبع الترشيح، وإلا فأول دوري (روشن).
-  const sideLeague = leagues.find((l) => l.id === (league || leagues[0]?.id));
-  const side = await buildSide(sideLeague);
+  const sides = await buildSides(leagues, fixtures);
 
   res.type('html').send(
-    renderer.renderMatches(settings, { day, fixtures, days, leagues, league, side })
+    renderer.renderMatches(settings, { day, fixtures, days, leagues, league, sides })
   );
 });
 // صفحة اتصل بنا — قبل /:slug لأن لها معالجاً خاصاً (نموذج + POST)
