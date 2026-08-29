@@ -1997,3 +1997,73 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   max-width: 520px;
   margin-inline: auto;
 }
+
+
+/* ═══════════════ صفوف التوقّع ═══════════════ */
+
+.trs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* صف واحد لكل فريق: الاسم مرة واحدة، والمربّع بجانبه.
+   كان الاسم يتكرر مرتين — في زر "من سيفوز؟" وفوق مربّع النتيجة —
+   ويأخذ القسمان ارتفاع الشاشة تقريباً. */
+.tr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.tr-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.tr-team .fx-logo { width: 28px; height: 28px; }
+.tr-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr .stepper { flex: 0 0 auto; }
+.tr .stepper input {
+  width: 56px;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  padding: 7px 4px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--fill);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.tr .stepper input:focus { outline: none; border-color: var(--correct); }
+.tr .stepper input::-webkit-outer-spin-button,
+.tr .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.tr .stepper input { -moz-appearance: textfield; }
+
+/* الاتجاه المشتقّ: سطر واحد يقول ما تعنيه الأرقام.
+   يبقى محجوزاً بارتفاعه فارغاً كي لا يقفز الزر تحته حين يظهر. */
+.tr-pick {
+  min-height: 20px;
+  margin: 12px 0 14px;
+  text-align: center;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--correct);
+}
+
+@media (max-width: 560px) {
+  .tr { padding: 9px 11px; gap: 8px; }
+  .tr-name { font-size: 13.5px; }
+  .tr .stepper input { width: 48px; font-size: 17px; }
+}

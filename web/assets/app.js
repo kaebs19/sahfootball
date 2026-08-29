@@ -33,6 +33,36 @@
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 
+  // ── 1ب) الاتجاه المشتقّ ───────────────────────────────────────
+  //
+  // "فوز القادسية" يتحدّث مع الأرقام. الخادم يرسله محسوباً من
+  // التوقّع المحفوظ، وهذا يبقيه صحيحاً أثناء التعديل — بدونه يبقى
+  // النص يقول "تعادل" بينما المستخدم رفع رقماً لتوّه.
+  var rows = document.querySelector('.trs');
+  var pick = document.querySelector('[data-pick]');
+
+  if (rows && pick) {
+    var refresh = function () {
+      var rh = rows.querySelector('input[name="home"]').value.trim();
+      var ra = rows.querySelector('input[name="away"]').value.trim();
+
+      // فارغان معاً = لا توقّع بعد. وفارغ واحد يُعامل صفراً — وهو
+      // بالضبط ما سيحفظه الخادم، فما يراه المستخدم هو ما يُحفظ.
+      if (rh === '' && ra === '') { pick.textContent = ''; return; }
+
+      var h = rh === '' ? 0 : parseInt(rh, 10);
+      var a = ra === '' ? 0 : parseInt(ra, 10);
+      if (isNaN(h) || isNaN(a)) { pick.textContent = ''; return; }
+
+      pick.textContent = h > a ? 'فوز ' + rows.dataset.home
+        : h < a ? 'فوز ' + rows.dataset.away
+        : 'تعادل';
+    };
+
+    rows.addEventListener('input', refresh);
+    refresh();
+  }
+
   // ── 2) العدّاد التنازلي ───────────────────────────────────────
   //
   // "بعد 17 ساعة و29 دقيقة" جواب صحيح لكنه ساكن. العدّاد المتحرك

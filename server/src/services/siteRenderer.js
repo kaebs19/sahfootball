@@ -1281,17 +1281,29 @@ function h2hRows(list, homeId) {
  * والحقل يبقى قابلاً للكتابة: من يريد 4-3 يكتبها بدل سبع ضغطات،
  * ومن يعطّل JavaScript لا يفقد إلا الزرّين.
  */
-function scoreField(name, teamName, value) {
+function teamScoreRow(field, name, logo, id, value) {
   return `
-<label class="pf-team">
-  <span>${esc(teamName)}</span>
+<div class="tr">
+  <div class="tr-team">
+    ${teamBadge(name, logo, id)}
+    <span class="tr-name">${esc(name)}</span>
+  </div>
   <span class="stepper">
-    <button class="step" type="button" data-step="down" aria-label="إنقاص">−</button>
-    <input class="num" name="${esc(name)}" type="number" inputmode="numeric"
-           min="0" max="99" value="${value === null || value === undefined ? '' : esc(String(value))}">
-    <button class="step" type="button" data-step="up" aria-label="زيادة">+</button>
+    <button class="step" type="button" data-step="down" aria-label="إنقاص ${esc(name)}">−</button>
+    <input class="num" name="${esc(field)}" type="number" inputmode="numeric"
+           min="0" max="99" aria-label="أهداف ${esc(name)}"
+           value="${value === null || value === undefined ? '' : esc(String(value))}">
+    <button class="step" type="button" data-step="up" aria-label="زيادة ${esc(name)}">+</button>
   </span>
-</label>`;
+</div>`;
+}
+
+/** "فوز القادسية" أو "تعادل" — مشتقّ من الأرقام لا مخزّن معها. */
+function pickLabel(f, mine) {
+  if (!mine) return '';
+  if (mine.pred_home > mine.pred_away) return `فوز ${f.home_team_name}`;
+  if (mine.pred_home < mine.pred_away) return `فوز ${f.away_team_name}`;
+  return 'تعادل';
 }
 
 function renderMatch(settings, { fixture: f, detail, predict }) {
@@ -1393,27 +1405,18 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
                تُعدَّل الأرقام لمن يريد الدقة. البدء بحقلي أرقام
                فارغين يسأل سؤالاً أصعب مما يريد أغلب الناس الإجابة
                عنه. -->
-          <div class="picks">
-            <button class="pick${predict.pick === 'home' ? ' on' : ''}" type="submit" name="pick" value="home">
-              ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
-              <span>${esc(f.home_team_name)}</span>
-            </button>
-            <button class="pick${predict.pick === 'draw' ? ' on' : ''}" type="submit" name="pick" value="draw">
-              <span class="pick-x">=</span>
-              <span>تعادل</span>
-            </button>
-            <button class="pick${predict.pick === 'away' ? ' on' : ''}" type="submit" name="pick" value="away">
-              ${teamBadge(f.away_team_name, f.away_team_logo, f.away_team_id)}
-              <span>${esc(f.away_team_name)}</span>
-            </button>
+          <div class="trs"
+               data-home="${esc(f.home_team_name)}"
+               data-away="${esc(f.away_team_name)}">
+            ${teamScoreRow('home', f.home_team_name, f.home_team_logo, f.home_team_id, predict.mine?.pred_home)}
+            ${teamScoreRow('away', f.away_team_name, f.away_team_logo, f.away_team_id, predict.mine?.pred_away)}
           </div>
 
-          <div class="pq pq-sub">أو حدّد النتيجة</div>
-          <div class="pf-row">
-            ${scoreField('home', f.home_team_name, predict.mine?.pred_home)}
-            <span class="pf-x">−</span>
-            ${scoreField('away', f.away_team_name, predict.mine?.pred_away)}
-          </div>
+          <!-- الاتجاه مشتقّ من الأرقام ويتحدّث معها. النص المرسَل من
+               الخادم محسوب من التوقّع المحفوظ، فيراه من يعطّل
+               JavaScript صحيحاً. -->
+          <div class="tr-pick" data-pick>${esc(pickLabel(f, predict.mine))}</div>
+
           <button class="btn btn-primary" type="submit">${predict.mine ? 'تعديل التوقّع' : 'سجّل التوقّع'}</button>
           <p class="pf-note">
             يُقفل التوقّع عند صافرة البداية — ${esc(untilKickoff(f.kickoff_at) || 'الآن')}.

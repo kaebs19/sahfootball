@@ -660,11 +660,24 @@ router.post('/predict', async (req, res) => {
 
   // زر "من سيفوز؟" يرسل pick بلا أرقام. الأرقام المكتوبة تسبقه
   // حين توجد: من عدّل النتيجة يقصدها، والاتجاه مشتقّ منها أصلاً.
-  const typed = {
-    home: Number(req.body?.home),
-    away: Number(req.body?.away),
+  // الحقل الفارغ ليس صفراً.
+  //
+  // Number('') يساوي 0 وNumber.isInteger(0) صحيح، فكان الضغط على
+  // "سجّل التوقّع" بحقلين فارغين يحفظ 0-0 بصمت — تعادلاً لم يقصده
+  // أحد. نفحص النص الخام لا الرقم الناتج عنه.
+  const raw = {
+    home: String(req.body?.home ?? '').trim(),
+    away: String(req.body?.away ?? '').trim(),
   };
-  const hasTyped = Number.isInteger(typed.home) && Number.isInteger(typed.away);
+  // فارغ واحد مع رقم = الفارغ صفر (من رفع رقماً لفريق يقصد أن
+  // الآخر لم يسجّل). فارغان معاً = لا توقّع.
+  const anyTyped = raw.home !== '' || raw.away !== '';
+  const typed = {
+    home: raw.home === '' ? 0 : Number(raw.home),
+    away: raw.away === '' ? 0 : Number(raw.away),
+  };
+  const hasTyped = anyTyped
+    && Number.isInteger(typed.home) && Number.isInteger(typed.away);
   const preset = predictionService.DEFAULT_SCORELINE[String(req.body?.pick || '')];
 
   const score = hasTyped ? typed : preset;
