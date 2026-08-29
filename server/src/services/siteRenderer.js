@@ -1172,8 +1172,10 @@ function eventRow(e) {
   return `
 <div class="ev ev-${esc(e.side)}">
   <div class="ev-body">
-    <span class="ev-icon ${esc(e.cls)}" title="${esc(e.label)}">${e.icon}</span>
-    <span class="ev-name">${esc(e.player)}</span>
+    <div class="ev-line">
+      <span class="ev-icon ${esc(e.cls)}" title="${esc(e.label)}">${e.icon}</span>
+      <span class="ev-name">${esc(e.player)}</span>
+    </div>
     ${e.assist ? `<span class="ev-assist">صناعة ${esc(e.assist)}</span>` : ''}
   </div>
   <div class="ev-min num" dir="ltr">${esc(minute)}</div>
@@ -1317,7 +1319,15 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
           <span>${esc(f.home_team_name)}</span>
         </div>
         <div class="mh-center">
-          ${fixtureCenter(f)}
+          ${f.status === 'scheduled' && untilKickoff(f.kickoff_at) ? `
+            <!-- العدّاد: النص الثابت يُرسَل من الخادم فيراه من
+                 يعطّل JavaScript، والسكربت يستبدله بعدّاد يتحرك.
+                 data-kickoff بصيغة ISO — المتصفح يحسب بتوقيته
+                 المحلي فيصح العدّ لمن هو خارج الرياض. -->
+            <div class="mh-cd num" data-kickoff="${esc(new Date(f.kickoff_at).toISOString())}"
+                 dir="ltr">${esc(untilKickoff(f.kickoff_at))}</div>
+            <div class="mh-at num">${esc(kickoffTime(f.kickoff_at))}</div>
+          ` : fixtureCenter(f)}
           ${f.pen_home !== null && f.pen_home !== undefined
             ? `<div class="mh-pens">ركلات الترجيح <b class="num" dir="ltr">${esc(String(f.pen_home))} - ${esc(String(f.pen_away))}</b></div>`
             : ''}
@@ -1343,8 +1353,10 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
       </dl>` : ''}
     </div>
 
+    <nav class="tabs" role="tablist" hidden></nav>
+
     ${predict ? `
-    <section class="card sec predict">
+    <section class="card sec predict" data-tab="توقّعك">
       <h2>توقعات</h2>
       ${predict.saved ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
       ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
@@ -1417,19 +1429,19 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
     </section>` : ''}
 
     ${hasEvents ? `
-    <section class="card sec">
+    <section class="card sec" data-tab="الأحداث">
       <h2>أحداث المباراة</h2>
       <div class="evs">${detail.events.map(eventRow).join('')}</div>
     </section>` : ''}
 
     ${hasStats ? `
-    <section class="card sec">
+    <section class="card sec" data-tab="الإحصاءات">
       <h2>الإحصاءات</h2>
       ${detail.statistics.map((st) => statBar(st.label, st.home, st.away)).join('')}
     </section>` : ''}
 
     ${hasLineups ? `
-    <section class="card sec">
+    <section class="card sec" data-tab="التشكيلتان">
       <h2>التشكيلتان</h2>
       <div class="lineups">
         ${lineupSide(f.home_team_name, detail.lineups.home, 'home')}
@@ -1438,7 +1450,7 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
     </section>` : ''}
 
     ${detail.h2h && detail.h2h.length ? `
-    <section class="card sec">
+    <section class="card sec" data-tab="المواجهات">
       <h2>المواجهات السابقة</h2>
       <div class="h2hs">${h2hRows(detail.h2h, f.home_team_id)}</div>
     </section>` : ''}

@@ -960,15 +960,46 @@ a.fx:hover { background: rgba(255,255,255,.025); }
 }
 .ev:last-child { border-bottom: none; }
 .ev-away { grid-template-columns: 46px 1fr; direction: ltr; text-align: left; }
-.ev-away .ev-body { direction: rtl; flex-direction: row-reverse; }
-.ev-body { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.ev-away .ev-body { direction: rtl; align-items: flex-end; }
+
+/* عمود لا صف: الاسم سطراً والصناعة تحته.
+   كان صفاً بـ flex-wrap، فاسم طويل مع صناعة يلتفّ حرفياً في منتصف
+   الاسم ("S. Mou / rino") — والالتفاف مع row-reverse في جهة الضيف
+   يقلب ترتيب الأجزاء أيضاً. */
+.ev-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ev-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ev-away .ev-line { flex-direction: row-reverse; }
 .ev-icon { font-size: 14px; line-height: 1; }
 .ev-icon.goal { color: var(--correct); }
 .ev-icon.own, .ev-icon.miss, .ev-icon.red { color: var(--wrong); }
 .ev-icon.yellow { color: var(--crown); }
 .ev-icon.subst { color: var(--text-faint); }
-.ev-name { font-size: 14px; }
-.ev-assist { font-size: 11.5px; color: var(--text-faint); }
+.ev-name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ev-assist {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  /* بلا قصّ يلتف "صناعة A. Freeman" على سطرين فيصير الصف ضعف
+     ارتفاع جاره، وقائمة الأحداث تبدو غير منتظمة. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
 .ev-min { color: var(--text-faint); font-size: 12.5px; text-align: center; }
 
 /* الإحصاءات: رقمان وشريط نسبة */
@@ -1860,4 +1891,85 @@ a.fx:hover { background: rgba(255,255,255,.025); }
     padding-top: 14px;
     border-top: 1px solid var(--border);
   }
+}
+
+/* ═══════════════ تبويبات المباراة ═══════════════ */
+
+/* hidden لا display:none في CSS: الخادم يرسلها مخفية بسمة hidden
+   ويكشفها السكربت. لو أخفيناها بـ CSS لبقيت مخفية لمن يعطّل
+   JavaScript بينما الأقسام تحتها ظاهرة — شريط فارغ بلا سبب. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 16px 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.on {
+  color: var(--text);
+  border-bottom-color: var(--crown);
+  font-weight: 600;
+}
+/* التبويب المفتوح هو أول بطاقة تحت الشريط — نلغي هامشها العلوي
+   كي لا تنفصل عنه. */
+.tabs + .sec { margin-top: 0; }
+
+/* ═══════════════ العدّاد ═══════════════ */
+
+.mh-cd {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  /* عرض ثابت للأرقام يمنع تراقص العدّاد مع كل ثانية. */
+  letter-spacing: .5px;
+}
+.mh-cd.done { font-size: 20px; color: var(--correct); }
+.mh-at {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+/* ═══════════════ أزرار "من سيفوز؟" بيضاوية ═══════════════ */
+
+.picks {
+  display: flex;
+  gap: 8px;
+}
+.pick {
+  flex: 1 1 0;
+  flex-direction: row;
+  gap: 8px;
+  padding: 12px 10px;
+  /* بيضاوي كامل: شكل الاختيار المعروف، ويميّزها عن البطاقات
+     المربّعة حولها فتُقرأ كأزرار لا كمحتوى. */
+  border-radius: 999px;
+  font-size: 13.5px;
+}
+.pick .fx-logo { width: 24px; height: 24px; }
+.pick-x { width: 24px; height: 24px; font-size: 13px; }
+/* "تعادل" لا يحمل شعاراً فلا يحتاج عرض فريق. */
+.picks .pick:nth-child(2) { flex: 0 0 auto; padding-inline: 20px; }
+
+@media (max-width: 560px) {
+  .mh-cd { font-size: 24px; }
+  .pick { padding: 10px 8px; font-size: 12.5px; gap: 6px; }
+  .pick .fx-logo, .pick-x { width: 20px; height: 20px; }
+  .picks .pick:nth-child(2) { padding-inline: 14px; }
 }
