@@ -66,4 +66,35 @@ async function updateNameAr(id, nameAr) {
   return rowCount > 0;
 }
 
-module.exports = { upsertMany, findAll, updateNameAr };
+
+/**
+ * أندية الدوريات الداخلة في اللعبة، مجموعةً بدورياتها.
+ *
+ * المصدر هو fixtures لا جدول عضوية: لا جدول يقول "هذا النادي في
+ * هذا الدوري هذا الموسم" — والمباريات تقوله بدقة أعلى، لأن من
+ * صعد أو هبط يظهر في مكانه الصحيح تلقائياً بلا صيانة يدوية بعد
+ * كل موسم.
+ *
+ * ومقيّدة بـ in_app لا enabled: هذه القائمة تُعرض لمن يختار فريقه
+ * ليتوقّع له، فعرض نادٍ من دوري لا يُلعب فيه وعدٌ يُكسر بعد ضغطة.
+ */
+async function findPlayable() {
+  const { rows } = await db.query(
+    `SELECT l.id                            AS league_id,
+            COALESCE(l.name_ar, l.name_en)  AS league_name,
+            l.sort_order,
+            t.id,
+            COALESCE(t.name_ar, t.name_en)  AS name,
+            t.logo_url
+       FROM leagues l
+       JOIN fixtures f ON f.league_id = l.id AND f.season = l.season
+       JOIN teams t ON t.id IN (f.home_team_id, f.away_team_id)
+      WHERE l.in_app
+      GROUP BY l.id, l.name_ar, l.name_en, l.sort_order,
+               t.id, t.name_ar, t.name_en, t.logo_url
+      ORDER BY l.sort_order, 5`
+  );
+  return rows;
+}
+
+module.exports = { upsertMany, findAll, findPlayable, updateNameAr };

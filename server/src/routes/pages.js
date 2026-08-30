@@ -22,6 +22,8 @@ const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
 const webSession = require('../services/webSession');
 const userRepo = require('../repositories/userRepo');
+const teamRepo = require('../repositories/teamRepo');
+const fixtureRepo = require('../repositories/fixtureRepo');
 const predictionRepo = require('../repositories/predictionRepo');
 const logger = require('../utils/logger');
 
@@ -459,7 +461,7 @@ router.get('/auth/google/callback', async (req, res) => {
     // create يكتب Set-Cookie للجلسة. كوكي الـ state مقيّد بمسار
     // /auth/google وينتهي بعد عشر دقائق، فتركه مقبول.
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, '/account');
+    return res.redirect(303, afterAuth(user));
   } catch (err) {
     clearState();
     if (err.status && err.expose) return fail(err.message);
@@ -529,7 +531,7 @@ router.post('/auth/apple/callback', async (req, res) => {
       displayName: appleWebAuth.nameFrom(req.body?.user),
     });
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, '/account');
+    return res.redirect(303, afterAuth(user));
   } catch (err) {
     clearState();
     if (err.status && err.expose) return fail(err.message);
@@ -548,6 +550,21 @@ router.post('/auth/apple/callback', async (req, res) => {
 // الكوكي يحمل علم Secure في الإنتاج فقط، وإلا لم تعمل الجلسة على
 // http://localhost أثناء التطوير. req.secure يقرأ X-Forwarded-Proto
 // وهو صحيح هنا لأن TRUST_PROXY مضبوط ونginx يمرره.
+
+/**
+ * إلى أين بعد إثبات الهوية؟
+ *
+ * من لم يُهيَّأ بعد يذهب إلى /welcome لا /account: لحظة ما بعد
+ * التسجيل هي أعلى استعداد يمرّ به المستخدم — جاء لتوّه ولديه نية.
+ * وصفحةُ حسابٍ فارغة في تلك اللحظة تطفئ النية بلا مقابل.
+ *
+ * والفحص هنا لا في كل باب على حدة: الأبواب أربعة (تسجيل، دخول،
+ * جوجل، آبل)، ووضع الشرط في كلٍّ منها يعني أن أول باب جديد يُنسى.
+ */
+function afterAuth(user) {
+  return user?.onboarded_at ? '/account' : '/welcome';
+}
+
 const isSecure = (req) => req.secure || req.protocol === 'https';
 
 /** يمنع تنفيذ فعل يبدأه موقع آخر نيابة عن المستخدم. */
@@ -587,7 +604,7 @@ router.post('/login', async (req, res) => {
     // بابين بقواعد مختلفة.
     const { user } = await authService.login({ email, password });
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, '/account');
+    return res.redirect(303, afterAuth(user));
   } catch (err) {
     if (err.status && err.expose) {
       return res.status(err.status).type('html').send(
@@ -621,7 +638,7 @@ router.post('/register', async (req, res) => {
       email, password, displayName: name,
     });
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, '/account');
+    return res.redirect(303, afterAuth(user));
   } catch (err) {
     if (err.status && err.expose) {
       return res.status(err.status).type('html').send(
@@ -635,6 +652,62 @@ router.post('/register', async (req, res) => {
       })
     );
   }
+});
+
+
+// ─────────────────── التهيئة: أهلاً ───────────────────
+//
+// شاشة واحدة وسؤال واحد. راجع renderWelcome لسبب اختيار الفريق
+// بدل الدوري.
+router.get('/welcome', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+
+  const [settings, user, teams] = await Promise.all([
+    pageContext(req),
+    userRepo.findById(session.userId),
+    teamRepo.findPlayable(),
+  ]);
+  // من هُيِّئ لا يُعاد إليها ولو فتح الرابط بنفسه — والحارس هنا
+  // لا في afterAuth وحدها: الرابط قابل للحفظ في المفضلة.
+  if (!user || user.onboarded_at) return res.redirect(303, '/account');
+
+  res.type('html').send(renderer.renderWelcome(settings, {
+    teams, csrf: session.csrf, name: user.display_name,
+  }));
+});
+
+router.post('/welcome', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  const teamId = Number(req.body?.team);
+  if (!Number.isInteger(teamId)) return res.redirect(303, '/welcome');
+
+  await userRepo.updateProfile(session.userId, { favoriteTeamId: teamId });
+  await userRepo.markOnboarded(session.userId);
+
+  // إلى مباراة فريقه القادمة مباشرة، لا إلى صفحة تهنئة.
+  //
+  // التهيئة التي تنتهي بـ"تم!" تنتهي بلا شيء: المستخدم يعرف ما
+  // اللعبة ولم يلعبها. وهذه تنتهي وهو أمام بطاقة توقّع حقيقية
+  // لفريقه، وجدول النقاط تحتها — فيتعلّم القاعدة في اللحظة التي
+  // يحتاجها فيها لا قبلها بشاشتين.
+  //
+  // ولو لم يكن لفريقه مباراة قادمة (عطلة، أو نهاية موسم) يذهب
+  // إلى الرئيسية: صفحة فيها ما يفعله، لا رسالة اعتذار.
+  const next = await fixtureRepo.nextForTeam(teamId).catch(() => null);
+  return res.redirect(303, next ? `/match/${next.id}?first=1` : '/');
+});
+
+// التخطّي فعلٌ لا رأي: يُوسم كالإنهاء تماماً فلا تعترضه الشاشة
+// ثانية. ومن غيّر رأيه يجد اختيار فريقه في "حسابي".
+router.get('/welcome/skip', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  await userRepo.markOnboarded(session.userId);
+  res.redirect(303, '/');
 });
 
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
@@ -856,6 +929,8 @@ async function buildPredict(req, settings, fixture) {
           return null;
         })
       : null,
+    // أول مرة يصل فيها من التهيئة: لافتة تقول ماذا يفعل بالضبط.
+    first: req.query.first === '1',
     saved: req.query.saved === '1',
     // تحذير لا خطأ: العملية نجحت وشيء فيها لم يُطبَّق.
     warn: req.query.warn ? String(req.query.warn).slice(0, 160) : null,

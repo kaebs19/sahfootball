@@ -4,7 +4,8 @@ const db = require('../config/db');
 // الأعمدة التي يجوز خروجها من هذه الطبقة للأعلى.
 // password_hash غير مذكور عمداً في أي SELECT عام — لا يغادر
 // هذه الطبقة إلا عبر findByEmailWithHash المخصصة للتحقق فقط.
-const PUBLIC_COLUMNS = 'id, email, display_name, avatar_url, favorite_team_id, created_at';
+const PUBLIC_COLUMNS =
+  'id, email, display_name, avatar_url, favorite_team_id, onboarded_at, created_at';
 
 async function create({ email, passwordHash, displayName }) {
   const { rows } = await db.query(
@@ -142,6 +143,21 @@ async function updateProfile(userId, { displayName, favoriteTeamId, avatarUrl })
   await db.query(
     `UPDATE users SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`,
     params
+  );
+}
+
+/**
+ * وسمُ انتهاء التهيئة.
+ *
+ * COALESCE لا كتابة مباشرة: من أنهاها ثم فتح الرابط ثانية لا
+ * يُزاح تاريخه الأصلي — والتاريخ هو ما نقيس به أثر التهيئة، فكتابة
+ * "الآن" فوقه تمحو الحقيقة التي حفظناه لأجلها.
+ */
+async function markOnboarded(userId) {
+  await db.query(
+    `UPDATE users SET onboarded_at = COALESCE(onboarded_at, now()), updated_at = now()
+      WHERE id = $1`,
+    [userId]
   );
 }
 
@@ -397,6 +413,7 @@ async function removeWithGroupHandover(id) {
 }
 
 module.exports = {
+  markOnboarded,
   create, findByEmailWithHash, findById, findByEmail, updatePassword, updateProfile,
   findByAppleSub, createWithApple, linkAppleSub, updateEmail,
   findByGoogleSub, createWithGoogle, linkGoogleSub,

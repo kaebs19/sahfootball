@@ -499,6 +499,62 @@ function providerBlock(settings, verb) {
   return `${rows.join('')}\n<div class="sep"><span>أو</span></div>`;
 }
 
+/**
+ * أهلاً — الشاشة الأولى بعد التسجيل.
+ *
+ * سؤال واحد: "مع مَن قلبك؟".
+ *
+ * ولماذا الفريق لا الدوري؟ لسببين. جوابه فوريّ بلا تفكير — لا
+ * أحد يحتاج لحظةً ليتذكّر ناديه، بينما "أي دوري تتابع؟" سؤال
+ * إداري يُجاب بتردّد. والدوري مشتقٌّ من الفريق تلقائياً، فنسأل
+ * سؤالاً واحداً بدل اثنين ونعرف الجوابين.
+ *
+ * ولا نشرح النقاط هنا. الشرح قبل الفعل يُنسى، وجدول النقاط
+ * ينتظره ملتصقاً ببطاقة أول توقّع — حيث يعني شيئاً.
+ *
+ * و"لاحقاً" ظاهر لا مخفي: من جاء يتصفّح لا يُحتجز خلف نموذج.
+ */
+function renderWelcome(settings, { teams, csrf, name }) {
+  // تجميع بالدوري في العرض لا في الاستعلام: المستودع يرجع صفوفاً
+  // مسطّحة مرتّبة، والتجميع شكلٌ لا بيانات.
+  const groups = [];
+  for (const t of teams) {
+    const last = groups[groups.length - 1];
+    if (last && last.id === t.league_id) last.teams.push(t);
+    else groups.push({ id: t.league_id, name: t.league_name, teams: [t] });
+  }
+
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:820px">
+    <header class="wl-head">
+      <h1>أهلاً${name ? ` ${esc(name)}` : ''} 👋</h1>
+      <p>مع مَن قلبك؟ نختار لك مباراته القادمة لتبدأ بها.</p>
+    </header>
+
+    <form method="post" action="/welcome" class="card wl-card">
+      ${csrfField(csrf)}
+      ${groups.map((g) => `
+      <section class="wl-league">
+        <h2>${esc(g.name)}</h2>
+        <div class="wl-grid">
+          ${g.teams.map((t) => `
+          <button class="wl-team" type="submit" name="team" value="${esc(String(t.id))}">
+            ${teamBadge(t.name, t.logo_url, t.id)}
+            <span>${esc(t.name)}</span>
+          </button>`).join('')}
+        </div>
+      </section>`).join('')}
+    </form>
+
+    <div class="wl-skip">
+      <a href="/welcome/skip">تخطَّ الآن — أختار لاحقاً</a>
+    </div>
+  </div>
+</div>`;
+  return layout({ title: 'أهلاً بك', body, settings, active: null });
+}
+
 function renderLogin(settings, { error, values } = {}) {
   const v = values || {};
   const body = `
@@ -1418,8 +1474,11 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
                  يعطّل JavaScript، والسكربت يستبدله بعدّاد يتحرك.
                  data-kickoff بصيغة ISO — المتصفح يحسب بتوقيته
                  المحلي فيصح العدّ لمن هو خارج الرياض. -->
+            <!-- dir=rtl لا ltr: ما يصل من الخادم جملة عربية
+                 ("بعد ثلاثة أيام")، والسكربت يقلبها إلى ltr بنفسه
+                 حين يستبدلها بساعة رقمية. -->
             <div class="mh-cd num" data-kickoff="${esc(new Date(f.kickoff_at).toISOString())}"
-                 dir="ltr">${esc(untilKickoff(f.kickoff_at))}</div>
+                 dir="rtl">${esc(untilKickoff(f.kickoff_at))}</div>
             <div class="mh-at num">${esc(kickoffTime(f.kickoff_at))}</div>
           ` : fixtureCenter(f)}
           ${f.pen_home !== null && f.pen_home !== undefined
@@ -1452,6 +1511,13 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
            والزر أسفلها. كان صفّان مستقلان يكرران اسمي الفريقين
            الموجودين فوقهما بالفعل. -->
       <div class="mh-predict">
+        <!-- ومشروطة بـ canPredict: الرابط قابل للمشاركة، ومن
+             فتحه بلا حساب كان يقرأ "اكتب النتيجة بالمربّعين فوق"
+             ولا مربّعات عنده. -->
+        ${predict.first && canPredict ? `<div class="note first">
+          <b>مباراة ${esc(f.home_team_name)} — ابدأ بها.</b>
+          اكتب النتيجة التي تتوقّعها بالمربّعين فوق، ثم سجّل. تُحتسب نقاطك بعد صافرة النهاية.
+        </div>` : ''}
         ${predict.saved && !predict.warn ? '<div class="note ok">حُفظ توقّعك.</div>' : ''}
         ${predict.warn ? `<div class="note warn">${esc(predict.warn)}</div>` : ''}
         ${predict.error ? `<div class="note bad">${esc(predict.error)}</div>` : ''}
@@ -1605,6 +1671,7 @@ function renderNotFound(settings) {
 }
 
 module.exports = {
+  renderWelcome,
   renderPage, renderContact, renderNotFound,
   renderForgot, renderReset, renderResetDone,
   renderLogin, renderRegister, renderAccount,

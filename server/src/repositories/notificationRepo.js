@@ -99,6 +99,28 @@ async function usersNeedingReminder(leadMinutes) {
         AND NOT EXISTS (
               SELECT 1 FROM predictions p
                WHERE p.user_id = u.id AND p.fixture_id = f.id)
+        -- نطاق الاهتمام: مباراة فريقه، أو دوريٌ سبق أن لعب فيه.
+        --
+        -- كانت القاعدة "كل مباراة لم يتوقّعها"، وكانت صحيحة حين
+        -- كان الدوري واحداً. ومع ستة دوريات صار السبت الواحد يحمل
+        -- 25 مباراة، فتحوّل التذكير إلى "ما توقّعت لخمس وعشرين
+        -- مباراة" — رسالة تُقرأ توبيخاً لا تذكيراً، وأكثرها عن
+        -- دوريات لا تعنيه أصلاً. وهذا أسرع طريق إلى إطفاء
+        -- الإشعارات كلها، فنخسر التذكير الذي يعنيه معها.
+        --
+        -- ومن لا فريق له ولا توقّع سابق لا يصله شيء: من سجّل
+        -- للتو أسوأ ما يستقبله قائمةُ مبارياتٍ "فاتته" قبل أن
+        -- يلعب مرة واحدة. له دعوة التهيئة، لا توبيخ.
+        AND (
+              f.home_team_id = u.favorite_team_id
+           OR f.away_team_id = u.favorite_team_id
+           OR EXISTS (
+                SELECT 1 FROM predictions p2
+                  JOIN fixtures f2 ON f2.id = p2.fixture_id
+                 WHERE p2.user_id = u.id
+                   AND f2.league_id = f.league_id
+                   AND f2.season = f.season)
+        )
         AND NOT EXISTS (
               SELECT 1 FROM sent_notifications s
                WHERE s.user_id = u.id AND s.kind = 'reminder'

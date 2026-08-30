@@ -224,7 +224,27 @@ async function findEvents(fixtureId) {
   return rows;
 }
 
+/**
+ * أقرب مباراة قادمة لهذا النادي — مفتوحة للتوقّع.
+ *
+ * FIXTURE_SELECT مقيّد بـ in_app أصلاً، فالنتيجة قابلة للتوقّع
+ * بحكم الاستعلام لا بفحص إضافي بعده.
+ */
+async function nextForTeam(teamId) {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT}
+     WHERE f.status = 'scheduled'
+       AND f.kickoff_at > now()
+      AND (f.home_team_id = $1 OR f.away_team_id = $1)
+     ORDER BY f.kickoff_at ASC
+     LIMIT 1`,
+    [teamId]
+  );
+  return rows[0] ?? null;
+}
+
 module.exports = {
+  nextForTeam,
   upsertMany,
   findByDate,
   findUpcoming,

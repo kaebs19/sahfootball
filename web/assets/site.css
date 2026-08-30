@@ -2216,3 +2216,80 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   .ptbl-r > b { font-size: 15px; }
   .mx { padding: 9px 10px; }
 }
+
+/* ═══════════════ التهيئة: أهلاً ═══════════════ */
+
+.wl-head { text-align: center; margin: 8px 0 22px; }
+.wl-head h1 { font-size: 26px; margin-bottom: 8px; }
+.wl-head p { color: var(--text-muted); font-size: 14.5px; }
+
+.wl-card { padding: 18px 16px; }
+.wl-league + .wl-league { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.wl-league h2 {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+/* شبكة تتكيّف بلا نقاط توقّف: أضيق عرض للخلية 96 بكسل، والمتصفح
+   يقرّر كم تتّسع الصفوف. دوري بـ 18 نادياً ودوري بـ 20 يُعرضان
+   بالقاعدة نفسها. */
+.wl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+/* كل نادٍ زرّ إرسال مستقل — لا مربّع اختيار ثم زرّ "تأكيد".
+   ضغطة واحدة تختار وترسل: الخطوة التي لا وجود لها لا تُنسى ولا
+   تُخطئ، ونيّةُ الضغط على شعار ناديك لا تحتاج تأكيداً. */
+.wl-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .1s;
+}
+.wl-team:hover { border-color: var(--crown); background: var(--crown-wash); }
+.wl-team:active { transform: scale(.97); }
+.wl-team .fx-logo { width: 38px; height: 38px; }
+.wl-team span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.wl-skip { text-align: center; margin: 18px 0 8px; }
+.wl-skip a { color: var(--text-faint); font-size: 13px; }
+.wl-skip a:hover { color: var(--text-muted); }
+
+/* لافتة أول توقّع: لون التاج لا الأخضر — الأخضر عندنا يعني "تمّ"،
+   وهذه تقول "ابدأ". */
+.note.first {
+  background: var(--crown-wash);
+  color: var(--text);
+  border: 1px solid var(--crown-line);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.note.first b { display: block; color: var(--crown); margin-bottom: 2px; }
+
+@media (max-width: 560px) {
+  .wl-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+  .wl-team { padding: 10px 4px; font-size: 11px; }
+  .wl-team .fx-logo { width: 32px; height: 32px; }
+  .wl-head h1 { font-size: 22px; }
+}
