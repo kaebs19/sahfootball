@@ -23,8 +23,14 @@ const client = jwksClient({
   cacheMaxAge: 10 * 60 * 1000,
 });
 
-// يتحقق ويرجع { appleSub, email } أو يرمي خطأً.
-async function verifyIdentityToken(identityToken) {
+/**
+ * يتحقق ويرجع { appleSub, email, emailVerified } أو يرمي خطأً.
+ *
+ * audience قابل للتمرير لأن لنا عميلين عند آبل لا واحداً: التطبيق
+ * (Bundle ID) والموقع (Services ID)، ولكلٍّ توكن بجمهوره. والافتراض
+ * هو التطبيق فيبقى نداؤه كما كان بلا وسيط.
+ */
+async function verifyIdentityToken(identityToken, { audience } = {}) {
   // فك بلا تحقق أولاً — فقط لقراءة kid من الترويسة لنعرف أي مفتاح نطلب.
   const decoded = jwt.decode(identityToken, { complete: true });
   if (!decoded?.header?.kid) {
@@ -42,7 +48,7 @@ async function verifyIdentityToken(identityToken) {
     payload = jwt.verify(identityToken, key.getPublicKey(), {
       algorithms: ['RS256'], // نثبّتها صراحة — قبول خوارزميات أخرى ثغرة معروفة
       issuer: APPLE_ISSUER,
-      audience: process.env.APPLE_BUNDLE_ID,
+      audience: audience || process.env.APPLE_BUNDLE_ID,
     });
   } catch (err) {
     throw invalid('فشل التحقق من توكن Apple');
@@ -53,6 +59,9 @@ async function verifyIdentityToken(identityToken) {
     // قد يكون بريد "إخفاء بريدي" (xxxx@privaterelay.appleid.com) —
     // بريد حقيقي يعمل، نتعامل معه كأي بريد.
     email: payload.email ? String(payload.email).toLowerCase() : null,
+    // آبل ترسلها منطقيةً أحياناً ونصاً "true" أحياناً — وقراءتها
+    // بلا تطبيع تجعل النص "false" صادقاً في JavaScript.
+    emailVerified: payload.email_verified === true || payload.email_verified === 'true',
   };
 }
 

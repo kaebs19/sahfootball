@@ -16,6 +16,7 @@ const standingsService = require('../services/standingsService');
 const matchDetailService = require('../services/matchDetailService');
 const predictionService = require('../services/predictionService');
 const googleAuth = require('../services/googleAuth');
+const appleWebAuth = require('../services/appleWebAuth');
 const siteSettings = require('../services/siteSettings');
 const renderer = require('../services/siteRenderer');
 const authService = require('../services/authService');
@@ -84,6 +85,7 @@ async function pageContext(req) {
     // الزر يظهر فقط حين يكتمل الإعداد: زر يقود إلى خطأ أسوأ من
     // غيابه.
     google: googleAuth.isConfigured(),
+    apple: appleWebAuth.isConfigured(),
     // المسار الحالي — يعود إليه زر التبديل.
     canonicalPath: req.originalUrl || '/',
   };
@@ -395,6 +397,9 @@ router.post('/reset', async (req, res) => {
 // services/googleAuth.
 
 const OAUTH_STATE_COOKIE = 'sah_oauth';
+// كوكي منفصل لآبل: من فتح رحلتي دخول في لسانين لا تمحو إحداهما
+// حالة الأخرى، والخصائص مختلفة أصلاً (SameSite).
+const APPLE_STATE_COOKIE = 'sah_oauth_apple';
 
 router.get('/auth/google', (req, res) => {
   if (!googleAuth.isConfigured()) return res.redirect(303, '/login');
@@ -462,6 +467,77 @@ router.get('/auth/google/callback', async (req, res) => {
     return fail('تعذّر الدخول بجوجل الآن.');
   }
 });
+
+// ─────────────────── الدخول بحساب آبل ───────────────────
+//
+// المسار الأول تحويل، والثاني يستقبل POST من آبل. راجع
+// services/appleWebAuth للفروق الثلاثة عن جوجل.
+router.get('/auth/apple', (req, res) => {
+  if (!appleWebAuth.isConfigured()) return res.redirect(303, '/login');
+
+  const state = appleWebAuth.newState();
+  // SameSite=None إلزامية هنا: ردّ آبل POST من نطاق آخر، والمتصفح
+  // لا يرسل كوكي Lax معه. وNone توجب Secure، فنُبقي Lax محلياً على
+  // http كي تبقى التنمية ممكنة — والإنتاج https دائماً.
+  const cross = isSecure(req) ? 'SameSite=None; Secure' : 'SameSite=Lax';
+  res.setHeader('Set-Cookie',
+    `${APPLE_STATE_COOKIE}=${state}; Path=/auth/apple; HttpOnly; ${cross}; Max-Age=600`);
+
+  res.redirect(302, appleWebAuth.authUrl(state));
+});
+
+router.post('/auth/apple/callback', async (req, res) => {
+  const settings = await pageContext(req);
+  const fail = (error) => res.status(401).type('html').send(
+    renderer.renderLogin(settings, { error })
+  );
+
+  const cross = isSecure(req) ? 'SameSite=None; Secure' : 'SameSite=Lax';
+  const clearState = () => res.setHeader('Set-Cookie',
+    `${APPLE_STATE_COOKIE}=; Path=/auth/apple; HttpOnly; ${cross}; Max-Age=0`);
+
+  // ضغط "إلغاء" في شاشة آبل: ليس خطأً، نعيده بهدوء.
+  if (req.body?.error) {
+    clearState();
+    return res.redirect(303, '/login');
+  }
+
+  const expected = new RegExp(`(?:^|;\\s*)${APPLE_STATE_COOKIE}=([^;]+)`)
+    .exec(req.headers.cookie || '')?.[1];
+  const got = String(req.body?.state || '');
+  const code = String(req.body?.code || '');
+
+  if (!code || !expected || got !== expected) {
+    clearState();
+    return fail('انتهت جلسة الدخول بآبل. حاول مرة أخرى.');
+  }
+
+  let profile;
+  try {
+    profile = await appleWebAuth.exchangeCode(code);
+  } catch (err) {
+    logger.error('[pages] apple exchange failed:', err.message, err.detail || '');
+    clearState();
+    return fail(err.expose ? err.message : 'تعذّر الدخول بآبل الآن.');
+  }
+
+  try {
+    const { user } = await authService.loginWithAppleProfile({
+      ...profile,
+      // الاسم يصل مرة واحدة في العمر — عند أول تفويض فقط. إن جاء
+      // الآن فهذه فرصتنا الوحيدة، وإلا بقي الحساب بلا اسم للأبد.
+      displayName: appleWebAuth.nameFrom(req.body?.user),
+    });
+    await webSession.create(res, user.id, { secure: isSecure(req) });
+    return res.redirect(303, '/account');
+  } catch (err) {
+    clearState();
+    if (err.status && err.expose) return fail(err.message);
+    logger.error('[pages] apple login failed:', err.message);
+    return fail('تعذّر الدخول بآبل الآن.');
+  }
+});
+
 
 // ──────────────── الحساب على الويب ────────────────
 //

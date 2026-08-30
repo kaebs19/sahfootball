@@ -1667,6 +1667,9 @@ a.fx:hover { background: rgba(255,255,255,.025); }
 .pj-lede b { color: var(--crown); }
 .pj-cta { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .pj-cta .btn { min-width: 140px; justify-content: center; }
+/* زرّا المزوّدين عرضهما 100% في صفحات الدخول حيث يقف كلٌّ وحده،
+   وهنا يقفان في صفّ مع زرّي التسجيل — فيعودان بعرض محتواهما. */
+.pj-cta .btn-google, .pj-cta .btn-apple { width: auto; }
 
 @media (max-width: 560px) {
   .picks { grid-template-columns: 1fr 62px 1fr; gap: 6px; }
@@ -1690,6 +1693,29 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   border-color: #dadce0;
 }
 .btn-google:hover { background: #f4f4f4; }
+
+/* زرّ آبل: أسود بنصّ أبيض في الثيمين معاً.
+   إرشادات آبل تحدّد شكل الزر ولا تتركه للموقع، ولهذا لونه مكتوب
+   صراحةً لا مأخوذاً من متغيّرات الثيم — الثيم الفاتح لو غيّره
+   لصار زراً لا تعترف به آبل. ويليه زرّ جوجل الأبيض فيفترقان
+   بالنظرة وحدها. */
+.btn-apple {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+.btn-apple:hover { background: #1a1a1a; border-color: #1a1a1a; }
+/* الشعار يعلو خطّ الأساس قليلاً — رسمُه ثقله في أعلاه فيبدو
+   هابطاً حين يُحاذى وسطياً بحتاً بجانب نصّ عربي. */
+.a-mark { flex: none; margin-bottom: 2px; }
+
+/* زرّان متتاليان فوق الفاصل: مسافة بينهما وإلا التصقا كزرّ واحد. */
+.btn-google + .btn-apple { margin-top: 10px; }
 .g-mark {
   display: grid;
   place-items: center;

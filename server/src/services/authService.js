@@ -327,8 +327,20 @@ async function loginWithGoogle(profile) {
 async function loginWithApple({ identityToken, displayName }) {
   if (!identityToken) throw new AuthError(400, 'identityToken مطلوب');
 
-  const { appleSub, email } = await appleAuth.verifyIdentityToken(identityToken);
+  const profile = await appleAuth.verifyIdentityToken(identityToken);
+  return loginWithAppleProfile({ ...profile, displayName });
+}
 
+/**
+ * الدخول بهوية آبل مُتحقَّق منها سلفاً.
+ *
+ * فُصلت عن loginWithApple لأن للموقع باباً ثانياً: التطبيق يرسل
+ * توكناً خاماً فيتحقق منه هنا، والموقع يُتمّ رحلة OAuth بنفسه
+ * ويصل ومعه هوية مُثبتة. والحالات الثلاث أدناه هي هي في الحالتين
+ * — ونسخها في موضعين يعني أن أول تعديل على شروط الربط يُطبَّق في
+ * باب ويُنسى في الآخر، وذلك ثغرة استيلاء على حساب لا خطأ ظاهر.
+ */
+async function loginWithAppleProfile({ appleSub, email, emailVerified, displayName }) {
   // الحالة 1: نعرف هذا الـ apple_sub — مستخدم عائد، دخول مباشر.
   let user = await userRepo.findByAppleSub(appleSub);
 
@@ -336,7 +348,12 @@ async function loginWithApple({ identityToken, displayName }) {
   // نربط الهويتين بدل إنشاء حساب مكرر. الربط آمن لأن Apple تحقق
   // من ملكية البريد قبلنا: من يحمل توكن Apple صالحاً لبريد ما
   // فهو مالكه فعلاً. (بعدها يدخل بالطريقتين لنفس الحساب.)
-  if (!user && email) {
+  //
+  // emailVerified شرط في الربط: بدونه يستطيع من يملك حساب آبل
+  // ببريد غير موثّق أن يدّعي بريد حساب قائم عندنا فيستولي عليه.
+  // (بريد الترحيل الخاص من آبل موثّق دائماً، فلا يُستثنى أحد
+  // بسبب إخفائه بريده.)
+  if (!user && email && emailVerified) {
     const existing = await userRepo.findByEmail(email);
     if (existing) {
       await userRepo.linkAppleSub(existing.id, appleSub);
@@ -350,6 +367,9 @@ async function loginWithApple({ identityToken, displayName }) {
       // نظرياً نادر جداً (Apple تضع البريد في التوكن)، لكن بدون
       // بريد لا نستطيع إنشاء الحساب — عمود email إلزامي عندنا.
       throw new AuthError(401, 'توكن Apple لا يحتوي بريداً، أعد المحاولة');
+    }
+    if (!emailVerified) {
+      throw new AuthError(401, 'بريد حساب آبل غير موثّق — جرّب طريقة أخرى');
     }
     user = await userRepo.createWithApple({ email, appleSub, displayName });
   }
@@ -525,7 +545,7 @@ async function credentials(userId) {
 }
 
 module.exports = {
-  register, login, loginWithApple, loginWithGoogle, refresh, logout,
+  register, login, loginWithApple, loginWithAppleProfile, loginWithGoogle, refresh, logout,
   credentials,
   changePassword, changeEmail, forgotPassword, resetPassword,
   deleteAccount,

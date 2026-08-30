@@ -473,14 +473,30 @@ function csrfField(csrf) {
  *
  * ولا يُعرض إطلاقاً حين ينقص الإعداد: زر يقود إلى خطأ أسوأ من غيابه.
  */
-function googleBlock(settings, label) {
-  if (!settings?.google) return '';
-  return `
+// شعار آبل رسماً مضمّناً لا حرفاً: الرمز  (U+F8FF) لا يظهر إلا
+// على أجهزة آبل، فيقرأه مستخدم أندرويد مربّعاً فارغاً — زرُّ
+// دخولٍ بلا هوية مرئية. والمضمّن يمرّ من سياسة المحتوى بلا
+// استثناء لأنه ليس ملفاً خارجياً.
+const APPLE_MARK = '<svg class="a-mark" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"> <path fill="currentColor" d="M17.05 12.54c.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.62-1.7-3.18-1.72-1.35-.14-2.64.8-3.33.8-.69 0-1.75-.78-2.87-.76-1.48.02-2.84.86-3.6 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.25 2.74 2.2 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.7.71 2.86.69 1.18-.02 1.93-1.08 2.65-2.14.83-1.22 1.18-2.4 1.2-2.46-.03-.01-2.3-.88-2.3-3.53zM14.9 5.6c.6-.74 1.01-1.76.9-2.78-.87.04-1.93.58-2.56 1.31-.56.65-1.05 1.7-.92 2.7.97.08 1.96-.5 2.58-1.23z"/> </svg>';
+
+function providerBlock(settings, verb) {
+  const rows = [];
+  if (settings?.google) {
+    rows.push(`
 <a class="btn btn-google" href="/auth/google">
   <span class="g-mark" aria-hidden="true">G</span>
-  ${esc(label)}
-</a>
-<div class="sep"><span>أو</span></div>`;
+  ${esc(verb)} بحساب جوجل
+</a>`);
+  }
+  if (settings?.apple) {
+    rows.push(`
+<a class="btn btn-apple" href="/auth/apple">
+  ${APPLE_MARK}
+  ${esc(verb)} باستخدام Apple
+</a>`);
+  }
+  if (!rows.length) return '';
+  return `${rows.join('')}\n<div class="sep"><span>أو</span></div>`;
 }
 
 function renderLogin(settings, { error, values } = {}) {
@@ -494,7 +510,7 @@ function renderLogin(settings, { error, values } = {}) {
         ادخل لإدارة حسابك. التوقّع والمنافسة في التطبيق.
       </p>
       ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
-      ${googleBlock(settings, 'الدخول بحساب جوجل')}
+      ${providerBlock(settings, 'الدخول')}
       <form method="post" action="/login">
         <div class="field">
           <label for="email">البريد الإلكتروني</label>
@@ -529,7 +545,7 @@ function renderRegister(settings, { error, values } = {}) {
         أنشئ حسابك هنا ثم حمّل التطبيق وابدأ التوقّع بنفس البيانات.
       </p>
       ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
-      ${googleBlock(settings, 'المتابعة بحساب جوجل')}
+      ${providerBlock(settings, 'المتابعة')}
       <form method="post" action="/register">
         <div class="field">
           <label for="name">الاسم الظاهر</label>
@@ -1447,6 +1463,7 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
             ${pointsTable(predict.points, null)}
             <div class="pj-cta">
               ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
+              ${settings?.apple ? `<a class="btn btn-apple" href="/auth/apple">${APPLE_MARK} باستخدام Apple</a>` : ''}
               <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
               <a class="btn btn-ghost" href="/login">عندي حساب</a>
             </div>
