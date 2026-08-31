@@ -310,6 +310,161 @@ router.get('/throne', async (req, res) => {
   );
 });
 
+
+// ─────────────────── توقّع الجولة ───────────────────
+//
+// تسع مباريات في صفحة وزرّ إرسال واحد. راجع renderRound للسبب.
+
+/** عدد صغير من العنوان، محدود بسقف — أو صفر. */
+function countParam(v, max) {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? Math.min(n, max) : 0;
+}
+
+/** الجولة المقصودة: المطلوبة إن صحّت، وإلا أقرب جولة ما زالت مفتوحة. */
+function pickRound(rounds, asked) {
+  if (asked && rounds.some((r) => r.round === asked)) return asked;
+  // أقرب جولة لم يُلعب أكثرها بعد.
+  //
+  // "أقرب جولة فيها مباراة مفتوحة" تبدو القاعدة الصحيحة وليست
+  // كذلك: الجولة الثالثة هنا لُعبت ثمانٍ من تسع وبقيت واحدة
+  // مؤجّلة، فتصير الوجهة الافتراضية صفحةً من تسعة صفوف ثمانيةٌ
+  // منها مقفلة — وعنوانها "توقّع الجولة".
+  //
+  // والأغلبية معيار يقرأه المستخدم كما نقصده: هذه هي الجولة
+  // القادمة. والمباراة المؤجّلة تبقى قابلة للتوقّع من صفحتها ومن
+  // قائمة المباريات، فلا يُحرم منها أحد.
+  const upcoming = rounds.find((r) => r.open * 2 > r.total)
+    || rounds.find((r) => r.open > 0)
+    || rounds[rounds.length - 1];
+  return upcoming?.round || null;
+}
+
+router.get('/round', async (req, res) => {
+  const all = await leagueRepo.findEnabled();
+  const leagues = all.filter((l) => l.in_app);
+
+  const askedLeague = String(req.query.league || '');
+  const league = /^\d+$/.test(askedLeague) && leagues.some((l) => String(l.id) === askedLeague)
+    ? Number(askedLeague)
+    : leagues[0]?.id;
+  const current = leagues.find((l) => l.id === league);
+  if (!current) return res.redirect(303, '/');
+
+  const rounds = await fixtureRepo.roundsFor(current.id, current.season);
+  const round = pickRound(rounds, String(req.query.round || ''));
+
+  const settings = await pageContext(req);
+  const session = settings.viewer ? await webSession.read(req).catch(() => null) : null;
+
+  const rows = round
+    ? await fixtureRepo.byRound(current.id, current.season, round)
+    : [];
+
+  // open مشتقّ هنا مرة واحدة: الحالة والوقت معاً، تماماً كما
+  // يفحصهما predictionService — فما تعرضه الصفحة قابلاً للتحرير
+  // هو ما يقبله الخادم، بلا اجتهاد ثانٍ يفترق عنه.
+  const fixtures = rows.map((f) => ({ ...f, open: predictionService.isOpen(f) }));
+
+  const [saved, mult, points] = await Promise.all([
+    settings.viewer
+      ? predictionRepo.findByUserAndFixtures(settings.viewer.id, fixtures.map((f) => f.id))
+        .catch(() => [])
+      : [],
+    settings.viewer && fixtures.length
+      ? predictionService.multiplierState(settings.viewer.id, fixtures[0], null).catch(() => null)
+      : null,
+    predictionService.points(),
+  ]);
+
+  const mine = {};
+  for (const p of saved) mine[p.fixture_id] = p;
+
+  res.type('html').send(renderer.renderRound(settings, {
+    leagues, league: current.id, rounds, round, fixtures, mine, points, mult,
+    csrf: session?.csrf || '',
+    viewer: Boolean(settings.viewer),
+    // أعداد لا جُمل — العرض يصوغها بالعربية. وnum يحدّها بعدد
+    // معقول: الرقم يأتي من العنوان، ومن يكتب 99999 في شريط
+    // المتصفح يجب ألا يقرأ "حُفظ 99999 توقّعاً".
+    result: {
+      ok: countParam(req.query.ok, fixtures.length),
+      denied: countParam(req.query.denied, fixtures.length),
+      late: countParam(req.query.late, fixtures.length),
+      none: req.query.none === '1',
+    },
+  }));
+});
+
+router.post('/round', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  const league = Number(req.body?.league);
+  const round = String(req.body?.round || '');
+  const back = (q) => res.redirect(303,
+    `/round?league=${league}&round=${encodeURIComponent(round)}${q}`);
+
+  const current = (await leagueRepo.findEnabled()).find((l) => l.id === league && l.in_app);
+  if (!current || !round) return res.redirect(303, '/round');
+
+  // المباريات من القاعدة لا من الجسم المرسل: الجسم يكتبه العميل،
+  // ومن يصنع طلباً بيده يستطيع إقحام مباراة من جولة أخرى — بل من
+  // دوري لا يتابعه. نعتمد قائمة الخادم ونقرأ منها ما وصل.
+  const fixtures = await fixtureRepo.byRound(current.id, current.season, round);
+
+  let ok = 0;
+  const denied = [];
+  const failed = [];
+
+  for (const f of fixtures) {
+    const raw = {
+      home: String(req.body?.[`h_${f.id}`] ?? '').trim(),
+      away: String(req.body?.[`a_${f.id}`] ?? '').trim(),
+    };
+    // الصفّان الفارغان معاً = لا توقّع لهذه المباراة. وهذا هو
+    // الحال الغالب في صفحة تعرض تسعاً: من يتوقّع ثلاثاً يترك ستّاً
+    // فارغة، وحفظها 0-0 يمنحه ستّة تعادلات لم يقصدها.
+    if (raw.home === '' && raw.away === '') continue;
+
+    const home = raw.home === '' ? 0 : Number(raw.home);
+    const away = raw.away === '' ? 0 : Number(raw.away);
+    if (!Number.isInteger(home) || !Number.isInteger(away)) {
+      failed.push(f);
+      continue;
+    }
+
+    try {
+      const row = await predictionService.submit({
+        userId: session.userId,
+        fixtureId: f.id,
+        home,
+        away,
+        // غير المؤشَّر يعني 1 صراحةً لا "اتركه": الصفحة تعرض حالة
+        // كل مربّع، فإلغاء التأشير فيها قرارٌ لا سهو.
+        multiplier: req.body?.[`m_${f.id}`] ? 2 : 1,
+      });
+      ok += 1;
+      if (row?.multiplierDenied) denied.push(f);
+    } catch (err) {
+      // مباراة انطلقت بين رسم الصفحة وإرسالها: تُتخطّى ولا تُسقط
+      // البقية. حفظ سبع من تسع أفضل من رفض التسع لأجل واحدة.
+      failed.push(f);
+    }
+  }
+
+  if (!ok && !failed.length) {
+    return back('&none=1');
+  }
+
+  // أرقام لا جُملاً: صياغة العربية وجمعُها يسكنان في طبقة العرض
+  // (counted هناك)، ونقلُهما إلى المسار يفتح نسخة ثانية من قواعد
+  // الجمع تتباعد عن الأولى — وقد كلّفنا هذا "مباراتين تُقفل" من
+  // قبل. المسار يقول ماذا حدث بالعدد، والعرض يقوله بالعربية.
+  back(`&ok=${ok}&denied=${denied.length}&late=${failed.length}`);
+});
+
 router.get('/standings', async (req, res) => {
   const leagues = await leagueRepo.findEnabled();
   const asked = String(req.query.league || '');

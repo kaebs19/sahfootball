@@ -243,7 +243,44 @@ async function nextForTeam(teamId) {
   return rows[0] ?? null;
 }
 
+/**
+ * جولات الدوري مرتّبةً زمنياً.
+ *
+ * الترتيب بأول انطلاقة في الجولة لا باسمها: الاسم نصّ من المزوّد
+ * ("Regular Season - 5")، وفرزه أبجدياً يضع العاشرة قبل الثانية.
+ * وبطولات الكؤوس تسمّي جولاتها "Round of 16" فلا رقم فيها أصلاً.
+ */
+async function roundsFor(leagueId, season) {
+  const { rows } = await db.query(
+    `SELECT f.round,
+            MIN(f.kickoff_at)                                   AS starts_at,
+            COUNT(*)::int                                       AS total,
+            COUNT(*) FILTER (WHERE f.status = 'scheduled'
+                               AND f.kickoff_at > now())::int    AS open
+       FROM fixtures f
+       JOIN leagues l ON l.id = f.league_id AND l.in_app
+      WHERE f.league_id = $1 AND f.season = $2 AND f.round IS NOT NULL
+      GROUP BY f.round
+      ORDER BY starts_at`,
+    [leagueId, season]
+  );
+  return rows;
+}
+
+/** مباريات جولة بعينها، بترتيب انطلاقها. */
+async function byRound(leagueId, season, round) {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT}
+     WHERE f.league_id = $1 AND f.season = $2 AND f.round = $3
+     ORDER BY f.kickoff_at, f.id`,
+    [leagueId, season, round]
+  );
+  return rows;
+}
+
 module.exports = {
+  roundsFor,
+  byRound,
   nextForTeam,
   upsertMany,
   findByDate,

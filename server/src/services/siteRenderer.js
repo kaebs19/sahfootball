@@ -99,6 +99,7 @@ function socialLinks(settings) {
 // في الشريط العلوي كان يزاحم ما يُستعمل فعلاً بما يُفتح مرة واحدة.
 const NAV = [
   { href: '/', label: 'المباريات' },
+  { href: '/round', label: 'توقّع الجولة' },
   { href: '/standings', label: 'الترتيب' },
   { href: '/throne', label: 'العرش' },
   { href: '/scorers', label: 'الهدافون' },
@@ -1406,6 +1407,155 @@ function renderThrone(settings, { leagues, league, rows, me }) {
   });
 }
 
+/**
+ * توقّع الجولة — تسع مباريات في صفحة، وزرّ إرسال واحد.
+ *
+ * كان توقّع جولة كاملة يكلّف تسع صفحات وتسع ضغطات إرسال: تفتح
+ * المباراة، تكتب، تُرسل، تعود، تفتح التالية. ومن يريد الجولة
+ * كاملة يستسلم عند الرابعة — فيخسر اللاعب سبع مباريات، وتخسر
+ * اللعبة لاعباً ظنّ أنها متعبة.
+ *
+ * والصفحة ليست ميزة جديدة بل إعادة ترتيب: نفس المربّعات ونفس
+ * القواعد ونفس predictionService. الجديد أن الحلقة تدور مرة
+ * واحدة بدل تسع.
+ *
+ * ولماذا صفٌّ مضغوط لا بطاقة لكل مباراة؟ لأن الغرض المقارنة
+ * والسرعة: تسع بطاقات كاملة تجعل الصفحة أطول من تسع صفحات
+ * منفصلة، فتُلغي المكسب كله. من يريد ملعباً وتشكيلةً وإحصاءات
+ * يفتح المباراة نفسها — والصفّ يقود إليها.
+ */
+function renderRound(settings, {
+  leagues, league, rounds, round, fixtures, mine, points, mult,
+  csrf, viewer, result,
+}) {
+  const current = (leagues || []).find((l) => String(l.id) === String(league));
+  const idx = rounds.findIndex((r) => r.round === round);
+  const prev = idx > 0 ? rounds[idx - 1] : null;
+  const next = idx >= 0 && idx < rounds.length - 1 ? rounds[idx + 1] : null;
+
+  // اسم الجولة من المزوّد إنجليزي ("Regular Season - 5"). نعرّبه
+  // بقاعدة واحدة لا بجدول ترجمة: الرقم هو المعلومة، وما قبله
+  // ثابت يتكرّر في كل الدوريات.
+  const roundName = (r) => {
+    const m = /(\d+)\s*$/.exec(r || '');
+    return m ? `الجولة ${m[1]}` : (r || 'الجولة');
+  };
+
+  const openCount = fixtures.filter((f) => f.open).length;
+
+  const rowFor = (f) => {
+    const my = mine[f.id];
+    const canPredict = viewer && f.open;
+    const box = (side, value) => `
+      <input class="num rd-in" name="${esc(`${side}_${f.id}`)}" type="number"
+             inputmode="numeric" min="0" max="99"
+             aria-label="أهداف ${esc(side === 'h' ? f.home_team_name : f.away_team_name)}"
+             value="${value === null || value === undefined ? '' : esc(String(value))}">`;
+
+    return `
+<div class="rd-row${my ? ' has' : ''}">
+  <a class="rd-side rd-h" href="/match/${esc(String(f.id))}">
+    <span class="rd-name">${esc(f.home_team_name)}</span>
+    ${teamBadge(f.home_team_name, f.home_team_logo, f.home_team_id)}
+  </a>
+
+  <div class="rd-mid">
+    ${canPredict
+      ? `${box('h', my?.pred_home)}<span class="rd-x">-</span>${box('a', my?.pred_away)}`
+      : `<span class="rd-locked num" dir="ltr">${my
+            ? `${esc(String(my.pred_home))} - ${esc(String(my.pred_away))}`
+            : '—'}</span>`}
+    <span class="rd-time num">${esc(kickoffTime(f.kickoff_at))}</span>
+  </div>
+
+  <a class="rd-side rd-a" href="/match/${esc(String(f.id))}">
+    ${teamBadge(f.away_team_name, f.away_team_logo, f.away_team_id)}
+    <span class="rd-name">${esc(f.away_team_name)}</span>
+  </a>
+
+  ${canPredict && mult ? `
+  <label class="rd-x2${my?.multiplier > 1 ? ' on' : ''}" title="ضاعِف نقاط هذه المباراة">
+    <input type="checkbox" name="${esc(`m_${f.id}`)}" value="2" ${my?.multiplier > 1 ? 'checked' : ''}>
+    <span dir="ltr">×2</span>
+  </label>` : `<span class="rd-x2 rd-x2-off">${my?.multiplier > 1 ? '<span dir="ltr">×2</span>' : ''}</span>`}
+</div>`;
+  };
+
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:760px">
+    <div class="section-label">توقّع الجولة</div>
+    <h1 class="section-title" style="margin-bottom:14px">
+      ${esc(roundName(round))} — ${esc(current?.name || '')}
+    </h1>
+
+    ${leagueChips(leagues, {
+      active: league,
+      href: (id) => `/round?league=${id}`,
+      all: false,
+    })}
+
+    <!-- التنقّل بين الجولات: من فاتته جولة يريد رؤيتها، ومن أنهى
+         هذه يريد التالية بلا رجوع إلى القائمة. -->
+    <nav class="rd-nav">
+      ${prev ? `<a href="/round?league=${esc(String(league))}&amp;round=${encodeURIComponent(prev.round)}">→ ${esc(roundName(prev.round))}</a>` : '<span></span>'}
+      ${next ? `<a href="/round?league=${esc(String(league))}&amp;round=${encodeURIComponent(next.round)}">${esc(roundName(next.round))} ←</a>` : '<span></span>'}
+    </nav>
+
+    ${result.ok ? `<div class="note ok">حُفظ ${esc(counted(result.ok, 'توقّع واحد', 'توقّعان', 'توقّعات', 'توقّعاً'))}.</div>` : ''}
+    ${result.denied || result.late ? `<div class="note warn">
+      ${result.denied ? `المضاعِف لم يُطبَّق على ${esc(counted(result.denied, 'مباراة', 'مباراتين', 'مباريات', 'مباراة'))} — نفدت مضاعفاتك في هذا الدوري.` : ''}
+      ${result.late ? `${esc(counted(result.late, 'مباراة واحدة انطلقت', 'مباراتان انطلقتا', 'مباريات انطلقت', 'مباراة انطلقت'))} قبل الحفظ فلم تُسجَّل.` : ''}
+    </div>` : ''}
+    ${result.none ? '<div class="note bad">ما كتبت أي نتيجة.</div>' : ''}
+
+    ${!fixtures.length ? `
+    <div class="card" style="text-align:center;padding:38px 20px">
+      <h3>لا مباريات في هذه الجولة</h3>
+    </div>` : viewer ? `
+    <form method="post" action="/round" class="card rd">
+      ${csrfField(csrf)}
+      <input type="hidden" name="league" value="${esc(String(league))}">
+      <input type="hidden" name="round" value="${esc(round)}">
+      ${fixtures.map(rowFor).join('')}
+
+      ${openCount ? `
+      <div class="rd-foot">
+        <button class="btn btn-primary" type="submit">
+          احفظ توقّعات الجولة
+        </button>
+        <p class="pf-note">
+          مضبوطة ${esc(String(points.exact))} · فارق ${esc(String(points.diff))} · فوز ${esc(String(points.outcome))}.
+          ${mult ? `باقٍ لك <b class="num">${esc(String(mult.left))}</b> مضاعِفاً في هذا الدوري.` : ''}
+          الحقل الفارغ لا يُحفظ.
+        </p>
+      </div>` : `
+      <div class="rd-foot">
+        <p class="pf-note">أُقفلت هذه الجولة — انطلقت كل مبارياتها.</p>
+      </div>`}
+    </form>` : `
+    <div class="card rd">
+      ${fixtures.map(rowFor).join('')}
+      <div class="rd-foot pj">
+        <div class="pj-q">توقّع الجولة كاملة</div>
+        <p class="pj-lede">سجّل حساباً واحفظ تسع توقّعات بضغطة واحدة.</p>
+        <div class="pj-cta">
+          ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
+          ${settings?.apple ? `<a class="btn btn-apple" href="/auth/apple">${APPLE_MARK} باستخدام Apple</a>` : ''}
+          <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
+        </div>
+      </div>
+    </div>`}
+  </div>
+</div>`;
+
+  return layout({
+    title: `${roundName(round)} — ${current?.name || 'توقّع الجولة'}`,
+    description: 'توقّع مباريات الجولة كاملةً في صفحة واحدة',
+    body, settings, active: '/round',
+  });
+}
+
 function renderStandings(settings, { leagues, league, rows, error, champion, kings, csrf, canBet }) {
   const current = (leagues || []).find((l) => String(l.id) === String(league));
   const formDots = (form) => (form || '').slice(-5).split('').map((c) => {
@@ -1866,7 +2016,10 @@ function renderMatch(settings, { fixture: f, detail, predict }) {
   const body = `
 <div class="page">
   <div class="wrap" style="max-width:820px">
-    <a class="back" href="/?date=${esc(riyadhDay(f.kickoff_at))}">→ كل المباريات</a>
+    <div class="mh-back">
+      <a class="back" href="/?date=${esc(riyadhDay(f.kickoff_at))}">→ كل المباريات</a>
+      ${f.round ? `<a class="back" href="/round?league=${esc(String(f.league_id))}&amp;round=${encodeURIComponent(f.round)}">توقّع الجولة كاملة ←</a>` : ''}
+    </div>
 
     <!-- البطاقة نفسها هي النموذج حين يمكن التوقّع: المربّعان في
          ترويسة الفريقين والزر أسفلها، فلا يجوز أن يفصلهما وسم. -->
@@ -2089,6 +2242,7 @@ function renderNotFound(settings) {
 }
 
 module.exports = {
+  renderRound,
   renderThrone,
   renderWelcome,
   renderPage, renderContact, renderNotFound,

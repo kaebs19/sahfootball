@@ -2533,3 +2533,108 @@ a.acc-rank:hover { border-color: var(--crown); }
 @media (max-width: 560px) {
   .acc-tab { font-size: 12.5px; padding: 8px 4px; }
 }
+
+/* ═══════════════ توقّع الجولة ═══════════════ */
+
+.rd { padding: 4px 4px 0; }
+/* صفٌّ واحد لكل مباراة: الغرض المقارنة والسرعة، وتسع بطاقات
+   كاملة تجعل الصفحة أطول من تسع صفحات منفصلة فتُلغي المكسب. */
+.rd-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px;
+}
+.rd-row + .rd-row { border-top: 1px solid var(--border); }
+.rd-row.has { background: rgba(255, 255, 255, 0.02); }
+
+.rd-side {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.rd-h { justify-content: flex-end; }
+.rd-a { justify-content: flex-start; }
+.rd-side:hover .rd-name { color: var(--crown); }
+.rd-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rd-side .fx-logo { width: 24px; height: 24px; flex: none; }
+
+.rd-in {
+  width: 40px;
+  padding: 6px 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--night);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+.rd-in:focus { outline: none; border-color: var(--correct); }
+.rd-in::-webkit-outer-spin-button,
+.rd-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.rd-in { -moz-appearance: textfield; }
+/* المربّعان والفاصل في سطر، والوقت تحتهما */
+.rd-mid { display: grid; grid-template-columns: auto auto auto; gap: 4px; align-items: center; }
+.rd-x { color: var(--text-faint); font-size: 12px; }
+/* nowrap ومساحة أدنى: في العرض المقفل لا مربّعات في الوسط،
+   فينكمش العمود حتى ينكسر "6:55 م" سطرين — الساعة سطر والحرف
+   سطر تحته. */
+.rd-time {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.rd-mid { min-width: 58px; }
+.rd-locked { grid-column: 1 / -1; font-size: 14px; font-weight: 700; color: var(--text-muted); }
+
+/* المضاعِف مربّع صغير في آخر الصفّ: الأداة نادرة، فحضورها
+   الدائم بحجم كامل يزاحم ما يُستعمل في كل صفّ. */
+.rd-x2 {
+  /* position: relative شرطٌ لا زينة: المربّع بداخله مطويٌّ
+     بـ absolute، وبلا مرجع تموضع هنا يتموضع على الصفحة نفسها
+     فيتمدّد إلى عرضها كاملاً — فاضت الصفحة أفقياً بـ 326 بكسل
+     على شاشة عريضة، وشُطر العنوان. لا يظهر في HTML ولا في السجل. */
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+/* يملأ الأب لا يختفي: يبقى قابلاً للتركيز بلوحة المفاتيح
+   ويُرسَل مع النموذج، ومساحة ضغطه هي المربّع كله. */
+.rd-x2 input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.rd-x2:hover { border-color: var(--crown-line); color: var(--text-muted); }
+.rd-x2.on { border-color: var(--crown); background: var(--crown-wash); color: var(--crown); }
+.rd-x2-off { border: none; cursor: default; color: var(--crown); }
+
+.rd-foot { padding: 14px 10px 16px; border-top: 1px solid var(--border); }
+.rd-foot .btn { width: 100%; justify-content: center; }
+.rd-nav { display: flex; justify-content: space-between; margin: 12px 0 14px; }
+.rd-nav a { font-size: 13px; font-weight: 600; color: var(--crown); }
+
+@media (max-width: 560px) {
+  .rd-row { grid-template-columns: 1fr auto 1fr 28px; gap: 5px; padding: 9px 6px; }
+  .rd-name { font-size: 11.5px; }
+  .rd-side .fx-logo { width: 20px; height: 20px; }
+  .rd-in { width: 34px; font-size: 15px; }
+  .rd-x2 { height: 26px; font-size: 10px; }
+}
+.mh-back { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
