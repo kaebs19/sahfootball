@@ -23,6 +23,8 @@ const authService = require('../services/authService');
 const webSession = require('../services/webSession');
 const userRepo = require('../repositories/userRepo');
 const teamRepo = require('../repositories/teamRepo');
+const groupService = require('../services/groupService');
+const groupRepo = require('../repositories/groupRepo');
 const championService = require('../services/championService');
 const championRepo = require('../repositories/championRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
@@ -667,7 +669,7 @@ router.get('/auth/google/callback', async (req, res) => {
     // create يكتب Set-Cookie للجلسة. كوكي الـ state مقيّد بمسار
     // /auth/google وينتهي بعد عشر دقائق، فتركه مقبول.
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, afterAuth(user));
+    return res.redirect(303, afterAuth(req, user));
   } catch (err) {
     clearState();
     if (err.status && err.expose) return fail(err.message);
@@ -737,7 +739,7 @@ router.post('/auth/apple/callback', async (req, res) => {
       displayName: appleWebAuth.nameFrom(req.body?.user),
     });
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, afterAuth(user));
+    return res.redirect(303, afterAuth(req, user));
   } catch (err) {
     clearState();
     if (err.status && err.expose) return fail(err.message);
@@ -767,7 +769,13 @@ router.post('/auth/apple/callback', async (req, res) => {
  * والفحص هنا لا في كل باب على حدة: الأبواب أربعة (تسجيل، دخول،
  * جوجل، آبل)، ووضع الشرط في كلٍّ منها يعني أن أول باب جديد يُنسى.
  */
-function afterAuth(user) {
+function afterAuth(req, user) {
+  // الدعوة أولاً: من وصل برابط صديق جاء للمجلس لا لشاشة تهيئة،
+  // وتأجيلُه خلفها يجعله يبحث عن الرابط بعدها — وأكثرُهم لن يجده.
+  // والتهيئة تُعرض له في دخوله التالي، فلا شيء يضيع.
+  const invite = readInvite(req);
+  if (invite) return `/join/${encodeURIComponent(invite)}`;
+
   return user?.onboarded_at ? '/account' : '/welcome';
 }
 
@@ -810,7 +818,7 @@ router.post('/login', async (req, res) => {
     // بابين بقواعد مختلفة.
     const { user } = await authService.login({ email, password });
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, afterAuth(user));
+    return res.redirect(303, afterAuth(req, user));
   } catch (err) {
     if (err.status && err.expose) {
       return res.status(err.status).type('html').send(
@@ -844,7 +852,7 @@ router.post('/register', async (req, res) => {
       email, password, displayName: name,
     });
     await webSession.create(res, user.id, { secure: isSecure(req) });
-    return res.redirect(303, afterAuth(user));
+    return res.redirect(303, afterAuth(req, user));
   } catch (err) {
     if (err.status && err.expose) {
       return res.status(err.status).type('html').send(
@@ -860,6 +868,182 @@ router.post('/register', async (req, res) => {
   }
 });
 
+
+
+// ─────────────────── المجالس ───────────────────
+//
+// القواعد كلها في groupService — راجعه. هذه الصفحات نماذج ورسائل.
+
+/** كوكي الدعوة: يحمل رمزاً عبر رحلة التسجيل حتى تنتهي بالانضمام. */
+const INVITE_COOKIE = 'sah_invite';
+
+function setInvite(res, code, secure) {
+  res.setHeader('Set-Cookie',
+    `${INVITE_COOKIE}=${encodeURIComponent(code)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=1800`
+    + (secure ? '; Secure' : ''));
+}
+function readInvite(req) {
+  const m = new RegExp(`(?:^|;\\s*)${INVITE_COOKIE}=([^;]+)`).exec(req.headers.cookie || '');
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function clearInvite(res, secure) {
+  res.setHeader('Set-Cookie',
+    `${INVITE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` + (secure ? '; Secure' : ''));
+}
+
+router.get('/groups', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+
+  const [settings, groups] = await Promise.all([
+    pageContext(req),
+    groupRepo.findMine(session.userId).catch(() => []),
+  ]);
+
+  res.type('html').send(renderer.renderGroups(settings, {
+    groups,
+    csrf: session.csrf,
+    notice: req.query.ok ? String(req.query.ok).slice(0, 120) : null,
+    error: req.query.err ? String(req.query.err).slice(0, 120) : null,
+  }));
+});
+
+router.post('/groups', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  try {
+    const group = await groupService.create({
+      ownerId: session.userId, name: req.body?.name,
+    });
+    // إلى المجلس مباشرة لا إلى القائمة: أول ما يحتاجه المؤسّس
+    // رابطُ الدعوة، ومجلسٌ بعضو واحد لا قيمة له حتى يدعو.
+    return res.redirect(303, `/groups/${group.id}`);
+  } catch (err) {
+    if (err.status && err.expose) {
+      return res.redirect(303, `/groups?err=${encodeURIComponent(err.message)}`);
+    }
+    logger.error('[pages] group create failed:', err.message);
+    return res.redirect(303, '/groups?err=' + encodeURIComponent('تعذّر إنشاء المجلس الآن.'));
+  }
+});
+
+router.post('/groups/join', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  try {
+    const { group, already } = await groupService.join({
+      userId: session.userId, code: req.body?.code,
+    });
+    // العضو القائم يُرحَّب به لا يُخطَّأ: ضغط الرابط مرتين نيّةُ
+    // وصول، والرسالة الوحيدة الصحيحة هي أن يجد نفسه في المجلس.
+    return res.redirect(303, `/groups/${group.id}${already ? '' : '?ok=' + encodeURIComponent('انضممت إلى المجلس.')}`);
+  } catch (err) {
+    if (err.status && err.expose) {
+      return res.redirect(303, `/groups?err=${encodeURIComponent(err.message)}`);
+    }
+    logger.error('[pages] group join failed:', err.message);
+    return res.redirect(303, '/groups?err=' + encodeURIComponent('تعذّر الانضمام الآن.'));
+  }
+});
+
+router.get('/groups/:id', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+
+  const settings = await pageContext(req);
+  try {
+    const { group, members } = await groupService.view({
+      userId: session.userId, groupId: req.params.id,
+    });
+    res.type('html').send(renderer.renderGroup(settings, {
+      group, members, me: session.userId, csrf: session.csrf,
+      siteUrl: (process.env.SITE_URL || '').replace(/\/+$/, ''),
+      notice: req.query.ok ? String(req.query.ok).slice(0, 120) : null,
+      error: req.query.err ? String(req.query.err).slice(0, 120) : null,
+    }));
+  } catch (err) {
+    // معرّف غير موجود أو ليس UUID أصلاً — كلاهما "غير موجود"
+    // لغير العضو، فلا يُفرَّق بينهما في الرد.
+    if (err.status && err.expose) return res.status(404).type('html').send(renderer.renderNotFound(settings));
+    throw err;
+  }
+});
+
+router.post('/groups/:id/leave', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  try {
+    await groupService.leave({ userId: session.userId, groupId: req.params.id });
+    res.redirect(303, '/groups?ok=' + encodeURIComponent('غادرت المجلس.'));
+  } catch (err) {
+    const msg = err.expose ? err.message : 'تعذّرت المغادرة الآن.';
+    res.redirect(303, `/groups?err=${encodeURIComponent(msg)}`);
+  }
+});
+
+router.post('/groups/:id/delete', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  try {
+    await groupService.remove({ userId: session.userId, groupId: req.params.id });
+    res.redirect(303, '/groups?ok=' + encodeURIComponent('حُذف المجلس.'));
+  } catch (err) {
+    const msg = err.expose ? err.message : 'تعذّر الحذف الآن.';
+    res.redirect(303, `/groups?err=${encodeURIComponent(msg)}`);
+  }
+});
+
+/**
+ * رابط الدعوة — الوجه العام للمجالس.
+ *
+ * هذا المسار هو محرّك النمو كله: رابطٌ يُلصق في واتساب، ومن يضغطه
+ * وهو مسجَّل ينضمّ في خطوة واحدة، ومن ليس له حساب يرى اسم المجلس
+ * وعدد أعضائه ثم يُسجّل — ويُنضمّ فور تسجيله بلا أن يعود للبحث عن
+ * الرابط.
+ *
+ * والذاكرة كوكي نصف ساعة لا معلمة في العنوان: رحلة التسجيل قد
+ * تمرّ بجوجل أو آبل وتعود إلى مسار callback عندهما، ولا مكان في
+ * تلك الرحلة لحمل معلمة من عنواننا. والكوكي يعبرها كلها.
+ */
+router.get('/join/:code', async (req, res) => {
+  const code = groupService.normalizeCode(req.params.code);
+  const settings = await pageContext(req);
+  const session = await webSession.read(req).catch(() => null);
+
+  const group = await groupRepo.findByCode(code).catch(() => null);
+  if (!group) {
+    return res.status(404).type('html').send(renderer.renderJoin(settings, { group: null }));
+  }
+
+  if (session) {
+    try {
+      const { group: joined, already } = await groupService.join({
+        userId: session.userId, code,
+      });
+      clearInvite(res, isSecure(req));
+      return res.redirect(303, `/groups/${joined.id}${already ? '' : '?ok=' + encodeURIComponent('انضممت إلى المجلس.')}`);
+    } catch (err) {
+      const msg = err.expose ? err.message : 'تعذّر الانضمام الآن.';
+      return res.status(err.status || 500).type('html')
+        .send(renderer.renderJoin(settings, { group: null, error: msg }));
+    }
+  }
+
+  // ضيف: نحفظ الرمز ونعرض الدعوة.
+  setInvite(res, code, isSecure(req));
+  const members = await groupRepo.memberCount(group.id).catch(() => 0);
+  res.type('html').send(renderer.renderJoin(settings, {
+    group: { name: group.name, members_count: members },
+  }));
+});
 
 // ─────────────────── التهيئة: ثلاث خطوات ───────────────────
 //

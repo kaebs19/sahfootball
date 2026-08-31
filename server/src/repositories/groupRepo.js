@@ -101,12 +101,16 @@ async function leaderboard(groupId) {
             u.favorite_team_id,
             ft.logo_url AS favorite_team_logo,
             COALESCE(SUM(p.points), 0)::int AS total_points,
-            COUNT(p.points)::int AS settled_predictions,
+            COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled_predictions,
             gm.joined_at
      FROM group_members gm
      JOIN users u ON u.id = gm.user_id
      LEFT JOIN teams ft ON ft.id = u.favorite_team_id
-     LEFT JOIN predictions p ON p.user_id = u.id
+     -- المصدر view لا جدول predictions: نقاط اللاعب تأتي من
+     -- المباريات ورهانات الأبطال معاً، وقراءة الجدول وحده هنا
+     -- كانت ستجعل ترتيب المجلس يخالف العرش لنفس الأشخاص — ألف
+     -- نقطة تظهر في لوحة وتغيب عن أخرى، ولا تفسير للاعب.
+     LEFT JOIN user_settled_points p ON p.user_id = u.id
      WHERE gm.group_id = $1
      GROUP BY u.id, ft.logo_url, gm.joined_at
      ORDER BY total_points DESC, gm.joined_at ASC`,

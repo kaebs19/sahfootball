@@ -1,100 +1,61 @@
-// routes/groups — القروبات (الدوريات الخاصة). كلها تتطلب تسجيل دخول.
-const crypto = require('crypto');
+// routes/groups — المجالس (الدوريات الخاصة). كلها تتطلب تسجيل دخول.
+//
+// القواعد كلها في groupService: للمجالس بابان الآن (التطبيق
+// والموقع)، ونسخُها هنا يعني أن أول تعديل عليها يُنسى في أحدهما.
+// هذا الملف واجهة JSON فوق تلك القواعد لا أكثر.
 const express = require('express');
 const requireAuth = require('../middleware/requireAuth');
 const groupRepo = require('../repositories/groupRepo');
+const groupService = require('../services/groupService');
 
 const router = express.Router();
 router.use(requireAuth);
 
-// حدود منطقية تمنع العبث (حسابات تنشئ آلاف القروبات).
-const MAX_GROUPS_OWNED = 10;
-const MAX_MEMBERS = 100;
-
-// رمز الدعوة: 6 أحرف من أبجدية بلا حروف ملتبسة (لا O/0 ولا I/1/L) —
-// الرمز سيُملى شفهياً ويُنسخ من واتساب، والالتباس عدو التجربة.
-// 28^6 ≈ 480 مليون احتمال: التصادم نادر (نعيد المحاولة لو حدث)
-// والتخمين العشوائي غير عملي.
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-function generateCode() {
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
-  }
-  return code;
+/** يحوّل خطأ الخدمة إلى رد JSON، أو يعيد رميه إن لم يكن متوقّعاً. */
+function fail(res, err) {
+  if (err.status && err.expose) return res.status(err.status).json({ error: err.message });
+  throw err;
 }
 
-// POST /api/groups — { name } — إنشاء قروب
+// POST /api/groups — { name } — إنشاء مجلس
 router.post('/', async (req, res) => {
-  const name = String(req.body?.name || '').trim();
-  if (name.length < 2 || name.length > 50) {
-    return res.status(400).json({ error: 'اسم القروب يجب أن يكون بين 2 و 50 حرفاً' });
-  }
-
-  if (await groupRepo.countOwnedBy(req.userId) >= MAX_GROUPS_OWNED) {
-    return res.status(400).json({ error: `الحد الأقصى ${MAX_GROUPS_OWNED} قروبات لكل مستخدم` });
-  }
-
-  // حلقة التصادم: لو صادف الرمز المولد رمزاً موجوداً (قيد UNIQUE
-  // يرفضه) نولّد غيره. 5 محاولات أكثر من كافية إحصائياً.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const group = await groupRepo.create({
-        name,
-        inviteCode: generateCode(),
-        ownerId: req.userId,
-      });
-      return res.status(201).json({ group });
-    } catch (err) {
-      // 23505 = رمز خطأ PostgreSQL الثابت لانتهاك قيد UNIQUE
-      if (err.code !== '23505') throw err;
-    }
-  }
-  throw new Error('failed to generate a unique invite code');
+  try {
+    const group = await groupService.create({ ownerId: req.userId, name: req.body?.name });
+    res.status(201).json({ group });
+  } catch (err) { fail(res, err); }
 });
 
 // POST /api/groups/join — { code } — انضمام برمز الدعوة
 router.post('/join', async (req, res) => {
-  // نطبّع الرمز: مسافات وحروف صغيرة من النسخ واللصق لا تفشل الانضمام.
-  const code = String(req.body?.code || '').trim().toUpperCase();
-
-  const group = await groupRepo.findByCode(code);
-  if (!group) {
-    return res.status(404).json({ error: 'رمز الدعوة غير صحيح' });
-  }
-  if (await groupRepo.isMember(group.id, req.userId)) {
-    return res.status(409).json({ error: 'أنت عضو في هذا القروب بالفعل' });
-  }
-  if (await groupRepo.memberCount(group.id) >= MAX_MEMBERS) {
-    return res.status(409).json({ error: 'القروب ممتلئ' });
-  }
-
-  await groupRepo.addMember(group.id, req.userId);
-  res.status(201).json({ group: { id: group.id, name: group.name } });
+  try {
+    const { group, already } = await groupService.join({
+      userId: req.userId, code: req.body?.code,
+    });
+    // التطبيق يعتمد 409 للعضو القائم منذ نسخته الأولى، فنُبقيه:
+    // الخدمة ترجع already بدل الرمي كي يقرّر كل باب بنفسه، والويب
+    // يقرأها ترحيباً لا خطأً.
+    if (already) return res.status(409).json({ error: 'أنت عضو في هذا المجلس بالفعل' });
+    res.status(201).json({ group: { id: group.id, name: group.name } });
+  } catch (err) { fail(res, err); }
 });
 
-// GET /api/groups/mine — قروباتي
+// GET /api/groups/mine — مجالسي
 router.get('/mine', async (req, res) => {
   const groups = await groupRepo.findMine(req.userId);
   res.json({ groups });
 });
 
-// GET /api/groups/:id — تفاصيل القروب + ترتيب أعضائه.
-// للأعضاء فقط: القروبات خاصة، ومعرفة الـ id لا تكفي للاطلاع.
+// GET /api/groups/:id — تفاصيل المجلس + ترتيب أعضائه (للأعضاء فقط)
 router.get('/:id', async (req, res) => {
-  const { id } = req.params;
-
-  if (!(await groupRepo.isMember(id, req.userId).catch(() => false))) {
-    // 404 وليس 403: لغير العضو، وجود القروب نفسه معلومة لا نؤكدها.
-    return res.status(404).json({ error: 'القروب غير موجود' });
-  }
-
-  const group = await groupRepo.findById(id);
-  const leaderboard = await groupRepo.leaderboard(id);
-  res.json({
-    group,
-    leaderboard: leaderboard.map((row, i) => ({ rank: i + 1, ...row })),
-  });
+  try {
+    const { group, members } = await groupService.view({
+      userId: req.userId, groupId: req.params.id,
+    });
+    res.json({
+      group,
+      leaderboard: members.map((row, i) => ({ rank: i + 1, ...row })),
+    });
+  } catch (err) { fail(res, err); }
 });
 
 // GET /api/groups/:id/fixtures/:fixtureId/predictions
@@ -161,29 +122,18 @@ router.get('/:id/fixtures/:fixtureId/predictions', async (req, res) => {
 
 // POST /api/groups/:id/leave — مغادرة
 router.post('/:id/leave', async (req, res) => {
-  const { id } = req.params;
-  const group = await groupRepo.findById(id).catch(() => null);
-  if (!group || !(await groupRepo.isMember(id, req.userId))) {
-    return res.status(404).json({ error: 'القروب غير موجود' });
-  }
-  // المالك لا يغادر: قروب بلا مالك لا أحد يستطيع حذفه أو إدارته.
-  // خياره هو الحذف الكامل (المسار التالي).
-  if (group.owner_id === req.userId) {
-    return res.status(400).json({ error: 'مالك القروب لا يغادره — يمكنه حذفه' });
-  }
-  await groupRepo.removeMember(id, req.userId);
-  res.status(204).end();
+  try {
+    await groupService.leave({ userId: req.userId, groupId: req.params.id });
+    res.status(204).end();
+  } catch (err) { fail(res, err); }
 });
 
-// DELETE /api/groups/:id — حذف القروب (للمالك فقط)
+// DELETE /api/groups/:id — حذف المجلس (للمالك فقط)
 router.delete('/:id', async (req, res) => {
-  const group = await groupRepo.findById(req.params.id).catch(() => null);
-  if (!group) return res.status(404).json({ error: 'القروب غير موجود' });
-  if (group.owner_id !== req.userId) {
-    return res.status(403).json({ error: 'حذف القروب لمالكه فقط' });
-  }
-  await groupRepo.remove(group.id);
-  res.status(204).end();
+  try {
+    await groupService.remove({ userId: req.userId, groupId: req.params.id });
+    res.status(204).end();
+  } catch (err) { fail(res, err); }
 });
 
 module.exports = router;

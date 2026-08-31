@@ -102,10 +102,16 @@ const NAV = [
   { href: '/round', label: 'توقّع الجولة' },
   { href: '/standings', label: 'الترتيب' },
   { href: '/throne', label: 'العرش' },
+  { href: '/groups', label: 'مجالسي' },
   { href: '/scorers', label: 'الهدافون' },
-  { href: '/about', label: 'حول الموقع' },
-  { href: '/contact', label: 'اتصل بنا' },
 ];
+// "حول الموقع" و"اتصل بنا" نزلا إلى الفوتر وحده.
+//
+// القائمة العليا صارت ثمانية روابط بعد الجولة والمجالس، فانكسرت
+// سطرين وانكسر معها اسم الموقع في الترويسة. وهذان رابطان
+// تعريفيّان يُفتحان مرة في العمر، بينما ما فوقهما يُستعمل في كل
+// زيارة — والمساحة تُقسَّم بالاستعمال لا بالعدد. وهما في الفوتر
+// أصلاً، فلم يُفقد شيء.
 
 /**
  * بصمة محتوى site.css — تُلحق بالرابط كـ ?v=…
@@ -1286,6 +1292,200 @@ function championTeaser(settings, champion, canBet) {
  * الأندية لا يُوحَّد بين ثماني بطولات، ولاعبٌ واحد يلعب فيها كلها
  * فمجموعه رقم له معنى.
  */
+/**
+ * مجالسي — الدوريات الخاصة بين الأصدقاء.
+ *
+ * لماذا "مجلس" لا "قروب"؟ لأن الكلمة عربية ومعناها في السياق
+ * الخليجي دقيق: جماعةٌ تجتمع بلا رسميات. و"قروب" حرفٌ أعجمي
+ * يكتبه كلٌّ بطريقة (قروب/جروب/غروب) فلا يُبحث عنه.
+ *
+ * والصفحة تفتح بالانضمام لا بالإنشاء: من يصل إليها أول مرة وصل
+ * غالباً ومعه رمز من صديق، لا برغبة تأسيس مجلس. والإنشاء تحته
+ * لمن جاء يؤسّس.
+ */
+function renderGroups(settings, { groups, csrf, notice, error }) {
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:620px">
+    <div class="section-label">مجالسي</div>
+    <h1 class="section-title" style="margin-bottom:6px">نافِس أصحابك</h1>
+    <p class="acc-lede" style="margin-bottom:18px">
+      مجلسٌ خاص بترتيبه الخاص. نقاطك فيه هي نقاطك نفسها — لا توقّع
+      إضافي، فقط منافسة أضيق.
+    </p>
+
+    ${notice ? `<div class="note ok">${esc(notice)}</div>` : ''}
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+
+    ${groups && groups.length ? `
+    <div class="card gp-list">
+      ${groups.map((g) => `
+      <a class="gp-row" href="/groups/${esc(String(g.id))}">
+        <span class="gp-av">${esc((g.name || '?').trim().charAt(0))}</span>
+        <span class="gp-body">
+          <b>${esc(g.name)}</b>
+          <small>${esc(counted(g.members_count, 'عضو واحد', 'عضوان', 'أعضاء', 'عضواً'))}${g.is_owner ? ' · أنت المالك' : ''}</small>
+        </span>
+        <span class="gp-code num" dir="ltr">${esc(g.invite_code)}</span>
+      </a>`).join('')}
+    </div>` : `
+    <div class="card" style="text-align:center;padding:30px 20px">
+      <p class="section-sub">لست في أي مجلس بعد. انضمّ برمز صديق، أو أسّس واحداً.</p>
+    </div>`}
+
+    <section class="acc-sec">
+      <h2>انضمّ برمز</h2>
+      <form method="post" action="/groups/join" class="card gp-form">
+        ${csrfField(csrf)}
+        <div class="field" style="margin:0">
+          <input name="code" type="text" dir="ltr" maxlength="12" required
+                 placeholder="ABC123" autocomplete="off" aria-label="رمز الدعوة"
+                 class="gp-code-in">
+        </div>
+        <button class="btn btn-primary" type="submit">انضمّ</button>
+      </form>
+    </section>
+
+    <section class="acc-sec">
+      <h2>أسّس مجلساً</h2>
+      <form method="post" action="/groups" class="card gp-form">
+        ${csrfField(csrf)}
+        <div class="field" style="margin:0">
+          <input name="name" type="text" maxlength="50" required
+                 placeholder="شلّة الاستراحة" aria-label="اسم المجلس">
+        </div>
+        <button class="btn btn-ghost" type="submit">أنشئ</button>
+      </form>
+      <p class="pf-note" style="text-align:start">
+        تحصل على رمز دعوة ورابط تشاركه. الحد ${esc(String(100))} عضواً للمجلس.
+      </p>
+    </section>
+  </div>
+</div>`;
+  return layout({ title: 'مجالسي', body, settings, active: '/groups' });
+}
+
+/**
+ * مجلس واحد: ترتيبه، ورابط دعوته.
+ *
+ * الدعوة أول ما يُرى لا آخره: مجلسٌ بعضو واحد لا قيمة له، والفعل
+ * الوحيد المهمّ في يومه الأول هو إحضار الآخرين. ويُعرض الرابط
+ * كاملاً لا الرمز وحده — ما يُلصق في واتساب رابطٌ يُضغط، ورمزٌ
+ * وحده يحتاج شرحاً لمن يستقبله.
+ */
+function renderGroup(settings, { group, members, me, csrf, notice, error, siteUrl }) {
+  const link = `${siteUrl}/join/${group.invite_code}`;
+  const isOwner = me && group.owner_id === me;
+
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:620px">
+    <a class="back" href="/groups">→ كل مجالسي</a>
+
+    <h1 class="section-title" style="margin:10px 0 4px">${esc(group.name)}</h1>
+    <p class="acc-lede" style="margin-bottom:16px">
+      ${esc(counted(members.length, 'عضو واحد', 'عضوان', 'أعضاء', 'عضواً'))}
+    </p>
+
+    ${notice ? `<div class="note ok">${esc(notice)}</div>` : ''}
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+
+    <div class="card gp-invite">
+      <h3>ادعُ أصحابك</h3>
+      <p class="section-sub" style="margin:6px 0 12px">
+        أرسل هذا الرابط — من يفتحه ينضمّ مباشرة.
+      </p>
+      <!-- readonly لا disabled: المعطّل لا يُنسخ محتواه في بعض
+           المتصفحات، والغرض كله النسخ. -->
+      <input class="gp-link" type="text" dir="ltr" readonly value="${esc(link)}"
+             aria-label="رابط الدعوة" onfocus="this.select()">
+      <div class="gp-code-big num" dir="ltr">${esc(group.invite_code)}</div>
+      <p class="pf-note" style="text-align:center;margin:0">
+        أو أملِ الرمز شفهياً — بلا حروف ملتبسة.
+      </p>
+    </div>
+
+    <section class="acc-sec">
+      <h2>الترتيب</h2>
+      <div class="card lb">
+        ${members.map((m, i) => `
+        <div class="lb-row${me && m.user_id === me ? ' mine' : ''}">
+          <span class="lb-rank num">${esc(String(i + 1))}</span>
+          ${m.favorite_team_id
+            ? `<img class="fx-logo" src="${esc(localLogo('team', m.favorite_team_id))}" alt="" width="26" height="26" loading="lazy">`
+            : '<span class="fx-logo lb-none"></span>'}
+          <span class="lb-name">${esc(m.display_name)}${group.owner_id === m.user_id ? ' <span class="gp-own">مالك</span>' : ''}</span>
+          <span class="lb-n num" title="توقّعات محتسَبة">${esc(String(m.settled_predictions))}</span>
+          <b class="lb-pts num">${esc(String(m.total_points))}</b>
+        </div>`).join('')}
+      </div>
+      <p class="pf-note" style="text-align:start">
+        النقاط هي نقاطك في اللعبة كلها — المجلس يعيد ترتيبها بينكم، ولا ينشئ لعبة ثانية.
+      </p>
+    </section>
+
+    <section class="acc-sec">
+      ${isOwner ? `
+      <div class="card danger">
+        <h3>حذف المجلس</h3>
+        <p class="section-sub" style="margin:8px 0 14px">
+          يُحذف المجلس وعضويّاته للجميع. توقّعات الأعضاء ونقاطهم لا تُمسّ.
+        </p>
+        <form method="post" action="/groups/${esc(String(group.id))}/delete"
+              onsubmit="return confirm('حذف المجلس نهائياً. متأكد؟')">
+          ${csrfField(csrf)}
+          <button class="btn btn-danger" type="submit">احذف المجلس</button>
+        </form>
+      </div>` : `
+      <form method="post" action="/groups/${esc(String(group.id))}/leave"
+            onsubmit="return confirm('مغادرة المجلس؟')">
+        ${csrfField(csrf)}
+        <button class="btn" type="submit">غادر المجلس</button>
+      </form>`}
+    </section>
+  </div>
+</div>`;
+  return layout({ title: group.name, body, settings, active: '/groups' });
+}
+
+/**
+ * صفحة الدعوة — ما يراه من ضغط الرابط قبل أن يملك حساباً.
+ *
+ * تعرض اسم المجلس وعدد أعضائه: الدعوة المجهولة لا تُقبل، ومن
+ * يقرأ "انضمّ إلى شلّة الاستراحة — 7 أعضاء" يعرف أنه في المكان
+ * الصحيح. ولا تعرض أكثر: الأسماء والنقاط للأعضاء وحدهم.
+ */
+function renderJoin(settings, { group, error }) {
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap" style="max-width:480px">
+    ${error || !group ? `
+    <div class="card" style="text-align:center;padding:36px 22px">
+      <h1 style="font-size:20px;margin-bottom:10px">دعوة غير صالحة</h1>
+      <p class="section-sub">${esc(error || 'هذا الرمز لا يقود إلى مجلس. اطلب رابطاً جديداً من صاحبك.')}</p>
+      <div style="margin-top:16px"><a class="btn btn-ghost" href="/">الرئيسية</a></div>
+    </div>` : `
+    <div class="card" style="text-align:center;padding:32px 22px">
+      <span class="gp-av gp-av-lg">${esc((group.name || '?').trim().charAt(0))}</span>
+      <h1 style="font-size:21px;margin:12px 0 6px">${esc(group.name)}</h1>
+      <p class="section-sub">
+        ${esc(counted(group.members_count, 'عضو واحد', 'عضوان', 'أعضاء', 'عضواً'))} · دعوة للانضمام
+      </p>
+      <p class="pj-lede" style="margin:14px 0 18px">
+        سجّل الدخول وستنضمّ فوراً. نقاطك في اللعبة هي نقاطك في المجلس.
+      </p>
+      <div class="pj-cta">
+        ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
+        ${settings?.apple ? `<a class="btn btn-apple" href="/auth/apple">${APPLE_MARK} باستخدام Apple</a>` : ''}
+        <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
+        <a class="btn btn-ghost" href="/login">عندي حساب</a>
+      </div>
+    </div>`}
+  </div>
+</div>`;
+  return layout({ title: group ? `انضمّ إلى ${group.name}` : 'دعوة', body, settings, active: null });
+}
+
 function renderThrone(settings, { leagues, league, rows, me }) {
   const current = (leagues || []).find((l) => String(l.id) === String(league));
 
@@ -2242,6 +2442,7 @@ function renderNotFound(settings) {
 }
 
 module.exports = {
+  renderGroups, renderGroup, renderJoin,
   renderRound,
   renderThrone,
   renderWelcome,
