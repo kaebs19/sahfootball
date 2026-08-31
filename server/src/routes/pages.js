@@ -23,6 +23,8 @@ const authService = require('../services/authService');
 const webSession = require('../services/webSession');
 const userRepo = require('../repositories/userRepo');
 const teamRepo = require('../repositories/teamRepo');
+const championService = require('../services/championService');
+const championRepo = require('../repositories/championRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
 const predictionRepo = require('../repositories/predictionRepo');
 const logger = require('../utils/logger');
@@ -655,29 +657,98 @@ router.post('/register', async (req, res) => {
 });
 
 
-// ─────────────────── التهيئة: أهلاً ───────────────────
+// ─────────────────── التهيئة: ثلاث خطوات ───────────────────
 //
-// شاشة واحدة وسؤال واحد. راجع renderWelcome لسبب اختيار الفريق
-// بدل الدوري.
+// دورياتك ← فريقك ← البطل. وكلٌّ ضغطة واحدة، والتخطّي مفتوح في
+// كلٍّ منها. راجع renderWelcome لسبب هذا الترتيب.
+
+/** يجمع ما تحتاجه بطاقات البطل: الدوري، أنديته، السعر، ورهانه. */
+async function championCards(userId) {
+  const followed = await championRepo.followedIds(userId);
+  if (!followed.length) return [];
+
+  const [leagues, teams, mine] = await Promise.all([
+    leagueRepo.findEnabled(),
+    teamRepo.findPlayable(),
+    championRepo.findMine(userId),
+  ]);
+
+  const cards = [];
+  for (const id of followed) {
+    const league = leagues.find((l) => l.id === id);
+    if (!league) continue; // دوري أُخرج من اللعبة بعد متابعته
+    cards.push({
+      league: { id: league.id, name: league.name },
+      teams: teams.filter((t) => t.league_id === id),
+      quote: await championService.quote(id, league.season),
+      mine: mine.find((m) => m.league_id === id && m.season === league.season) || null,
+    });
+  }
+  return cards;
+}
+
 router.get('/welcome', async (req, res) => {
   const session = await webSession.read(req);
   if (!session) return res.redirect(303, '/login');
 
-  const [settings, user, teams] = await Promise.all([
+  const [settings, user] = await Promise.all([
     pageContext(req),
     userRepo.findById(session.userId),
-    teamRepo.findPlayable(),
   ]);
   // من هُيِّئ لا يُعاد إليها ولو فتح الرابط بنفسه — والحارس هنا
   // لا في afterAuth وحدها: الرابط قابل للحفظ في المفضلة.
   if (!user || user.onboarded_at) return res.redirect(303, '/account');
 
-  res.type('html').send(renderer.renderWelcome(settings, {
-    teams, csrf: session.csrf, name: user.display_name,
-  }));
+  // الخطوة مشتقّة من الحالة لا محفوظة في الجلسة: من أغلق المتصفح
+  // بين خطوتين يعود إلى حيث وقف، ومن رجع للخلف لا يرى شاشة تدّعي
+  // تقدّماً لم يحدث. الحقيقة في القاعدة لا في عدّاد.
+  const followed = await championRepo.followedIds(session.userId);
+  const step = !followed.length ? 'leagues'
+    : !user.favorite_team_id ? 'team'
+    : 'champion';
+
+  const view = { step, csrf: session.csrf, name: user.display_name };
+  if (step === 'leagues') {
+    const leagues = await leagueRepo.findEnabled();
+    view.leagues = leagues
+      .filter((l) => l.in_app)
+      .map((l) => ({ id: l.id, name: l.name, followed: false }));
+  } else if (step === 'team') {
+    const teams = await teamRepo.findPlayable();
+    view.teams = teams.filter((t) => followed.includes(t.league_id));
+  } else {
+    view.picks = await championCards(session.userId);
+  }
+
+  res.type('html').send(renderer.renderWelcome(settings, view));
 });
 
-router.post('/welcome', async (req, res) => {
+router.post('/welcome/leagues', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  // مربّع اختيار واحد يصل نصاً، وعدّة تصل مصفوفة.
+  const raw = req.body?.league;
+  const asked = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(Number);
+
+  // نصفّيها بقائمة الدوريات الداخلة في اللعبة فعلاً: القيم تأتي
+  // من المتصفح، ومن يصنع طلباً بيده يستطيع كتابة أي رقم. والمفتاح
+  // الأجنبي يمنع المعرّف الخيالي، ولا يمنع متابعة دوري يُعرض ولا
+  // يُلعب — فتظهر له بطاقة بطلٍ لا مباريات تحتها.
+  const playable = (await leagueRepo.findEnabled()).filter((l) => l.in_app).map((l) => l.id);
+  const ids = [...new Set(asked.filter((id) => playable.includes(id)))];
+
+  // بلا اختيار لا نتقدّم: الخطوتان التاليتان مبنيّتان على هذه،
+  // والمرور بلا دوري يعطي شبكة أندية فارغة. ومن لا يريد الاختيار
+  // له "تخطَّ".
+  if (!ids.length) return res.redirect(303, '/welcome');
+
+  await championRepo.setFollowed(session.userId, ids);
+  res.redirect(303, '/welcome');
+});
+
+router.post('/welcome/team', async (req, res) => {
   const session = await webSession.read(req);
   if (!session) return res.redirect(303, '/login');
   if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
@@ -686,33 +757,58 @@ router.post('/welcome', async (req, res) => {
   if (!Number.isInteger(teamId)) return res.redirect(303, '/welcome');
 
   await userRepo.updateProfile(session.userId, { favoriteTeamId: teamId });
-  await userRepo.markOnboarded(session.userId);
-
-  // إلى مباراة فريقه القادمة مباشرة، لا إلى صفحة تهنئة.
-  //
-  // التهيئة التي تنتهي بـ"تم!" تنتهي بلا شيء: المستخدم يعرف ما
-  // اللعبة ولم يلعبها. وهذه تنتهي وهو أمام بطاقة توقّع حقيقية
-  // لفريقه، وجدول النقاط تحتها — فيتعلّم القاعدة في اللحظة التي
-  // يحتاجها فيها لا قبلها بشاشتين.
-  //
-  // ولو لم يكن لفريقه مباراة قادمة (عطلة، أو نهاية موسم) يذهب
-  // إلى الرئيسية: صفحة فيها ما يفعله، لا رسالة اعتذار.
-  const next = await fixtureRepo.nextForTeam(teamId).catch(() => null);
-  return res.redirect(303, next ? `/match/${next.id}?first=1` : '/');
+  res.redirect(303, '/welcome');
 });
 
-// التخطّي فعلٌ لا رأي: يُوسم كالإنهاء تماماً فلا تعترضه الشاشة
-// ثانية. ومن غيّر رأيه يجد اختيار فريقه في "حسابي".
+// التخطّي فعلٌ لا رأي: يُوسم كالإنهاء فلا تعترضه الشاشة ثانية.
+// ومن غيّر رأيه يجد كل شيء في "حسابي".
+//
+// وإلى مباراة فريقه القادمة إن اختاره: التهيئة التي تنتهي بشاشة
+// تهنئة تنتهي بلا شيء — المستخدم يعرف اللعبة ولم يلعبها.
 router.get('/welcome/skip', async (req, res) => {
   const session = await webSession.read(req);
   if (!session) return res.redirect(303, '/login');
+
   await userRepo.markOnboarded(session.userId);
-  res.redirect(303, '/');
+
+  const user = await userRepo.findById(session.userId).catch(() => null);
+  if (!user?.favorite_team_id) return res.redirect(303, '/');
+
+  const next = await fixtureRepo.nextForTeam(user.favorite_team_id).catch(() => null);
+  res.redirect(303, next ? `/match/${next.id}?first=1` : '/');
+});
+
+// ─────────────────── رهان البطل ───────────────────
+//
+// نفس المسار من التهيئة ومن "حسابي": البطاقة واحدة فالباب واحد.
+router.post('/champion', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  const back = String(req.get('referer') || '').includes('/welcome') ? '/welcome' : '/account';
+  const leagueId = Number(req.body?.league);
+  const teamId = Number(req.body?.team);
+  if (!Number.isInteger(leagueId) || !Number.isInteger(teamId)) {
+    return res.redirect(303, back);
+  }
+
+  const league = (await leagueRepo.findEnabled()).find((l) => l.id === leagueId && l.in_app);
+  if (!league) return res.redirect(303, back);
+
+  try {
+    await championService.pick({
+      userId: session.userId, leagueId, season: league.season, teamId,
+    });
+  } catch (err) {
+    logger.error('[pages] champion pick failed:', err.message);
+  }
+  res.redirect(303, back === '/welcome' ? '/welcome' : '/account#champion');
 });
 
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
 async function showAccount(req, res, session, extra = {}) {
-  const [settings, user, stats, creds, points, history] = await Promise.all([
+  const [settings, user, stats, creds, points, history, champions] = await Promise.all([
     pageContext(req),
     userRepo.findById(session.userId),
     predictionRepo.profileStats(session.userId).catch(() => null),
@@ -721,6 +817,10 @@ async function showAccount(req, res, session, extra = {}) {
     // آخر عشرين: السجل الكامل قد يبلغ مئات الصفوف في نهاية الموسم،
     // ومن يريد أقدم منها يريد تصفّحاً لا صفحة أطول.
     predictionRepo.findMine(session.userId).then((r) => r.slice(0, 20)).catch(() => []),
+    // بطاقات البطل تحتاج سعراً حيّاً لكل دوري، وفشلها لا يُسقط
+    // الصفحة: من فتح حسابه ليغيّر كلمة سره لا يُحرم منها لأن
+    // استعلام رهانٍ تعثّر.
+    championCards(session.userId).catch(() => []),
   ]);
 
   // الحساب حُذف بينما الجلسة حية (من التطبيق مثلاً).
@@ -731,7 +831,7 @@ async function showAccount(req, res, session, extra = {}) {
 
   res.type('html').send(
     renderer.renderAccount(settings, {
-      user, stats, creds, points, history, csrf: session.csrf, ...extra,
+      user, stats, creds, points, history, champions, csrf: session.csrf, ...extra,
     })
   );
 }

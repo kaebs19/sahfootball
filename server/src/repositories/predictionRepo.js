@@ -143,14 +143,17 @@ async function leaderboard(limit = 50) {
             u.favorite_team_id,
             ft.logo_url AS favorite_team_logo,
             COALESCE(SUM(p.points), 0)::int AS total_points,
-            COUNT(p.points)::int AS settled_predictions
+            COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled_predictions
      FROM users u
      -- settled_at IS NOT NULL في شرط الضم لا في WHERE:
      -- من له توقعات لم تُحتسب بعد يجب ألا يظهر في العرش أصلاً، لا أن
      -- يظهر بصفر نقطة. وهذا نفس تعريف "المتنافس" في profileStats —
      -- ولولا توحيدهما لقال العرش إن المستخدم في المركز الرابع بينما
      -- يقول ملفه إنه لم ينافس بعد. رقمان لحقيقة واحدة.
-     JOIN predictions p ON p.user_id = u.id AND p.settled_at IS NOT NULL
+     -- المصدر view لا جدول: النقاط تأتي من المباريات ورهانات
+     -- الأبطال معاً، وجمعُهما في كل استعلام على حدة يخلق نسخاً
+     -- تتباعد. راجع user_settled_points في migration 021.
+     JOIN user_settled_points p ON p.user_id = u.id
      LEFT JOIN teams ft ON ft.id = u.favorite_team_id
      GROUP BY u.id, ft.logo_url
      ORDER BY total_points DESC, settled_predictions ASC
@@ -221,11 +224,10 @@ async function profileStats(userId) {
       `WITH ranked AS (
          SELECT p.user_id,
                 COALESCE(SUM(p.points), 0)::int AS total_points,
-                COUNT(p.points)::int            AS settled_predictions,
+                COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled_predictions,
                 RANK() OVER (ORDER BY COALESCE(SUM(p.points), 0) DESC,
-                                      COUNT(p.points) ASC)::int AS rank
-           FROM predictions p
-          WHERE p.settled_at IS NOT NULL
+                                      COUNT(*) FILTER (WHERE p.kind = 'match') ASC)::int AS rank
+           FROM user_settled_points p
           GROUP BY p.user_id
        )
        -- LEFT JOIN من صف العدّ: يرجع صفاً واحداً دائماً، حتى لمن

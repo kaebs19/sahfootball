@@ -514,9 +514,69 @@ function providerBlock(settings, verb) {
  *
  * و"لاحقاً" ظاهر لا مخفي: من جاء يتصفّح لا يُحتجز خلف نموذج.
  */
-function renderWelcome(settings, { teams, csrf, name }) {
-  // تجميع بالدوري في العرض لا في الاستعلام: المستودع يرجع صفوفاً
-  // مسطّحة مرتّبة، والتجميع شكلٌ لا بيانات.
+function renderWelcome(settings, { step, leagues, teams, picks, csrf, name }) {
+  if (step === 'leagues') return welcomeLeagues(settings, { leagues, csrf, name });
+  if (step === 'team') return welcomeTeams(settings, { teams, csrf });
+  return welcomeChampion(settings, { picks, csrf });
+}
+
+/** شريط التقدّم — ثلاث خطوات، وكلٌّ ضغطة واحدة. */
+function wlSteps(current) {
+  const names = ['دورياتك', 'فريقك', 'البطل'];
+  return `
+<ol class="wl-steps">
+  ${names.map((n, i) => `
+  <li class="${i < current ? 'done' : i === current ? 'now' : ''}">
+    <span class="num">${i + 1}</span>${esc(n)}
+  </li>`).join('')}
+</ol>`;
+}
+
+/**
+ * ① الدوريات — اختيار متعدّد.
+ *
+ * هنا وحدها يظهر زرّ "متابعة": الخطوتان التاليتان اختيارٌ مفرد
+ * فتُرسلان بالضغطة نفسها، وهذه تحتمل ستة اختيارات فتحتاج لحظة
+ * إنهاء يقولها المستخدم لا نخمّنها عنه.
+ */
+function welcomeLeagues(settings, { leagues, csrf, name }) {
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:760px">
+    ${wlSteps(0)}
+    <header class="wl-head">
+      <h1>أهلاً${name ? ` ${esc(name)}` : ''} 👋</h1>
+      <p>أي الدوريات تتابع؟ اختر ما شئت — توقّعاتك ستكون فيها.</p>
+    </header>
+
+    <form method="post" action="/welcome/leagues" class="card wl-card">
+      ${csrfField(csrf)}
+      <div class="wl-lgs">
+        ${leagues.map((l) => `
+        <label class="wl-lg">
+          <input type="checkbox" name="league" value="${esc(String(l.id))}"
+                 ${l.followed ? 'checked' : ''}>
+          <img src="${esc(localLogo('league', l.id))}" alt="" width="30" height="30" loading="lazy">
+          <span>${esc(l.name)}</span>
+        </label>`).join('')}
+      </div>
+      <button class="btn btn-primary" type="submit">متابعة</button>
+    </form>
+
+    <div class="wl-skip"><a href="/welcome/skip">تخطَّ الآن</a></div>
+  </div>
+</div>`;
+  return layout({ title: 'أهلاً بك', body, settings, active: null });
+}
+
+/**
+ * ② الفريق — أندية الدوريات التي اختارها وحدها.
+ *
+ * وهذا ما تكسبه الخطوة الأولى: كانت الشبكة 114 نادياً من ستة
+ * دوريات، وصارت 18 لمن يتابع السعودي وحده. السؤال نفسه، والجواب
+ * صار أسرع ست مرات.
+ */
+function welcomeTeams(settings, { teams, csrf }) {
   const groups = [];
   for (const t of teams) {
     const last = groups[groups.length - 1];
@@ -527,12 +587,13 @@ function renderWelcome(settings, { teams, csrf, name }) {
   const body = `
 <div class="page">
   <div class="wrap" style="max-width:820px">
+    ${wlSteps(1)}
     <header class="wl-head">
-      <h1>أهلاً${name ? ` ${esc(name)}` : ''} 👋</h1>
-      <p>مع مَن قلبك؟ نختار لك مباراته القادمة لتبدأ بها.</p>
+      <h1>مع مَن قلبك؟</h1>
+      <p>نُذكّرك بمبارياته، ونعرض شعاره بجانب اسمك في لوحة الترتيب.</p>
     </header>
 
-    <form method="post" action="/welcome" class="card wl-card">
+    <form method="post" action="/welcome/team" class="card wl-card">
       ${csrfField(csrf)}
       ${groups.map((g) => `
       <section class="wl-league">
@@ -547,12 +608,75 @@ function renderWelcome(settings, { teams, csrf, name }) {
       </section>`).join('')}
     </form>
 
-    <div class="wl-skip">
-      <a href="/welcome/skip">تخطَّ الآن — أختار لاحقاً</a>
-    </div>
+    <div class="wl-skip"><a href="/welcome/skip">تخطَّ الآن</a></div>
   </div>
 </div>`;
-  return layout({ title: 'أهلاً بك', body, settings, active: null });
+  return layout({ title: 'فريقك', body, settings, active: null });
+}
+
+/**
+ * ③ البطل — رهان الموسم، بسعره الظاهر.
+ *
+ * السعر معروض بأجزائه لا كرقم: "قيمتها الآن 940 لأن الموسم في
+ * أوّله" قابلة للفهم والقرار، و"940" وحدها تبدو اعتباطاً. وقاعدة
+ * التناقص تُقال صراحةً — من يعرف أن السعر ينزل كل جولة يقرّر
+ * اليوم، ومن لا يعرفها يؤجّل ثم يشعر أنه خُدع.
+ */
+function welcomeChampion(settings, { picks, csrf }) {
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:820px">
+    ${wlSteps(2)}
+    <header class="wl-head">
+      <h1>مَن يرفع الكأس؟</h1>
+      <p>رهان الموسم. كلما بكّرت زادت جائزته — وتنقص مع كل جولة تُلعب.</p>
+    </header>
+
+    ${picks.map((p) => championCard(p, csrf)).join('')}
+
+    <div class="wl-skip"><a href="/welcome/skip">أنهِ — أقرّر لاحقاً</a></div>
+  </div>
+</div>`;
+  return layout({ title: 'توقّع البطل', body, settings, active: null });
+}
+
+/**
+ * بطاقة رهان دوري واحد — في التهيئة وفي "حسابي" معاً.
+ *
+ * ودالة واحدة للموضعين لا نسختان: البطاقة تحمل قاعدة التسعير في
+ * نصّها، ونسخةٌ ثانية تعني رقمين يشرحان قاعدة واحدة ثم يتباعدان
+ * عند أول تعديل.
+ */
+function championCard(p, csrf) {
+  const pct = Math.round(p.quote.progress * 100);
+  return `
+<form method="post" action="/champion" class="card ch">
+  ${csrfField(csrf)}
+  <input type="hidden" name="league" value="${esc(String(p.league.id))}">
+
+  <header class="ch-head">
+    <img src="${esc(localLogo('league', p.league.id))}" alt="" width="26" height="26" loading="lazy">
+    <h2>${esc(p.league.name)}</h2>
+    ${p.mine
+      ? `<span class="ch-val" title="قيمة رهانك المحفوظة">${esc(String(p.mine.award))} نقطة</span>`
+      : `<span class="ch-val">${esc(String(p.quote.award))} نقطة</span>`}
+  </header>
+
+  <p class="ch-note">
+    ${p.mine
+      ? `رهانك محفوظ بـ <b>${esc(String(p.mine.award))}</b> نقطة. تغييره الآن يُعيد تسعيره بـ <b>${esc(String(p.quote.award))}</b> — السعر ينزل مع الموسم.`
+      : `مضى <b class="num">${esc(String(pct))}%</b> من الموسم، فقيمة الرهان الآن <b>${esc(String(p.quote.award))}</b> من <span class="num">${esc(String(p.quote.max))}</span>.`}
+  </p>
+
+  <div class="wl-grid ch-grid">
+    ${p.teams.map((t) => `
+    <button class="wl-team${p.mine?.team_id === t.id ? ' picked' : ''}"
+            type="submit" name="team" value="${esc(String(t.id))}">
+      ${teamBadge(t.name, t.logo_url, t.id)}
+      <span>${esc(t.name)}</span>
+    </button>`).join('')}
+  </div>
+</form>`;
 }
 
 function renderLogin(settings, { error, values } = {}) {
@@ -701,7 +825,7 @@ function historyRow(h) {
  * على بريده نفسه، فيصله رمز ويعيّن كلمة — نفس المسار القائم بلا
  * بطاقة إضافية.
  */
-function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history }) {
+function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history, champions }) {
   const rank = stats?.rank ? `${stats.rank}` : '—';
   const dist = distribution(stats, points || DEFAULT_SCORING);
   const body = `
@@ -736,6 +860,16 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
         <div class="card st"><b class="num">${esc(String(stats?.current_streak ?? 0))}</b><span>سلسلة حالية</span></div>
       </div>
     </section>
+
+    <!-- رهان البطل قبل الإحصاءات لا بعدها: هذه بطاقة فيها قرار
+         مؤجّل وسعرٌ ينزل كل جولة، وتلك أرقام تُقرأ ولا تُفعَل.
+         ومن تخطّى التهيئة لا يجدها إلا هنا. -->
+    ${champions && champions.length ? `
+    <section class="acc-sec" id="champion">
+      <h2>من يرفع الكأس؟</h2>
+      <p class="acc-lede">رهان الموسم لكل دوري تتابعه. الجائزة تنقص مع كل جولة تُلعب.</p>
+      ${champions.map((c) => championCard(c, csrf)).join('')}
+    </section>` : ''}
 
     ${dist.length ? `
     <section class="acc-sec">

@@ -13,6 +13,7 @@ const LEAGUE_COLUMNS = `
   l.logo_url,
   l.season,
   l.enabled,
+  l.in_app,
   l.sort_order,
   l.last_synced_at,
   l.created_at

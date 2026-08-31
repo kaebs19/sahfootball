@@ -114,6 +114,15 @@ async function usersNeedingReminder(leadMinutes) {
         AND (
               f.home_team_id = u.favorite_team_id
            OR f.away_team_id = u.favorite_team_id
+           -- المتابعة المعلنة أوضح من الاستنتاج: صار المستخدم
+           -- يختار دورياته صراحةً في التهيئة، وهو أدقّ من استنتاج
+           -- اهتمامه من توقّع قديم — ومن يتابع دورياً ولم يبدأ فيه
+           -- بعد هو أحوج الناس للتذكير لا أبعدهم عنه.
+           OR EXISTS (
+                SELECT 1 FROM user_leagues ul
+                 WHERE ul.user_id = u.id AND ul.league_id = f.league_id)
+           -- ويبقى الاستنتاج لمن سبق التهيئة: من لعب قبل وجودها
+           -- لا متابعات له، وقطعُ تذكيره فجأة عقوبةٌ على قِدَمه.
            OR EXISTS (
                 SELECT 1 FROM predictions p2
                   JOIN fixtures f2 ON f2.id = p2.fixture_id

@@ -69,6 +69,23 @@ async function syncAll() {
   const settled = await scoringService.settleFinished();
   if (settled > 0) logger.info(`[sync] settled ${settled} predictions`);
 
+  // ورهانات الأبطال: تُسوّى حين تنتهي كل مباريات الموسم.
+  //
+  // هنا لا في مجدول مستقل: التسوية تحتاج أن تكون آخر مباراة قد
+  // كُتبت في قاعدتنا، وهذا السطر يقع بعد المزامنة مباشرة —
+  // فيستحيل أن تُحسم البطولة على جدول ينقصه ما زُومن قبل ثانية.
+  //
+  // ولا تُسقط المزامنة إن فشلت: التوقّعات محفوظة، والدوري الذي
+  // لم يُحسم اليوم يُحسم في الدورة القادمة. أما إجهاض المزامنة
+  // كلها فيعني تكرار كل ندائها للمزوّد بلا داعٍ.
+  try {
+    const championService = require('../services/championService');
+    const champs = await championService.settleFinishedSeasons();
+    if (champs > 0) logger.info(`[sync] settled ${champs} champion picks`);
+  } catch (err) {
+    logger.error('[sync] champion settlement failed:', err.message);
+  }
+
   // نرجع ملخصاً تعرضه اللوحة. المجاميع العليا (teams/fixtures/settled)
   // محفوظة بشكلها القديم حرفياً حتى لا تنكسر اللوحة الحالية،
   // والتفصيل لكل دوري يأتي إضافةً في leagues.
