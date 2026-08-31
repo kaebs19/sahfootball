@@ -825,7 +825,7 @@ function historyRow(h) {
  * على بريده نفسه، فيصله رمز ويعيّن كلمة — نفس المسار القائم بلا
  * بطاقة إضافية.
  */
-function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history, champions }) {
+function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history, champions, leagues }) {
   const rank = stats?.rank ? `${stats.rank}` : '—';
   const dist = distribution(stats, points || DEFAULT_SCORING);
   const body = `
@@ -864,8 +864,29 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
     <!-- رهان البطل قبل الإحصاءات لا بعدها: هذه بطاقة فيها قرار
          مؤجّل وسعرٌ ينزل كل جولة، وتلك أرقام تُقرأ ولا تُفعَل.
          ومن تخطّى التهيئة لا يجدها إلا هنا. -->
-    ${champions && champions.length ? `
+    <!-- دورياتك قابلة للتعديل هنا وحدها: التهيئة تُعرض مرة
+         واحدة في العمر، ومن تابع السعودي في يومه الأول ثم أراد
+         الإنجليزي بعد شهر كان أمام باب لا وجود له. -->
+    ${leagues && leagues.length ? `
     <section class="acc-sec" id="champion">
+      <h2>دورياتي</h2>
+      <p class="acc-lede">توقّعاتك وتذكيراتك ورهانات الأبطال تتبع هذه القائمة.</p>
+      <form method="post" action="/account/leagues" class="card wl-card">
+        ${csrfField(csrf)}
+        <div class="wl-lgs">
+          ${leagues.map((l) => `
+          <label class="wl-lg">
+            <input type="checkbox" name="league" value="${esc(String(l.id))}" ${l.followed ? 'checked' : ''}>
+            <img src="${esc(localLogo('league', l.id))}" alt="" width="30" height="30" loading="lazy">
+            <span>${esc(l.name)}</span>
+          </label>`).join('')}
+        </div>
+        <button class="btn btn-ghost" type="submit">حفظ دورياتي</button>
+      </form>
+    </section>` : ''}
+
+    ${champions && champions.length ? `
+    <section class="acc-sec">
       <h2>من يرفع الكأس؟</h2>
       <p class="acc-lede">رهان الموسم لكل دوري تتابعه. الجائزة تنقص مع كل جولة تُلعب.</p>
       ${champions.map((c) => championCard(c, csrf)).join('')}

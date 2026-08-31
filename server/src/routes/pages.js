@@ -806,9 +806,43 @@ router.post('/champion', async (req, res) => {
   res.redirect(303, back === '/welcome' ? '/welcome' : '/account#champion');
 });
 
+
+// تعديل الدوريات من "حسابي" — نفس مستودع التهيئة، فالقائمة واحدة.
+router.post('/account/leagues', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  const raw = req.body?.league;
+  const asked = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(Number);
+  const playable = (await leagueRepo.findEnabled()).filter((l) => l.in_app).map((l) => l.id);
+  const ids = [...new Set(asked.filter((id) => playable.includes(id)))];
+
+  // إلغاء المتابعة كلها مسموح هنا بخلاف التهيئة: هناك كانت
+  // الخطوتان التاليتان مبنيّتين عليها، وهنا قرارٌ كاملٌ لصاحبه —
+  // من لا يريد تذكيراً من أي دوري له أن يقول ذلك.
+  await championRepo.setFollowed(session.userId, ids);
+
+  // ورهانات الأبطال لا تُمسّ: من ألغى متابعة دوري راهن فيه لم
+  // يسحب رهانه، وحذفه عقوبةٌ لم يطلبها. تختفي بطاقته من الصفحة
+  // ويبقى الرهان قائماً إن عاد.
+  res.redirect(303, '/account#champion');
+});
+
+/** الدوريات القابلة للمتابعة، ومعها ما يتابعه فعلاً. */
+async function followableLeagues(userId) {
+  const [leagues, followed] = await Promise.all([
+    leagueRepo.findEnabled(),
+    championRepo.followedIds(userId),
+  ]);
+  return leagues
+    .filter((l) => l.in_app)
+    .map((l) => ({ id: l.id, name: l.name, followed: followed.includes(l.id) }));
+}
+
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
 async function showAccount(req, res, session, extra = {}) {
-  const [settings, user, stats, creds, points, history, champions] = await Promise.all([
+  const [settings, user, stats, creds, points, history, champions, leagues] = await Promise.all([
     pageContext(req),
     userRepo.findById(session.userId),
     predictionRepo.profileStats(session.userId).catch(() => null),
@@ -821,6 +855,7 @@ async function showAccount(req, res, session, extra = {}) {
     // الصفحة: من فتح حسابه ليغيّر كلمة سره لا يُحرم منها لأن
     // استعلام رهانٍ تعثّر.
     championCards(session.userId).catch(() => []),
+    followableLeagues(session.userId).catch(() => []),
   ]);
 
   // الحساب حُذف بينما الجلسة حية (من التطبيق مثلاً).
@@ -831,7 +866,7 @@ async function showAccount(req, res, session, extra = {}) {
 
   res.type('html').send(
     renderer.renderAccount(settings, {
-      user, stats, creds, points, history, champions, csrf: session.csrf, ...extra,
+      user, stats, creds, points, history, champions, leagues, csrf: session.csrf, ...extra,
     })
   );
 }
