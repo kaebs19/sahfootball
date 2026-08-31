@@ -211,6 +211,7 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
         <div class="foot-col">
           <h4>الموقع</h4>
           <a href="/">الرئيسية</a>
+          <a href="/throne">العرش</a>
           <a href="/about">حول الموقع</a>
           <a href="/contact">اتصل بنا</a>
         </div>
@@ -880,10 +881,12 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
           <span class="acc-mail" dir="ltr">${esc(user.email)}</span>
         </div>
       </div>
-      <div class="acc-rank">
+      <!-- رابط لا صندوق: الرقم يثير سؤال "ومن فوقي؟"، وتركُه
+           بلا وجهة يجعل الجواب مفقوداً في صفحة تعرضه. -->
+      <a class="acc-rank" href="/throne">
         <b class="num">${esc(rank)}</b>
         <span>${stats?.total_competitors ? `من ${esc(String(stats.total_competitors))}` : 'المركز'}</span>
-      </div>
+      </a>
     </header>
 
     <section class="acc-sec">
@@ -1251,16 +1254,48 @@ function championTeaser(settings, champion, canBet) {
 function renderThrone(settings, { leagues, league, rows, me }) {
   const current = (leagues || []).find((l) => String(l.id) === String(league));
 
+  const face = (k, size) => (k.favorite_team_id
+    ? `<img class="fx-logo" src="${esc(localLogo('team', k.favorite_team_id))}" alt="" width="${size}" height="${size}" loading="lazy">`
+    : '<span class="fx-logo lb-none"></span>');
+
+  // الدقّة نصٌّ لا رقم عارٍ: "72%" وحدها لا تقول نسبةَ ماذا.
+  const acc = (k) => (k.accuracy === null || k.accuracy === undefined
+    ? ''
+    : `<span class="lb-acc num" title="نسبة التوقّعات المصيبة">${esc(String(k.accuracy))}%</span>`);
+
   const row = (k, i) => `
-<div class="lb-row${i < 3 ? ' top' : ''}${me && k.user_id === me.user_id ? ' mine' : ''}">
+<div class="lb-row${me && k.user_id === me.user_id ? ' mine' : ''}">
   <span class="lb-rank num">${esc(String(i + 1))}</span>
-  ${k.favorite_team_id
-    ? `<img class="fx-logo" src="${esc(localLogo('team', k.favorite_team_id))}" alt="" width="26" height="26" loading="lazy">`
-    : '<span class="fx-logo lb-none"></span>'}
+  ${face(k, 26)}
   <span class="lb-name">${esc(k.display_name)}</span>
+  ${acc(k)}
   <span class="lb-n num" title="توقّعات محتسَبة">${esc(String(k.settled_predictions))}</span>
   <b class="lb-pts num">${esc(String(k.total_points))}</b>
 </div>`;
+
+  // المنصّة للثلاثة الأوائل — والصفحة اسمها "العرش".
+  //
+  // الترتيب البصري ٢-١-٣ لا ١-٢-٣: هكذا تُبنى منصّات التتويج،
+  // والأول في الوسط أعلى من جاريه فيُقرأ أولاً بلا قراءة رقمه.
+  // وفي صفحة عربية يبقى الوسط وسطاً، فلا ينقلب المعنى بالاتجاه.
+  const podium = (top) => {
+    const order = [top[1], top[0], top[2]].filter(Boolean);
+    return `
+<div class="pod">
+  ${order.map((k) => {
+    const place = top.indexOf(k) + 1;
+    return `
+  <div class="pod-slot p${place}${me && k.user_id === me.user_id ? ' mine' : ''}">
+    <span class="pod-rank num">${place === 1 ? '👑' : esc(String(place))}</span>
+    ${face(k, place === 1 ? 46 : 38)}
+    <span class="pod-name">${esc(k.display_name)}</span>
+    <b class="pod-pts num">${esc(String(k.total_points))}</b>
+    ${k.accuracy !== null && k.accuracy !== undefined
+      ? `<span class="pod-acc num">${esc(String(k.accuracy))}% دقّة</span>` : ''}
+  </div>`;
+  }).join('')}
+</div>`;
+  };
 
   const body = `
 <div class="page">
@@ -1280,10 +1315,17 @@ function renderThrone(settings, { leagues, league, rows, me }) {
       href: (id) => (id ? `/throne?league=${id}` : '/throne'),
     })}
 
+    ${current ? `<p class="lb-cross">
+      <a href="/standings?league=${esc(String(current.id))}">ترتيب أندية ${esc(current.name)} ←</a>
+    </p>` : ''}
+
     ${rows && rows.length ? `
+    ${rows.length >= 3 ? podium(rows.slice(0, 3)) : ''}
+    ${rows.length > 3 || rows.length < 3 ? `
     <div class="card lb">
-      ${rows.map(row).join('')}
-    </div>` : `
+      ${(rows.length >= 3 ? rows.slice(3) : rows).map((k, i) =>
+        row(k, rows.length >= 3 ? i + 3 : i)).join('')}
+    </div>` : ''}` : `
     <div class="card" style="text-align:center;padding:38px 20px">
       <h3>لا أحد على العرش بعد</h3>
       <p class="section-sub" style="margin-top:8px">
@@ -1303,6 +1345,8 @@ function renderThrone(settings, { leagues, league, rows, me }) {
           ? `<img class="fx-logo" src="${esc(localLogo('team', me.favorite_team_id))}" alt="" width="26" height="26" loading="lazy">`
           : '<span class="fx-logo lb-none"></span>'}
         <span class="lb-name">${esc(me.display_name)} — أنت</span>
+        ${me.accuracy !== null && me.accuracy !== undefined
+          ? `<span class="lb-acc num">${esc(String(me.accuracy))}%</span>` : ''}
         <span class="lb-n num">${esc(String(me.settled_predictions))}</span>
         <b class="lb-pts num">${esc(String(me.total_points))}</b>
       </div>
@@ -1370,7 +1414,9 @@ function renderStandings(settings, { leagues, league, rows, error, champion, kin
          يأتيها الزائر ليرى ترتيب الأندية، ولوحة اللاعبين إضافة
          يكتشفها لا وعدٌ جاء لأجله. -->
     <section class="lb-sec">
-      <h2>ملوك هذا الدوري</h2>
+      <h2>ملوك هذا الدوري
+        <a class="lb-more" href="/throne?league=${esc(String(league))}">العرش كاملاً ←</a>
+      </h2>
       <p class="acc-lede">
         بنقاط هذا الدوري وحده — مبارياته ورهان بطله. من يتوقّع في
         ستة دوريات لا يعلو هنا بكثرة لعبه.

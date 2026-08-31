@@ -154,7 +154,16 @@ async function leaderboard(limit = 50, leagueId = null) {
             u.favorite_team_id,
             ft.logo_url AS favorite_team_logo,
             COALESCE(SUM(p.points), 0)::int AS total_points,
-            COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled_predictions
+            COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled_predictions,
+            -- الدقّة بجانب النقاط لأن النقاط وحدها تكافئ الكثرة:
+            -- من توقّع مئة مباراة وأصاب ثلثها يعلو من توقّع عشرين
+            -- وأصاب كلها. الرقمان معاً يقولان القصّة كاملة.
+            --
+            -- ومقامها توقّعات المباريات وحدها: رهان البطل لا
+            -- يُصاب ولا يُخطأ حتى ينتهي الموسم، وعدّه ضمن الدقّة
+            -- يهبط بها بلا ذنب طوال العام.
+            ROUND(100.0 * COUNT(*) FILTER (WHERE p.kind = 'match' AND p.points > 0)
+                  / NULLIF(COUNT(*) FILTER (WHERE p.kind = 'match'), 0))::int AS accuracy
      FROM users u
      -- settled_at IS NOT NULL في شرط الضم لا في WHERE:
      -- من له توقعات لم تُحتسب بعد يجب ألا يظهر في العرش أصلاً، لا أن
@@ -211,13 +220,15 @@ async function rankOf(userId, leagueId = null) {
        SELECT p.user_id,
               COALESCE(SUM(p.points), 0)::int AS total_points,
               COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled_predictions,
+              ROUND(100.0 * COUNT(*) FILTER (WHERE p.kind = 'match' AND p.points > 0)
+                    / NULLIF(COUNT(*) FILTER (WHERE p.kind = 'match'), 0))::int AS accuracy,
               RANK() OVER (ORDER BY COALESCE(SUM(p.points), 0) DESC,
                                     COUNT(*) FILTER (WHERE p.kind = 'match') ASC)::int AS rank
          FROM user_settled_points p
         WHERE ($2::int IS NULL OR p.league_id = $2)
         GROUP BY p.user_id
      )
-     SELECT r.rank, r.total_points, r.settled_predictions,
+     SELECT r.rank, r.total_points, r.settled_predictions, r.accuracy,
             COALESCE(u.display_name, 'مشجع') AS display_name,
             u.favorite_team_id
        FROM ranked r

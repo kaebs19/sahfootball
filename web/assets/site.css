@@ -2429,3 +2429,64 @@ a.fx:hover { background: rgba(255,255,255,.025); }
 .lb-row.mine { background: var(--crown-wash); }
 .lb-row.mine .lb-name { color: var(--crown); }
 .lb-me { margin-top: 10px; border-color: var(--crown-line); }
+
+/* ═══════════════ منصّة العرش ═══════════════ */
+
+/* ثلاثة أعمدة متساوية والأوسط أعلى: هكذا تُقرأ منصّة التتويج بلا
+   قراءة أرقامها. align-items:end يُنزل الجميع إلى خط واحد فيبدو
+   الفارق ارتفاعاً لا إزاحة. */
+.pod {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.pod-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: center;
+  min-width: 0;
+}
+.pod-slot.p1 { padding-top: 20px; border-color: var(--crown); background: var(--crown-wash); }
+.pod-slot.mine { border-color: var(--correct); }
+.pod-rank { font-size: 13px; font-weight: 700; color: var(--text-faint); line-height: 1; }
+.pod-slot.p1 .pod-rank { font-size: 18px; }
+.pod-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pod-pts { font-size: 19px; color: var(--crown); line-height: 1.1; }
+.pod-slot.p1 .pod-pts { font-size: 23px; }
+.pod-acc { font-size: 10.5px; color: var(--text-faint); }
+
+/* الدقّة في الصفّ: قبل عدّاد التوقّعات، فيُقرآن معاً كجملة
+   واحدة — "أصاب 72% من 41 توقّعاً". */
+.lb-acc { flex: none; font-size: 11.5px; color: var(--text-muted); min-width: 34px; text-align: end; }
+
+/* روابط العبور بين العرش وجدول الأندية */
+.lb-sec h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.lb-more, .lb-cross a { font-size: 12px; font-weight: 600; color: var(--crown); }
+.lb-cross { margin: 10px 0 14px; }
+a.acc-rank { text-decoration: none; transition: border-color .15s; }
+a.acc-rank:hover { border-color: var(--crown); }
+
+@media (max-width: 560px) {
+  .pod { gap: 5px; }
+  .pod-slot { padding: 11px 4px 10px; }
+  .pod-name { font-size: 11px; }
+  .pod-pts { font-size: 16px; }
+  .pod-slot.p1 .pod-pts { font-size: 19px; }
+  /* الدقّة أول ما يُضحّى به على الضيّق: النقاط والاسم هما الرسالة. */
+  .lb-acc { display: none; }
+}
