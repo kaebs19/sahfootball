@@ -100,6 +100,7 @@ function socialLinks(settings) {
 const NAV = [
   { href: '/', label: 'المباريات' },
   { href: '/standings', label: 'الترتيب' },
+  { href: '/throne', label: 'العرش' },
   { href: '/scorers', label: 'الهدافون' },
   { href: '/about', label: 'حول الموقع' },
   { href: '/contact', label: 'اتصل بنا' },
@@ -1235,6 +1236,98 @@ function championTeaser(settings, champion, canBet) {
 </div>`;
 }
 
+/**
+ * العرش — ترتيب اللاعبين، عاماً أو لدوري.
+ *
+ * وشرائح الدوريات هنا تحمل معنىً لا تصفيةً وحسب: العرش العام
+ * يقيس النشاط بقدر ما يقيس الإتقان — من يلعب في ستة دوريات يجمع
+ * أكثر ممّن يتقن واحداً. وشريحة الدوري تُعيد المقارنة إلى ما
+ * يقارَن، فيرى المتخصّص نفسه حيث يستحقّ.
+ *
+ * ولهذا شريحة "الكل" موجودة هنا وغائبة عن /standings: جدول
+ * الأندية لا يُوحَّد بين ثماني بطولات، ولاعبٌ واحد يلعب فيها كلها
+ * فمجموعه رقم له معنى.
+ */
+function renderThrone(settings, { leagues, league, rows, me }) {
+  const current = (leagues || []).find((l) => String(l.id) === String(league));
+
+  const row = (k, i) => `
+<div class="lb-row${i < 3 ? ' top' : ''}${me && k.user_id === me.user_id ? ' mine' : ''}">
+  <span class="lb-rank num">${esc(String(i + 1))}</span>
+  ${k.favorite_team_id
+    ? `<img class="fx-logo" src="${esc(localLogo('team', k.favorite_team_id))}" alt="" width="26" height="26" loading="lazy">`
+    : '<span class="fx-logo lb-none"></span>'}
+  <span class="lb-name">${esc(k.display_name)}</span>
+  <span class="lb-n num" title="توقّعات محتسَبة">${esc(String(k.settled_predictions))}</span>
+  <b class="lb-pts num">${esc(String(k.total_points))}</b>
+</div>`;
+
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:760px">
+    <div class="section-label">العرش</div>
+    <h1 class="section-title" style="margin-bottom:6px">
+      ${current ? esc(current.name) : 'ملوك التوقّعات'}
+    </h1>
+    <p class="acc-lede" style="margin-bottom:16px">
+      ${current
+        ? 'بنقاط هذا الدوري وحده — مبارياته ورهان بطله.'
+        : 'المجموع من كل الدوريات. اختر دورياً لترى ملوكه وحدهم.'}
+    </p>
+
+    ${leagueChips(leagues, {
+      active: league,
+      href: (id) => (id ? `/throne?league=${id}` : '/throne'),
+    })}
+
+    ${rows && rows.length ? `
+    <div class="card lb">
+      ${rows.map(row).join('')}
+    </div>` : `
+    <div class="card" style="text-align:center;padding:38px 20px">
+      <h3>لا أحد على العرش بعد</h3>
+      <p class="section-sub" style="margin-top:8px">
+        ${current
+          ? 'لم تُحتسب نقاط في هذا الدوري بعد. أول من يتوقّع يصدّر القائمة.'
+          : 'أول توقّع يُحتسب يفتح القائمة.'}
+      </p>
+    </div>`}
+
+    <!-- مركز الزائر تحت القائمة: من هو خارج العشرين الأوائل لا
+         يجد نفسه فيها، ورؤيته مركزه هي ما يجعل القائمة تخصّه. -->
+    ${me ? `
+    <div class="card lb lb-me">
+      <div class="lb-row mine">
+        <span class="lb-rank num">${esc(String(me.rank))}</span>
+        ${me.favorite_team_id
+          ? `<img class="fx-logo" src="${esc(localLogo('team', me.favorite_team_id))}" alt="" width="26" height="26" loading="lazy">`
+          : '<span class="fx-logo lb-none"></span>'}
+        <span class="lb-name">${esc(me.display_name)} — أنت</span>
+        <span class="lb-n num">${esc(String(me.settled_predictions))}</span>
+        <b class="lb-pts num">${esc(String(me.total_points))}</b>
+      </div>
+    </div>` : ''}
+
+    ${!settings?.viewer ? `
+    <div class="card ch ch-teaser" style="margin-top:16px">
+      <p class="ch-note" style="margin:0 0 12px">
+        توقّع نتائج المباريات وراهن على أبطال الدوريات — واصعد القائمة.
+      </p>
+      <div class="pj-cta">
+        ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
+        ${settings?.apple ? `<a class="btn btn-apple" href="/auth/apple">${APPLE_MARK} باستخدام Apple</a>` : ''}
+        <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
+      </div>
+    </div>` : ''}
+  </div>
+</div>`;
+  return layout({
+    title: current ? `عرش ${current.name}` : 'العرش',
+    description: 'ترتيب اللاعبين في ملك التوقعات',
+    body, settings, active: '/throne',
+  });
+}
+
 function renderStandings(settings, { leagues, league, rows, error, champion, kings, csrf, canBet }) {
   const current = (leagues || []).find((l) => String(l.id) === String(league));
   const formDots = (form) => (form || '').slice(-5).split('').map((c) => {
@@ -1922,6 +2015,7 @@ function renderNotFound(settings) {
 }
 
 module.exports = {
+  renderThrone,
   renderWelcome,
   renderPage, renderContact, renderNotFound,
   renderForgot, renderReset, renderResetDone,

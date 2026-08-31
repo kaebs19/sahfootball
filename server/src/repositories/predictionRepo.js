@@ -191,6 +191,43 @@ async function leaderboard(limit = 50, leagueId = null) {
 // مصدّرة لأن badgeService يمنح أوسمة السلسلة منها هو أيضاً: تعريف
 // "السلسلة" في النظام واحد لا اثنان. لو حسبها الوسام بطريقته لظهر
 // يوماً ملف يقول "أطول سلسلة: 5" ووسام "سلسلة خمسة" مطفأ بجانبه.
+/**
+ * مركز لاعب بعينه — في العرش العام أو في دوري.
+ *
+ * دالة مستقلة لأن القائمة محدودة بعشرين، ومن مركزه الحادي
+ * والأربعون لا يجد نفسه فيها إطلاقاً — فلا يرى القائمة تخصّه.
+ *
+ * وORDER BY داخل النافذة نسخة حرفية من ORDER BY في leaderboard()
+ * أعلاه، وهذا شرط لا زينة: الرقم تحت القائمة والرقم داخلها يجب
+ * ألا يختلفا. ولهذا الدالتان متجاورتان عمداً — أي تعديل على فضّ
+ * التعادل في إحداهما يجب أن ينزل على الأخرى في اللحظة نفسها.
+ *
+ * يرجع null لمن لم يُحتسب له شيء في هذا النطاق: "لم تنافس بعد"
+ * حقيقة، ومركزٌ أخير مخترَع لمن لم يلعب إهانة بلا معنى.
+ */
+async function rankOf(userId, leagueId = null) {
+  const { rows } = await db.query(
+    `WITH ranked AS (
+       SELECT p.user_id,
+              COALESCE(SUM(p.points), 0)::int AS total_points,
+              COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled_predictions,
+              RANK() OVER (ORDER BY COALESCE(SUM(p.points), 0) DESC,
+                                    COUNT(*) FILTER (WHERE p.kind = 'match') ASC)::int AS rank
+         FROM user_settled_points p
+        WHERE ($2::int IS NULL OR p.league_id = $2)
+        GROUP BY p.user_id
+     )
+     SELECT r.rank, r.total_points, r.settled_predictions,
+            COALESCE(u.display_name, 'مشجع') AS display_name,
+            u.favorite_team_id
+       FROM ranked r
+       JOIN users u ON u.id = r.user_id
+      WHERE r.user_id = $1`,
+    [userId, leagueId]
+  );
+  return rows[0] ?? null;
+}
+
 function computeStreaks(hits) {
   let longest = 0;
   let run = 0;
@@ -380,6 +417,7 @@ module.exports = {
   findUnsettled,
   settle,
   leaderboard,
+  rankOf,
   computeStreaks,
   profileStats,
 };

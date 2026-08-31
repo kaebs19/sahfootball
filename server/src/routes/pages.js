@@ -277,6 +277,39 @@ router.get('/matches', (req, res) => {
 // الترتيب لا يُخزَّن عندنا (بيانات مشتقة — انظر standingsMapper)،
 // فهو النداء الوحيد في الموقع الذي قد يمس المزوّد. كاش الخدمة
 // يمتصه: زوار الدوري الواحد في نفس الساعة يقرؤون نسخة واحدة.
+
+// ─────────────────── العرش ───────────────────
+router.get('/throne', async (req, res) => {
+  const all = await leagueRepo.findEnabled();
+  // الشرائح دوريات اللعبة وحدها: دوريٌّ لا يُتوقَّع فيه لا نقاط
+  // له، فشريحته تعد بقائمة فارغة دائماً.
+  const leagues = all.filter((l) => l.in_app);
+
+  const asked = String(req.query.league || '');
+  const league = /^\d+$/.test(asked) && leagues.some((l) => String(l.id) === asked)
+    ? Number(asked)
+    : null; // بلا دوري = العرش العام
+
+  const settings = await pageContext(req);
+  const [rows, me] = await Promise.all([
+    predictionRepo.leaderboard(20, league).catch(() => []),
+    settings.viewer
+      ? predictionRepo.rankOf(settings.viewer.id, league).catch(() => null)
+      : null,
+  ]);
+
+  // لا نكرّره تحت القائمة إن كان فيها: صفّان لشخص واحد في شاشة
+  // واحدة يُقرآن لاعبَين.
+  const inList = me && rows.some((r) => r.user_id === settings.viewer?.id);
+
+  res.type('html').send(
+    renderer.renderThrone(settings, {
+      leagues, league, rows,
+      me: inList ? null : (me ? { ...me, user_id: settings.viewer.id } : null),
+    })
+  );
+});
+
 router.get('/standings', async (req, res) => {
   const leagues = await leagueRepo.findEnabled();
   const asked = String(req.query.league || '');

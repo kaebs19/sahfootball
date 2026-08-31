@@ -2423,3 +2423,9 @@ a.fx:hover { background: rgba(255,255,255,.025); }
 .lb-pts { flex: none; font-size: 15px; color: var(--crown); min-width: 46px; text-align: end; }
 
 .ch-teaser { border-color: var(--crown-line); }
+
+/* صفّ الزائر نفسه: مميّز بلا صراخ — إطار التاج يكفي ليجده بنظرة
+   في قائمة طويلة، والخلفية الممتلئة تجعله يبدو مُختاراً لا مُشاراً. */
+.lb-row.mine { background: var(--crown-wash); }
+.lb-row.mine .lb-name { color: var(--crown); }
+.lb-me { margin-top: 10px; border-color: var(--crown-line); }
