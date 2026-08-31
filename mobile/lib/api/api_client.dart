@@ -469,9 +469,15 @@ class ApiClient {
     }
   }
 
-  Future<List<LeaderboardEntry>> leaderboard() async {
+  /// العرش — عاماً أو لدوري بعينه.
+  ///
+  /// العام يقيس النشاط بقدر ما يقيس الإتقان: من يلعب في ستة
+  /// دوريات يجمع أكثر ممّن يتقن واحداً. وتحديد الدوري يُعيد
+  /// المقارنة إلى ما يقارَن.
+  Future<List<LeaderboardEntry>> leaderboard({int? leagueId}) async {
     try {
-      final res = await _dio.get('/api/leaderboard');
+      final res = await _dio.get('/api/leaderboard',
+          queryParameters: {'league': ?leagueId});
       return (res.data['leaderboard'] as List)
           .map((j) => LeaderboardEntry.fromJson(j as Map<String, dynamic>))
           .toList();

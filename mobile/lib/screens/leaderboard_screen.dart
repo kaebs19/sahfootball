@@ -19,6 +19,8 @@ import 'package:provider/provider.dart';
 import '../api/api_client.dart';
 import '../brand.dart';
 import '../config.dart';
+import '../format.dart';
+import '../models/champion.dart';
 import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
 import '../state/session.dart';
@@ -59,8 +61,12 @@ enum _Board { global, councils }
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardEntry>? _entries;
   List<Group>? _groups;
+  List<LeagueFollow>? _leagues;
   _Board _board = _Board.global;
   String? _error;
+
+  /// null = العرش العام. وإلا دوريٌ بعينه.
+  int? _leagueId;
 
   @override
   void initState() {
@@ -74,14 +80,19 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       // الاثنان معاً في طلبين متوازيين: التبديل بين الوضعين يجب أن
       // يكون فورياً، وجلب المجالس عند أول ضغطة يجعل الوضع الثاني
       // يبدو أبطأ من الأول بلا سبب يفهمه المستخدم.
+      final api = context.read<ApiClient>();
+      // الدوريات مرة واحدة: شرائحها لا تتغيّر بتغيّر الشريحة
+      // المختارة، وإعادة جلبها مع كل ضغطة رحلةٌ بلا جديد.
       final results = await Future.wait([
-        context.read<ApiClient>().leaderboard(),
-        context.read<ApiClient>().myGroups(),
+        api.leaderboard(leagueId: _leagueId),
+        api.myGroups(),
+        if (_leagues == null) api.leagues(),
       ]);
       if (!mounted) return;
       setState(() {
         _entries = results[0] as List<LeaderboardEntry>;
         _groups = results[1] as List<Group>;
+        if (results.length > 2) _leagues = results[2] as List<LeagueFollow>;
       });
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -117,6 +128,20 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             ],
           ),
         ),
+        // الشرائح في وضع "العام" وحده: ترتيب المجلس محسوب على
+        // أعضائه لا على دوري، فشريحةٌ فوقه تَعِد بتصفية لا تقع.
+        if (_board == _Board.global && (_leagues?.isNotEmpty ?? false))
+          _LeagueStrip(
+            leagues: _leagues!,
+            active: _leagueId,
+            onPick: (id) {
+              setState(() {
+                _leagueId = id;
+                _entries = null;
+              });
+              _load();
+            },
+          ),
         Expanded(
           child: _board == _Board.global
               ? _buildGlobal()
@@ -137,12 +162,17 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     if (entries.isEmpty) {
       return BrandEmpty(
         icon: Icons.workspace_premium_outlined,
-        message: 'لا نقاط بعد — كن أول من يجلس على العرش',
+        message: _leagueId == null
+            ? 'لا نقاط بعد — كن أول من يجلس على العرش'
+            : 'لم تُحتسب نقاط في هذا الدوري بعد',
         onRefresh: _load,
       );
     }
 
     final myId = context.watch<Session>().user?.id;
+    final league = _leagueId == null
+        ? null
+        : _leagues?.where((l) => l.id == _leagueId).firstOrNull;
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -152,9 +182,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
         children: [
-          const Text(
-            'من يجلس على العرش؟',
-            style: TextStyle(
+          Text(
+            league == null ? 'من يجلس على العرش؟' : 'ملوك ${league.name}',
+            style: const TextStyle(
               fontFamily: Brand.displayFont,
               fontSize: 19,
               fontWeight: FontWeight.w700,
@@ -163,7 +193,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'الترتيب العام · ${entries.length} متنافس',
+            league == null
+                ? 'المجموع من كل الدوريات · ${Fmt.counted(entries.length, 'متنافس واحد', 'متنافسان', 'متنافسين', 'متنافساً')}'
+                : 'بنقاط هذا الدوري وحده — مبارياته ورهان بطله',
             style: const TextStyle(color: Brand.textMuted, fontSize: 12.5),
           ),
           const SizedBox(height: 16),
@@ -611,4 +643,66 @@ class _CouncilCard extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// شرائح الدوريات فوق العرش العام.
+///
+/// "الكل" أولاً لأنها الحالة الافتراضية، ولأن مجموع اللاعب عبر
+/// الدوريات رقمٌ له معنى — بخلاف جدول الأندية الذي لا يُوحَّد.
+class _LeagueStrip extends StatelessWidget {
+  final List<LeagueFollow> leagues;
+  final int? active;
+  final ValueChanged<int?> onPick;
+
+  const _LeagueStrip(
+      {required this.leagues, required this.active, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 42,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          itemCount: leagues.length + 1,
+          separatorBuilder: (_, _) => const SizedBox(width: 7),
+          itemBuilder: (_, i) {
+            final l = i == 0 ? null : leagues[i - 1];
+            final on = l?.id == active;
+            return InkWell(
+              onTap: () => onPick(l?.id),
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: on ? Brand.crown : Brand.fill,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: on ? Brand.crown : Brand.border),
+                ),
+                child: Row(
+                  children: [
+                    if (l?.logoUrl != null)
+                      CachedNetworkImage(
+                        imageUrl: AppConfig.absoluteUrl(l!.logoUrl!),
+                        width: 17,
+                        height: 17,
+                        errorWidget: (_, _, _) => const SizedBox.shrink(),
+                      ),
+                    if (l != null) const SizedBox(width: 6),
+                    Text(
+                      l?.name ?? 'الكل',
+                      style: TextStyle(
+                        color: on ? Brand.onAccent : Brand.textMuted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
 }
