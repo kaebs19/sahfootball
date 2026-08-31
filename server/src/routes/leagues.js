@@ -19,7 +19,11 @@ router.get('/', async (req, res) => {
     leagues: leagues.map((l) => ({
       id: l.id,
       name: l.name,
-      logo_url: l.logo_url,
+      // من مسارنا لا من العمود: leagues.logo_url فارغ لكل الدوريات
+      // (المزوّد لا يُعيده في نداء المباريات الذي نزامن به)، ومسار
+      // /logos يخدم النسخة المصغّرة عندنا ويحوّل للمزوّد إن غابت.
+      // ولو أرجعنا العمود لعرض التطبيق أيقونةً بديلة إلى الأبد.
+      logo_url: `/logos/league-${l.id}.png`,
       season: l.season,
       followed: followed.includes(l.id),
     })),

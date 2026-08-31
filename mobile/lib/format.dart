@@ -38,6 +38,10 @@ class Fmt {
   // العربية تصرّف المعدود على أربع صور: واحد، اثنان، ٣–١٠ جمع،
   // و١١ فأكثر مفرد منصوب. طباعة "بعد 3 يوم" أو "بعد 11 أيام" خطأ
   // يقرؤه كل عربي فوراً، ولا تمسكه أي أداة.
+  /// جمعٌ عربي عام — يُستدعى من الشاشات حين لا يكفي days/hours.
+  static String counted(int n, String one, String two, String few, String many) =>
+      _counted(n, one, two, few, many);
+
   static String _counted(int n, String one, String two, String few, String many) {
     if (n == 1) return one;
     if (n == 2) return two;

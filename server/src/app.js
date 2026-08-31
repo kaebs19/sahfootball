@@ -95,6 +95,7 @@ app.use('/api/standings', require('./routes/standings'));
 app.use('/api/rules', require('./routes/rules'));
 app.use('/api/leagues', require('./routes/leagues'));
 app.use('/api/champion', require('./routes/champion'));
+app.use('/api/round', require('./routes/round'));
 app.use('/api/predictions', require('./routes/predictions'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/groups', require('./routes/groups'));

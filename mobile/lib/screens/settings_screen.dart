@@ -18,6 +18,7 @@ import 'account_settings_screen.dart';
 import 'champion_screen.dart';
 import 'contact_screen.dart';
 import 'leagues_screen.dart';
+import 'round_screen.dart';
 import 'edit_profile_screen.dart';
 import 'notification_settings_screen.dart';
 import 'page_screen.dart';
@@ -56,6 +57,12 @@ class SettingsScreen extends StatelessWidget {
           const _GroupLabel('التفضيلات'),
           _SettingsGroup(
             children: [
+              _SettingsTile(
+                icon: Icons.calendar_month_outlined,
+                title: 'توقّع الجولة',
+                subtitle: 'مباريات الجولة كاملةً في شاشة واحدة',
+                onTap: () => _open(context, const RoundScreen()),
+              ),
               _SettingsTile(
                 icon: Icons.list_alt_outlined,
                 title: 'دورياتي',

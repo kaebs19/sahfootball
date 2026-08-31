@@ -13,7 +13,19 @@ router.use(requireAuth);
 
 // GET /api/champion — بطاقة لكل دوري يتابعه: أنديته، سعر اليوم، ورهانه
 router.get('/', async (req, res) => {
-  res.json({ cards: await championService.cards(req.userId) });
+  const cards = await championService.cards(req.userId);
+
+  // الشعارات من مسارنا لا من أعمدة القاعدة: عمود الدوري فارغ
+  // أصلاً، وشعارات الأندية عند المزوّد بحجمها الكامل بينما /logos
+  // يخدم نسخة 64 بكسل مخزّنة عندنا. الموقع يفعل هذا بنفسه
+  // (localLogo)، والتطبيق كان يقرأ العمود الخام.
+  res.json({
+    cards: cards.map((c) => ({
+      ...c,
+      league: { ...c.league, logo_url: `/logos/league-${c.league.id}.png` },
+      teams: c.teams.map((t) => ({ ...t, logo_url: `/logos/team-${t.id}.png` })),
+    })),
+  });
 });
 
 // POST /api/champion — { leagueId, teamId }

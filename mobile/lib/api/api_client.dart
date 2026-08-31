@@ -25,6 +25,7 @@ import '../models/live_fixture.dart';
 import '../models/prediction.dart';
 import '../models/rules.dart';
 import '../models/champion.dart';
+import '../models/round.dart';
 import '../models/profile_stats.dart';
 import '../models/site_page.dart';
 import '../models/user.dart';
@@ -336,6 +337,43 @@ class ApiClient {
       });
       final denied = (res.data as Map?)?['multiplierDenied'];
       return denied is String ? denied : null;
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// جولة كاملة بمبارياتها وتوقّعاتي فيها.
+  Future<RoundPage> round({int? leagueId, String? round}) async {
+    try {
+      final res = await _dio.get('/api/round', queryParameters: {
+        'league': ?leagueId,
+        'round': ?round,
+      });
+      return RoundPage.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// يحفظ توقّعات الجولة دفعةً واحدة.
+  ///
+  /// الخادم يتخطّى ما انطلق ولا يُسقط البقية، ويرجع العدّ — فحفظ
+  /// سبع من تسع يُقال كما هو بدل أن يبدو نجاحاً تامّاً أو فشلاً.
+  Future<RoundSaveResult> saveRound(
+      List<({int fixtureId, int home, int away, int multiplier})> picks) async {
+    try {
+      final res = await _dio.post('/api/round', data: {
+        'predictions': [
+          for (final p in picks)
+            {
+              'fixtureId': p.fixtureId,
+              'home': p.home,
+              'away': p.away,
+              'multiplier': p.multiplier,
+            }
+        ],
+      });
+      return RoundSaveResult.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {
       _throwReadable(e);
     }
