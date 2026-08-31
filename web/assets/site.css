@@ -2723,3 +2723,48 @@ a.acc-rank:hover { border-color: var(--crown); }
   .gp-form { flex-direction: column; }
   .gp-form .btn { width: 100%; justify-content: center; }
 }
+
+/* ═══════════════ الأوسمة ═══════════════ */
+
+.bg-head {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-bottom: 12px;
+}
+.bg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+/* المطفأ يبقى مقروءاً لا شبحاً: opacity منخفضة جداً تجعل الشرط
+   غير مقروء، والشرط هو نصف قيمة الوسام — الهدف يُطلب حين يُفهم. */
+.bg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 7px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--fill);
+  text-align: center;
+}
+.bg-mark { font-size: 20px; line-height: 1; filter: grayscale(1); opacity: .5; }
+.bg b { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.bg small { font-size: 10px; line-height: 1.45; color: var(--text-faint); }
+.bg.on { border-color: var(--crown-line); background: var(--crown-wash); }
+.bg.on .bg-mark { filter: none; opacity: 1; }
+.bg.on b { color: var(--crown); }
+.bg.on small { color: var(--text-muted); }
+
+/* الاسم صار رابطاً: يبقى بلون النصّ حتى لا يصير كل صفٍّ أزرق،
+   ويُضيء عند المرور فيُعرف أنه يُضغط. */
+a.lb-name, a.pod-name { text-decoration: none; color: inherit; display: block; }
+a.lb-name:hover, a.pod-name:hover { color: var(--crown); }
+
+@media (max-width: 560px) {
+  .bg-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+  .bg { padding: 10px 5px; }
+  .bg small { font-size: 9.5px; }
+}
+.stats-grid.stats-2 { grid-template-columns: repeat(2, 1fr); }

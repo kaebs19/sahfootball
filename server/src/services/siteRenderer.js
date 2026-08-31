@@ -858,7 +858,7 @@ const ACC_TABS = [
 
 function renderAccount(settings, {
   user, stats, notice, error, csrf, creds, points, history,
-  champions, leagues, teams, tab,
+  champions, leagues, teams, badges, tab,
 }) {
   const active = ACC_TABS.some((t) => t.key === tab) ? tab : 'overview';
   const rank = stats?.rank ? `${stats.rank}` : '—';
@@ -878,6 +878,12 @@ function renderAccount(settings, {
         <div class="card st"><b class="num">${num(stats?.current_streak)}</b><span>سلسلة حالية</span></div>
       </div>
     </section>
+
+    ${badges && badges.length ? `
+    <section class="acc-sec">
+      <h2>أوسمتي</h2>
+      <div class="card">${badgeGrid(badges)}</div>
+    </section>` : ''}
 
     <!-- الرهان قبل التوزيع: هذه بطاقة فيها قرار مؤجّل وسعرٌ ينزل
          كل جولة، وذاك أرقام تُقرأ ولا تُفعَل. -->
@@ -1414,7 +1420,7 @@ function renderGroup(settings, { group, members, me, csrf, notice, error, siteUr
           ${m.favorite_team_id
             ? `<img class="fx-logo" src="${esc(localLogo('team', m.favorite_team_id))}" alt="" width="26" height="26" loading="lazy">`
             : '<span class="fx-logo lb-none"></span>'}
-          <span class="lb-name">${esc(m.display_name)}${group.owner_id === m.user_id ? ' <span class="gp-own">مالك</span>' : ''}</span>
+          <a class="lb-name" href="/player/${esc(String(m.user_id))}">${esc(m.display_name)}${group.owner_id === m.user_id ? ' <span class="gp-own">مالك</span>' : ''}</a>
           <span class="lb-n num" title="توقّعات محتسَبة">${esc(String(m.settled_predictions))}</span>
           <b class="lb-pts num">${esc(String(m.total_points))}</b>
         </div>`).join('')}
@@ -1486,6 +1492,106 @@ function renderJoin(settings, { group, error }) {
   return layout({ title: group ? `انضمّ إلى ${group.name}` : 'دعوة', body, settings, active: null });
 }
 
+/**
+ * شبكة الأوسمة.
+ *
+ * المطفأة تُعرض مع المضيئة لا تُخفى: الوسام الذي لا يُرى لا يُطلب،
+ * وقيمته كلها في أنه هدفٌ معروف قبل أن يكون زينةً بعده. ولهذا
+ * يُكتب شرطه تحته — "خمسة توقعات صحيحة متتالية" جملةٌ تُغيّر
+ * سلوكاً، و"سلسلة خمسة" وحدها اسمٌ لا يقول كيف.
+ *
+ * والترتيب من الكتالوج كما هو (الأسهل أولاً)، لا المضيء أولاً:
+ * إعادة الترتيب بحسب ما نلتَه تجعل الشبكة تتبدّل تحت عينك كلما
+ * نلت وساماً، فتضيع منك خريطة ما بقي.
+ */
+function badgeGrid(badges) {
+  if (!badges || !badges.length) return '';
+  const earned = badges.filter((b) => b.earned).length;
+  return `
+<div class="bg-head">
+  <span>${esc(counted(earned, 'وسام واحد', 'وسامان', 'أوسمة', 'وساماً'))} من ${esc(String(badges.length))}</span>
+</div>
+<div class="bg-grid">
+  ${badges.map((b) => `
+  <div class="bg${b.earned ? ' on' : ''}" title="${esc(b.requirement)}">
+    <span class="bg-mark" aria-hidden="true">${b.earned ? '🏅' : '🔒'}</span>
+    <b>${esc(b.title)}</b>
+    <small>${esc(b.requirement)}</small>
+  </div>`).join('')}
+</div>`;
+}
+
+/**
+ * صفحة لاعب عامة.
+ *
+ * العرش كان يعرض أسماءً لا يمكن الضغط عليها: تقرأ أن فلاناً
+ * فوقك بمئتي نقطة ولا تعرف كيف — أبدقّةٍ أم بكثرة لعب؟ والمنافسة
+ * بلا وجوه أرقامٌ في جدول.
+ *
+ * وما يُعرض هنا هو ما يُعرض في العرش أصلاً موسّعاً: اسمٌ وفريقٌ
+ * وأرقامٌ عامة وأوسمة. ولا سجلّ توقّعات ولا بريد: توقّعات اللاعب
+ * على مباريات لم تنطلق ورقةٌ في يده، وكشفُها يقتل اللعبة —
+ * والقاعدة نفسها المطبّقة في المجالس منذ نسختها الأولى.
+ */
+function renderPlayer(settings, { player, stats, badges, isMe }) {
+  const num = (v, fallback = '0') =>
+    (v === null || v === undefined ? fallback : esc(String(v)));
+
+  const body = `
+<div class="page">
+  <div class="wrap" style="max-width:620px">
+    <a class="back" href="/throne">→ العرش</a>
+
+    <header class="acc-head card" style="margin-top:10px">
+      <div class="acc-id">
+        <span class="acc-avatar">${esc((player.display_name || '?').trim().charAt(0))}</span>
+        <div>
+          <h1>${esc(player.display_name)}</h1>
+          ${stats?.favorite_team ? `
+          <span class="acc-team">
+            ${teamBadge(stats.favorite_team.name, stats.favorite_team.logo_url, stats.favorite_team.id)}
+            ${esc(stats.favorite_team.name)}
+          </span>` : ''}
+        </div>
+      </div>
+      <div class="acc-rank">
+        <b class="num">${stats?.rank ? esc(String(stats.rank)) : '—'}</b>
+        <span>${stats?.total_competitors ? `من ${esc(String(stats.total_competitors))}` : 'المركز'}</span>
+      </div>
+    </header>
+
+    <section class="acc-sec">
+      <h2>أرقامه</h2>
+      <!-- أربع بطاقات في شبكة ثلاثية تترك يتيمةً في سطر ثانٍ.
+           صفّان متساويان أهدأ، والأرقام أربعة لا ستة هنا لأن
+           "توقّع" و"سلسلة حالية" يخصّان صاحب الحساب لا قارئه. -->
+      <div class="stats-grid stats-2">
+        <div class="card st"><b class="num">${num(stats?.total_points)}</b><span>نقطة</span></div>
+        <div class="card st"><b class="num">${stats?.accuracy === null || stats?.accuracy === undefined ? '—' : esc(String(stats.accuracy)) + '٪'}</b><span>الدقّة</span></div>
+        <div class="card st"><b class="num">${num(stats?.settled_predictions)}</b><span>محتسَب</span></div>
+        <div class="card st"><b class="num">${num(stats?.longest_streak)}</b><span>أطول سلسلة</span></div>
+      </div>
+    </section>
+
+    ${badges && badges.length ? `
+    <section class="acc-sec">
+      <h2>أوسمته</h2>
+      <div class="card">${badgeGrid(badges)}</div>
+    </section>` : ''}
+
+    ${isMe ? `
+    <div style="text-align:center;margin-top:18px">
+      <a class="btn btn-ghost" href="/account">هذه صفحتك — افتح حسابك</a>
+    </div>` : ''}
+  </div>
+</div>`;
+  return layout({
+    title: player.display_name,
+    description: `${player.display_name} في ملك التوقعات`,
+    body, settings, active: null,
+  });
+}
+
 function renderThrone(settings, { leagues, league, rows, me }) {
   const current = (leagues || []).find((l) => String(l.id) === String(league));
 
@@ -1502,7 +1608,9 @@ function renderThrone(settings, { leagues, league, rows, me }) {
 <div class="lb-row${me && k.user_id === me.user_id ? ' mine' : ''}">
   <span class="lb-rank num">${esc(String(i + 1))}</span>
   ${face(k, 26)}
-  <span class="lb-name">${esc(k.display_name)}</span>
+  <!-- الاسم رابط: القائمة كانت تقول إن فلاناً فوقك بمئتي نقطة
+       ولا تقول كيف — أبدقّةٍ أم بكثرة لعب؟ -->
+  <a class="lb-name" href="/player/${esc(String(k.user_id))}">${esc(k.display_name)}</a>
   ${acc(k)}
   <span class="lb-n num" title="توقّعات محتسَبة">${esc(String(k.settled_predictions))}</span>
   <b class="lb-pts num">${esc(String(k.total_points))}</b>
@@ -1523,7 +1631,7 @@ function renderThrone(settings, { leagues, league, rows, me }) {
   <div class="pod-slot p${place}${me && k.user_id === me.user_id ? ' mine' : ''}">
     <span class="pod-rank num">${place === 1 ? '👑' : esc(String(place))}</span>
     ${face(k, place === 1 ? 46 : 38)}
-    <span class="pod-name">${esc(k.display_name)}</span>
+    <a class="pod-name" href="/player/${esc(String(k.user_id))}">${esc(k.display_name)}</a>
     <b class="pod-pts num">${esc(String(k.total_points))}</b>
     ${k.accuracy !== null && k.accuracy !== undefined
       ? `<span class="pod-acc num">${esc(String(k.accuracy))}% دقّة</span>` : ''}
@@ -1812,7 +1920,7 @@ function renderStandings(settings, { leagues, league, rows, error, champion, kin
           ${k.favorite_team_logo || k.favorite_team_id
             ? `<img class="fx-logo" src="${esc(localLogo('team', k.favorite_team_id))}" alt="" width="24" height="24" loading="lazy">`
             : '<span class="fx-logo lb-none"></span>'}
-          <span class="lb-name">${esc(k.display_name)}</span>
+          <a class="lb-name" href="/player/${esc(String(k.user_id))}">${esc(k.display_name)}</a>
           <span class="lb-n num" title="توقّعات محتسَبة">${esc(String(k.settled_predictions))}</span>
           <b class="lb-pts num">${esc(String(k.total_points))}</b>
         </div>`).join('')}
@@ -2442,6 +2550,7 @@ function renderNotFound(settings) {
 }
 
 module.exports = {
+  renderPlayer,
   renderGroups, renderGroup, renderJoin,
   renderRound,
   renderThrone,

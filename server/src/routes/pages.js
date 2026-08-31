@@ -24,6 +24,7 @@ const webSession = require('../services/webSession');
 const userRepo = require('../repositories/userRepo');
 const teamRepo = require('../repositories/teamRepo');
 const groupService = require('../services/groupService');
+const badgeService = require('../services/badgeService');
 const groupRepo = require('../repositories/groupRepo');
 const championService = require('../services/championService');
 const championRepo = require('../repositories/championRepo');
@@ -870,6 +871,41 @@ router.post('/register', async (req, res) => {
 
 
 
+
+// ─────────────────── صفحة لاعب عامة ───────────────────
+//
+// ما يُعرض هنا هو ما يُعرض في العرش موسّعاً. راجع renderPlayer
+// لما لا يُعرض ولماذا.
+router.get('/player/:id', async (req, res) => {
+  const settings = await pageContext(req);
+  const id = String(req.params.id || '');
+
+  // فحص الشكل قبل الاستعلام: معرّف ليس UUID يجعل pg يرمي خطأ نوع
+  // (22P02) لا يرجع صفراً، فيتحوّل رابطٌ مكسور إلى خطأ 500.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return res.status(404).type('html').send(renderer.renderNotFound(settings));
+  }
+
+  const player = await userRepo.findById(id).catch(() => null);
+  if (!player) {
+    return res.status(404).type('html').send(renderer.renderNotFound(settings));
+  }
+
+  const [stats, badges] = await Promise.all([
+    predictionRepo.profileStats(id).catch(() => null),
+    badgeService.forUser(id).catch(() => []),
+  ]);
+
+  res.type('html').send(renderer.renderPlayer(settings, {
+    // الاسم وحده من صفّ المستخدم — لا بريد ولا تواريخ. الصفحة
+    // عامة، وكل حقل يُمرَّر إليها يصير منشوراً.
+    player: { display_name: player.display_name || 'مشجع' },
+    stats,
+    badges,
+    isMe: settings.viewer?.id === id,
+  }));
+});
+
 // ─────────────────── المجالس ───────────────────
 //
 // القواعد كلها في groupService — راجعه. هذه الصفحات نماذج ورسائل.
@@ -1272,7 +1308,7 @@ async function followableLeagues(userId) {
 
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
 async function showAccount(req, res, session, extra = {}) {
-  const [settings, user, stats, creds, points, history, champions, leagues, teams] = await Promise.all([
+  const [settings, user, stats, creds, points, history, champions, leagues, teams, badges] = await Promise.all([
     pageContext(req),
     userRepo.findById(session.userId),
     predictionRepo.profileStats(session.userId).catch(() => null),
@@ -1290,6 +1326,7 @@ async function showAccount(req, res, session, extra = {}) {
     followableLeagues(session.userId).catch(() => []),
     // أندية ما يتابعه — لتغيير الفريق المفضّل من الإعدادات.
     followedTeams(session.userId).catch(() => []),
+    badgeService.forUser(session.userId).catch(() => []),
   ]);
 
   // الحساب حُذف بينما الجلسة حية (من التطبيق مثلاً).
@@ -1300,7 +1337,7 @@ async function showAccount(req, res, session, extra = {}) {
 
   res.type('html').send(
     renderer.renderAccount(settings, {
-      user, stats, creds, points, history, champions, leagues, teams,
+      user, stats, creds, points, history, champions, leagues, teams, badges,
       tab: String(req.query.tab || ''), csrf: session.csrf, ...extra,
     })
   );
