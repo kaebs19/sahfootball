@@ -23,6 +23,7 @@ import '../models/leaderboard_entry.dart';
 import '../models/notification_prefs.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
+import '../models/rules.dart';
 import '../models/profile_stats.dart';
 import '../models/site_page.dart';
 import '../models/user.dart';
@@ -313,19 +314,63 @@ class ApiClient {
     }
   }
 
-  Future<void> submitPrediction({
+  /// يحفظ التوقّع. يرجع رسالةَ تحذيرٍ إن لم يُطبَّق المضاعِف، وnull
+  /// إن مضى كل شيء — التوقّع نفسه محفوظ في الحالتين.
+  ///
+  /// multiplier اختياري بمعنى "لا تلمسه" لا "أرجعه إلى 1": من
+  /// عدّل من التطبيق توقّعاً ضاعَفه من الموقع لا يفقد أداته لأنه
+  /// رفع هدفاً من هاتفه.
+  Future<String?> submitPrediction({
     required int fixtureId,
     required int home,
     required int away,
+    int? multiplier,
   }) async {
     try {
-      await _dio.post('/api/predictions', data: {
+      final res = await _dio.post('/api/predictions', data: {
         'fixtureId': fixtureId,
         'home': home,
         'away': away,
+        'multiplier': ?multiplier,
       });
+      final denied = (res.data as Map?)?['multiplierDenied'];
+      return denied is String ? denied : null;
     } on DioException catch (e) {
       _throwReadable(e);
+    }
+  }
+
+  /// قواعد اللعبة — تُجلب مرة وتُخبَّأ لبقية عمر التطبيق.
+  ///
+  /// الخبء في الحقل لا في التخزين الدائم: القواعد تتغيّر نادراً
+  /// لكنها تتغيّر، وإعادة التشغيل تكفي لالتقاط الجديد. وحفظُها
+  /// على القرص يجعل جهازاً واحداً يعيش على مقياس قديم شهوراً.
+  GameRules? _rules;
+  Future<GameRules> rules() async {
+    final cached = _rules;
+    if (cached != null) return cached;
+    try {
+      final res = await _dio.get('/api/rules');
+      final fresh = GameRules.fromJson(res.data as Map<String, dynamic>);
+      _rules = fresh;
+      return fresh;
+    } on DioException {
+      // شبكة ساقطة: نرجع الاحتياطي ولا نخبّئه — المحاولة القادمة
+      // تسأل الخادم من جديد بدل أن تتجمّد على تخمين.
+      return GameRules.fallback;
+    }
+  }
+
+  /// حالة المضاعِف أمام هذا اللاعب في هذه المباراة.
+  Future<MultiplierState?> multiplierState(int fixtureId) async {
+    try {
+      final res = await _dio.get('/api/predictions/multiplier/$fixtureId');
+      return MultiplierState.fromJson(
+          (res.data as Map<String, dynamic>)['multiplier'] as Map<String, dynamic>);
+    } on DioException {
+      // فشلها يخفي الأداة ولا يمنع التوقّع: الأداة إضافة، والتوقّع
+      // هو الغرض.
+      return null;
     }
   }
 

@@ -13,6 +13,7 @@ import '../api/api_client.dart';
 import '../brand.dart';
 import '../format.dart';
 import '../models/fixture.dart';
+import '../models/rules.dart';
 import 'brand_widgets.dart';
 
 Future<({int home, int away})?> showPredictionSheet(
@@ -56,18 +57,54 @@ class _PredictionSheetState extends State<_PredictionSheet> {
   bool _busy = false;
   String? _error;
 
+  // القواعد وحالة الأداة تصلان بعد الفتح: الشيت يُفتح فوراً بجدول
+  // احتياطي ثم يُصحّح نفسه. انتظارُ الشبكة قبل عرضه يجعل ضغطة
+  // "توقّع" تبدو معطّلة لثوانٍ على شبكة بطيئة.
+  GameRules _rules = GameRules.fallback;
+  MultiplierState? _mult;
+  bool _x2 = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final api = context.read<ApiClient>();
+    final rules = await api.rules();
+    final mult = await api.multiplierState(widget.fixture.id);
+    if (!mounted) return;
+    setState(() {
+      _rules = rules;
+      _mult = mult;
+      _x2 = mult?.on ?? false;
+    });
+  }
+
   Future<void> _save() async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await context.read<ApiClient>().submitPrediction(
+      final warning = await context.read<ApiClient>().submitPrediction(
             fixtureId: widget.fixture.id,
             home: _home,
             away: _away,
+            // نرسله صراحةً لأن الشيت يعرض حالته: إلغاء التأشير
+            // هنا قرارٌ لا سهو، وإرسال null كان سيتجاهله.
+            multiplier: _mult == null ? null : (_x2 ? _mult!.factor : 1),
           );
-      if (mounted) Navigator.pop(context, (home: _home, away: _away));
+      if (!mounted) return;
+      if (warning != null) {
+        // التوقّع حُفظ والأداة وحدها لم تُطبَّق. رسالة تُقرأ ثم
+        // يُغلق الشيت — لا نُبقيه مفتوحاً على عمل تمّ.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(warning)),
+        );
+      }
+      Navigator.pop(context, (home: _home, away: _away));
     } on ApiException catch (e) {
       // أهم حالة هنا: 409 = انطلقت المباراة بين فتح الشيت والحفظ.
       // رسالة السيرفر العربية تشرحها بالضبط، نعرضها كما هي.
@@ -138,18 +175,29 @@ class _PredictionSheetState extends State<_PredictionSheet> {
             ],
           ),
           const SizedBox(height: 20),
-          // جدول النقاط: يذكّر المستخدم بما يكسبه قبل أن يقرر —
-          // مأخوذ من شاشة التوقع المفصّل في ملف الهوية.
-          const Wrap(
+          // جدول النقاط من الخادم لا من نصّ مكتوب هنا: كان يقول
+          // "نتيجة مضبوطة = 5" بينما يمنح النظام مئة.
+          Wrap(
             spacing: 8,
             runSpacing: 8,
             alignment: WrapAlignment.center,
             children: [
-              BrandChip(label: 'نتيجة مضبوطة = 5', tone: BrandTone.correct),
-              BrandChip(label: 'فارق الأهداف = 3'),
-              BrandChip(label: 'الفائز = 2'),
+              BrandChip(
+                  label: 'نتيجة مضبوطة = ${_rules.exact}',
+                  tone: BrandTone.correct),
+              BrandChip(label: 'فارق الأهداف = ${_rules.diff}'),
+              BrandChip(label: 'الفائز = ${_rules.outcome}'),
             ],
           ),
+          if (_mult != null) ...[
+            const SizedBox(height: 16),
+            _MultiplierTile(
+              state: _mult!,
+              on: _x2,
+              enabled: !_busy && (_x2 || _mult!.left > 0),
+              onChanged: (v) => setState(() => _x2 = v),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 16),
             Text(
@@ -247,6 +295,76 @@ class _StepButton extends StatelessWidget {
           height: 40,
           child: Icon(icon,
               size: 19, color: on ? Brand.correct : Brand.textFaint),
+        ),
+      ),
+    );
+  }
+}
+
+/// مربّع المضاعِف داخل الشيت.
+///
+/// يبقى ظاهراً معطّلاً حين تنفد الحصة، ومعه سببه: من لا يرى الأداة
+/// لا يعرف أنها موجودة ولا متى تعود. (نفس قاعدة الموقع.)
+class _MultiplierTile extends StatelessWidget {
+  final MultiplierState state;
+  final bool on;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  const _MultiplierTile({
+    required this.state,
+    required this.on,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final spent = !on && state.left == 0;
+    return Opacity(
+      opacity: spent ? 0.55 : 1,
+      child: InkWell(
+        onTap: enabled ? () => onChanged(!on) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: on ? Brand.crownWash(0.13) : Brand.fill,
+            border: Border.all(color: on ? Brand.crown : Brand.border),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                on ? Icons.check_box : Icons.check_box_outline_blank,
+                color: on ? Brand.crown : Brand.textFaint,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ضاعِف نقاط هذه المباراة ×${state.factor}',
+                      style: const TextStyle(
+                          color: Brand.text,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      spent
+                          ? 'استعملت مضاعفاتك ${state.free} في هذا الدوري'
+                          : 'باقٍ لك ${state.left} من ${state.free} في هذا الدوري',
+                      style: const TextStyle(
+                          color: Brand.textFaint, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

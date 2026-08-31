@@ -92,6 +92,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/fixtures', require('./routes/fixtures'));
 app.use('/api/teams', require('./routes/teams'));
 app.use('/api/standings', require('./routes/standings'));
+app.use('/api/rules', require('./routes/rules'));
 app.use('/api/predictions', require('./routes/predictions'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/groups', require('./routes/groups'));
