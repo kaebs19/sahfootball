@@ -135,7 +135,18 @@ async function settle(id, points) {
 // users: مصدر حقيقة واحد، لا يمكن أن ينحرف المجموع عن التفاصيل
 // (لو أعاد الأدمن الاحتساب مثلاً). عند مئات آلاف المستخدمين نعيد
 // النظر — ليس اليوم.
-async function leaderboard(limit = 50) {
+/**
+ * العرش — عاماً أو لدوري بعينه.
+ *
+ * leagueId اختياري لا دالة ثانية: الاستعلام واحد والفرق شرطٌ
+ * فيه. ودالتان متجاورتان تكرّران تعريف "المتنافس" وفضّ التعادل
+ * تتباعدان عند أول تعديل، فيقول العرش العام إن فلاناً رابع
+ * ويقول عرش الدوري إنه لم ينافس.
+ *
+ * وحين يُمرَّر دوري تُحسب النقاط من مبارياته ورهان بطله وحدهما:
+ * لوحة الدوري تقيس إتقانه لا نشاط صاحبها في غيره.
+ */
+async function leaderboard(limit = 50, leagueId = null) {
   const { rows } = await db.query(
     `SELECT u.id AS user_id,
             COALESCE(u.display_name, 'مشجع') AS display_name,
@@ -154,11 +165,12 @@ async function leaderboard(limit = 50) {
      -- الأبطال معاً، وجمعُهما في كل استعلام على حدة يخلق نسخاً
      -- تتباعد. راجع user_settled_points في migration 021.
      JOIN user_settled_points p ON p.user_id = u.id
+                                AND ($2::int IS NULL OR p.league_id = $2)
      LEFT JOIN teams ft ON ft.id = u.favorite_team_id
      GROUP BY u.id, ft.logo_url
      ORDER BY total_points DESC, settled_predictions ASC
      LIMIT $1`,
-    [limit]
+    [limit, leagueId]
   );
   return rows;
 }

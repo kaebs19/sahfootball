@@ -300,8 +300,24 @@ router.get('/standings', async (req, res) => {
     error = 'تعذّر جلب الترتيب الآن. حاول بعد قليل.';
   }
 
+  // البطاقة واللوحة إضافتان على صفحة قائمة: فشل أيٍّ منهما يُخفيها
+  // ولا يمنع الجدول — وهو ما جاء الزائر لأجله.
+  const session = settings.viewer ? await webSession.read(req).catch(() => null) : null;
+  const [champion, kings] = await Promise.all([
+    current?.in_app && session
+      ? championCard(session.userId, current).catch(() => null)
+      : null,
+    current?.in_app
+      ? predictionRepo.leaderboard(10, current.id).catch(() => [])
+      : [],
+  ]);
+
   res.type('html').send(
-    renderer.renderStandings(settings, { leagues, league, rows, error })
+    renderer.renderStandings(settings, {
+      leagues, league, rows, error,
+      champion, kings, csrf: session?.csrf || '',
+      canBet: Boolean(current?.in_app),
+    })
   );
 });
 // ─────────────────── استعادة كلمة المرور ───────────────────
@@ -662,27 +678,38 @@ router.post('/register', async (req, res) => {
 // دورياتك ← فريقك ← البطل. وكلٌّ ضغطة واحدة، والتخطّي مفتوح في
 // كلٍّ منها. راجع renderWelcome لسبب هذا الترتيب.
 
-/** يجمع ما تحتاجه بطاقات البطل: الدوري، أنديته، السعر، ورهانه. */
+/**
+ * بطاقة رهانٍ واحدة: الدوري، أنديته، سعره اليوم، ورهان صاحبها.
+ *
+ * الوحدة هنا بطاقة لا قائمة لأن لها موضعين: صفحة الترتيب تعرض
+ * بطاقة دوريها وحده، و"حسابي" يعرض بطاقة لكل متابَع. ولو كانت
+ * الدالة تُرجع القائمة دائماً لبنت صفحةُ الترتيب ستّ بطاقات
+ * لتعرض واحدة.
+ */
+async function championCard(userId, league) {
+  const [teams, mine] = await Promise.all([
+    teamRepo.findPlayable(),
+    championRepo.findMine(userId),
+  ]);
+  return {
+    league: { id: league.id, name: league.name },
+    teams: teams.filter((t) => t.league_id === league.id),
+    quote: await championService.quote(league.id, league.season),
+    mine: mine.find((m) => m.league_id === league.id && m.season === league.season) || null,
+  };
+}
+
+/** بطاقات كل ما يتابعه — لصفحة "حسابي" والتهيئة. */
 async function championCards(userId) {
   const followed = await championRepo.followedIds(userId);
   if (!followed.length) return [];
 
-  const [leagues, teams, mine] = await Promise.all([
-    leagueRepo.findEnabled(),
-    teamRepo.findPlayable(),
-    championRepo.findMine(userId),
-  ]);
-
+  const leagues = await leagueRepo.findEnabled();
   const cards = [];
   for (const id of followed) {
     const league = leagues.find((l) => l.id === id);
     if (!league) continue; // دوري أُخرج من اللعبة بعد متابعته
-    cards.push({
-      league: { id: league.id, name: league.name },
-      teams: teams.filter((t) => t.league_id === id),
-      quote: await championService.quote(id, league.season),
-      mine: mine.find((m) => m.league_id === id && m.season === league.season) || null,
-    });
+    cards.push(await championCard(userId, league));
   }
   return cards;
 }
@@ -786,7 +813,16 @@ router.post('/champion', async (req, res) => {
   if (!session) return res.redirect(303, '/login');
   if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
 
-  const back = String(req.get('referer') || '').includes('/welcome') ? '/welcome' : '/account';
+  // العودة إلى حيث جاء: البطاقة في ثلاثة مواضع الآن (التهيئة،
+  // حسابي، ترتيب الدوري)، وإرجاعُ الجميع إلى "حسابي" يقتلع من
+  // كان يقرأ جدول الدوري من صفحته.
+  //
+  // ونقرأ المسار من referer لا نثق به وجهةً: نطابقه بقائمة
+  // مغلقة عندنا، فترويسة مزوّرة لا تحوّل أحداً إلى موقع آخر.
+  const from = String(req.get('referer') || '');
+  const back = from.includes('/welcome') ? '/welcome'
+    : from.includes('/standings') ? `/standings?league=${Number(req.body?.league) || ''}#champion`
+    : '/account#champion';
   const leagueId = Number(req.body?.league);
   const teamId = Number(req.body?.team);
   if (!Number.isInteger(leagueId) || !Number.isInteger(teamId)) {
@@ -803,7 +839,7 @@ router.post('/champion', async (req, res) => {
   } catch (err) {
     logger.error('[pages] champion pick failed:', err.message);
   }
-  res.redirect(303, back === '/welcome' ? '/welcome' : '/account#champion');
+  res.redirect(303, back);
 });
 
 

@@ -321,7 +321,13 @@ function renderContact(page, settings, { sent, error, values } = {}) {
     <div class="contact-grid">
       <div class="card">
         ${sent ? '<div class="note ok">وصلتنا رسالتك. سنرد عليك في أقرب وقت.</div>' : ''}
-        ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+        <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
+
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
         <form method="post" action="/contact">
           <div class="field">
             <label for="name">الاسم</label>
@@ -378,7 +384,13 @@ function renderForgot(settings, { error, values } = {}) {
       <p class="section-sub" style="margin:10px 0 22px">
         اكتب بريدك المسجّل ونرسل لك رمزاً من ستة أرقام صالحاً لعشر دقائق.
       </p>
-      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
+
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
       <form method="post" action="/forgot">
         <div class="field">
           <label for="email">البريد الإلكتروني</label>
@@ -414,7 +426,13 @@ function renderReset(settings, { error, values, sent } = {}) {
         إن كان البريد مسجّلاً عندنا فالرمز في طريقه إليه الآن. تحقق من صندوقك
         (ومجلد المهملات أحياناً).
       </div>` : ''}
-      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
+
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
       <form method="post" action="/reset">
         <div class="field">
           <label for="email">البريد الإلكتروني</label>
@@ -689,7 +707,13 @@ function renderLogin(settings, { error, values } = {}) {
       <p class="section-sub" style="margin:10px 0 22px">
         ادخل لإدارة حسابك. التوقّع والمنافسة في التطبيق.
       </p>
-      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
+
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
       ${providerBlock(settings, 'الدخول')}
       <form method="post" action="/login">
         <div class="field">
@@ -724,7 +748,13 @@ function renderRegister(settings, { error, values } = {}) {
       <p class="section-sub" style="margin:10px 0 22px">
         أنشئ حسابك هنا ثم حمّل التطبيق وابدأ التوقّع بنفس البيانات.
       </p>
-      ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+      <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
+
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
       ${providerBlock(settings, 'المتابعة')}
       <form method="post" action="/register">
         <div class="field">
@@ -832,6 +862,12 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
 <div class="page">
   <div class="wrap auth-wrap" style="max-width:560px">
     ${notice ? `<div class="note ok">${esc(notice)}</div>` : ''}
+    <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
+
     ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
 
     <!-- ترويسة الحساب: من أنت وأين موقعك، في نظرة واحدة. -->
@@ -1175,7 +1211,31 @@ function leagueChips(leagues, { active, href, all = true }) {
  * الفورمة (آخر خمس مباريات) حروف ملوّنة لا نص: "WWDLW" يقرؤها من
  * يعرف الاصطلاح وحده، والدوائر الملوّنة يقرؤها الجميع بنظرة.
  */
-function renderStandings(settings, { leagues, league, rows, error }) {
+/**
+ * دعوة من لا يستطيع الرهان.
+ *
+ * لا تُعرض لمن يرى بطاقته: من يملك الشيء لا يُدعى إليه. ولا
+ * تُعرض لدوريٍّ خارج اللعبة: الدعوة إلى ما لا وجود له أسوأ من
+ * الصمت.
+ */
+function championTeaser(settings, champion, canBet) {
+  if (champion || !canBet || !settings || settings.viewer) return '';
+  return `
+<div class="card ch ch-teaser">
+  <div class="ch-head"><h2>مَن يرفع الكأس؟</h2></div>
+  <p class="ch-note">
+    راهِن على بطل هذا الدوري. الجائزة تصل <b>1000</b> نقطة، وتنقص
+    مع كل جولة تُلعب — فمن يراهن اليوم يربح أكثر ممّن ينتظر.
+  </p>
+  <div class="pj-cta">
+    ${settings.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
+    ${settings.apple ? `<a class="btn btn-apple" href="/auth/apple">${APPLE_MARK} باستخدام Apple</a>` : ''}
+    <a class="btn btn-primary" href="/register">أنشئ حساباً</a>
+  </div>
+</div>`;
+}
+
+function renderStandings(settings, { leagues, league, rows, error, champion, kings, csrf, canBet }) {
   const current = (leagues || []).find((l) => String(l.id) === String(league));
   const formDots = (form) => (form || '').slice(-5).split('').map((c) => {
     const cls = c === 'W' ? 'w' : c === 'L' ? 'l' : 'd';
@@ -1197,6 +1257,12 @@ function renderStandings(settings, { leagues, league, rows, error }) {
       all: false,
     })}
 
+    <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
+
     ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
     ${!error && (!rows || rows.length === 0) ? `
       <div class="card" style="text-align:center;padding:40px 20px">
@@ -1205,6 +1271,30 @@ function renderStandings(settings, { leagues, league, rows, error }) {
           البطولات الإقصائية (كدوري الأبطال في أدواره الأولى) قد لا يكون لها جدول.
         </p>
       </div>` : ''}
+
+    ${kings && kings.length ? `
+    <!-- ملوك الدوري بعد جدول الأندية لا قبله: صفحة "الترتيب"
+         يأتيها الزائر ليرى ترتيب الأندية، ولوحة اللاعبين إضافة
+         يكتشفها لا وعدٌ جاء لأجله. -->
+    <section class="lb-sec">
+      <h2>ملوك هذا الدوري</h2>
+      <p class="acc-lede">
+        بنقاط هذا الدوري وحده — مبارياته ورهان بطله. من يتوقّع في
+        ستة دوريات لا يعلو هنا بكثرة لعبه.
+      </p>
+      <div class="card lb">
+        ${kings.map((k, i) => `
+        <div class="lb-row${i < 3 ? ' top' : ''}">
+          <span class="lb-rank num">${esc(String(i + 1))}</span>
+          ${k.favorite_team_logo || k.favorite_team_id
+            ? `<img class="fx-logo" src="${esc(localLogo('team', k.favorite_team_id))}" alt="" width="24" height="24" loading="lazy">`
+            : '<span class="fx-logo lb-none"></span>'}
+          <span class="lb-name">${esc(k.display_name)}</span>
+          <span class="lb-n num" title="توقّعات محتسَبة">${esc(String(k.settled_predictions))}</span>
+          <b class="lb-pts num">${esc(String(k.total_points))}</b>
+        </div>`).join('')}
+      </div>
+    </section>` : ''}
 
     ${rows && rows.length ? `
     <div class="table-wrap">
@@ -1764,6 +1854,12 @@ function renderScorers(settings, { leagues, league, scorers, error }) {
     <h1 class="section-title" style="margin-bottom:18px">${esc(current?.name_ar || current?.name_en || 'الهدافون')}</h1>
 
     ${leagueChips(leagues, { active: league, href: (id) => `/scorers?league=${id}`, all: false })}
+
+    <!-- الرهان فوق الجدول لا تحته: الجدول هو ما يُبنى عليه
+         القرار، ووضعُ البطاقة بعده يجعل من قرأ الجدول ثم أغلق
+         الصفحة لا يعرف أن الرهان موجود أصلاً. -->
+    ${champion ? championCard(champion, csrf) : ''}
+    ${championTeaser(settings, champion, canBet)}
 
     ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
     ${!error && (!scorers || !scorers.length) ? `
