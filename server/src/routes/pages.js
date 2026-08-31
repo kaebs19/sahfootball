@@ -1086,41 +1086,11 @@ router.get('/join/:code', async (req, res) => {
 // دورياتك ← فريقك ← البطل. وكلٌّ ضغطة واحدة، والتخطّي مفتوح في
 // كلٍّ منها. راجع renderWelcome لسبب هذا الترتيب.
 
-/**
- * بطاقة رهانٍ واحدة: الدوري، أنديته، سعره اليوم، ورهان صاحبها.
- *
- * الوحدة هنا بطاقة لا قائمة لأن لها موضعين: صفحة الترتيب تعرض
- * بطاقة دوريها وحده، و"حسابي" يعرض بطاقة لكل متابَع. ولو كانت
- * الدالة تُرجع القائمة دائماً لبنت صفحةُ الترتيب ستّ بطاقات
- * لتعرض واحدة.
- */
-async function championCard(userId, league) {
-  const [teams, mine] = await Promise.all([
-    teamRepo.findPlayable(),
-    championRepo.findMine(userId),
-  ]);
-  return {
-    league: { id: league.id, name: league.name },
-    teams: teams.filter((t) => t.league_id === league.id),
-    quote: await championService.quote(league.id, league.season),
-    mine: mine.find((m) => m.league_id === league.id && m.season === league.season) || null,
-  };
-}
-
-/** بطاقات كل ما يتابعه — لصفحة "حسابي" والتهيئة. */
-async function championCards(userId) {
-  const followed = await championRepo.followedIds(userId);
-  if (!followed.length) return [];
-
-  const leagues = await leagueRepo.findEnabled();
-  const cards = [];
-  for (const id of followed) {
-    const league = leagues.find((l) => l.id === id);
-    if (!league) continue; // دوري أُخرج من اللعبة بعد متابعته
-    cards.push(await championCard(userId, league));
-  }
-  return cards;
-}
+// بطاقات البطل تُبنى في championService — ثلاثة مستدعين لها الآن
+// (الترتيب، الحساب، التطبيق)، وتجميعها هنا كان يجعلها حكراً على
+// الويب.
+const championCard = (userId, league) => championService.card(userId, league);
+const championCards = (userId) => championService.cards(userId);
 
 router.get('/welcome', async (req, res) => {
   const session = await webSession.read(req);

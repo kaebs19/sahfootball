@@ -15,7 +15,9 @@ import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
 import 'about_footer.dart';
 import 'account_settings_screen.dart';
+import 'champion_screen.dart';
 import 'contact_screen.dart';
+import 'leagues_screen.dart';
 import 'edit_profile_screen.dart';
 import 'notification_settings_screen.dart';
 import 'page_screen.dart';
@@ -54,6 +56,18 @@ class SettingsScreen extends StatelessWidget {
           const _GroupLabel('التفضيلات'),
           _SettingsGroup(
             children: [
+              _SettingsTile(
+                icon: Icons.list_alt_outlined,
+                title: 'دورياتي',
+                subtitle: 'توقّعاتك وتذكيراتك ورهاناتك تتبع هذه القائمة',
+                onTap: () => _open(context, const LeaguesScreen()),
+              ),
+              _SettingsTile(
+                icon: Icons.emoji_events_outlined,
+                title: 'من يرفع الكأس؟',
+                subtitle: 'رهان الموسم على بطل كل دوري تتابعه',
+                onTap: () => _open(context, const ChampionScreen()),
+              ),
               _SettingsTile(
                 icon: Icons.notifications_none,
                 title: 'الإشعارات',

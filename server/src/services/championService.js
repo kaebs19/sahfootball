@@ -26,6 +26,8 @@
 const settingsRepo = require('../repositories/settingsRepo');
 const championRepo = require('../repositories/championRepo');
 const standingsService = require('./standingsService');
+const teamRepo = require('../repositories/teamRepo');
+const leagueRepo = require('../repositories/leagueRepo');
 const logger = require('../utils/logger');
 
 const DEFAULT_CHAMPION = { max_award: 1000 };
@@ -111,4 +113,43 @@ async function settleFinishedSeasons() {
   return settled;
 }
 
-module.exports = { config, quote, pick, settleFinishedSeasons, DEFAULT_CHAMPION };
+
+/**
+ * بطاقة رهانٍ واحدة: الدوري، أنديته، سعره اليوم، ورهان صاحبها.
+ *
+ * هنا لا في المسار لأن لها ثلاثة مستدعين الآن: صفحة الترتيب،
+ * وصفحة الحساب، وواجهة التطبيق. ونسخة ثالثة من تجميعها تعني أن
+ * أول تعديل (إضافة عدد المراهنين مثلاً) يظهر في بابين ويغيب عن
+ * ثالث.
+ */
+async function card(userId, league) {
+  const [teams, mine] = await Promise.all([
+    teamRepo.findPlayable(),
+    championRepo.findMine(userId),
+  ]);
+  return {
+    league: { id: league.id, name: league.name },
+    teams: teams.filter((t) => t.league_id === league.id),
+    quote: await quote(league.id, league.season),
+    mine: mine.find((m) => m.league_id === league.id && m.season === league.season) || null,
+  };
+}
+
+/** بطاقات كل ما يتابعه هذا اللاعب. */
+async function cards(userId) {
+  const followed = await championRepo.followedIds(userId);
+  if (!followed.length) return [];
+
+  const leagues = await leagueRepo.findEnabled();
+  const out = [];
+  for (const id of followed) {
+    const league = leagues.find((l) => l.id === id);
+    if (!league) continue; // دوري أُخرج من اللعبة بعد متابعته
+    out.push(await card(userId, league));
+  }
+  return out;
+}
+
+module.exports = {
+  config, quote, pick, card, cards, settleFinishedSeasons, DEFAULT_CHAMPION,
+};

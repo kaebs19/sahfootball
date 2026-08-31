@@ -24,6 +24,7 @@ import '../models/notification_prefs.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
 import '../models/rules.dart';
+import '../models/champion.dart';
 import '../models/profile_stats.dart';
 import '../models/site_page.dart';
 import '../models/user.dart';
@@ -335,6 +336,52 @@ class ApiClient {
       });
       final denied = (res.data as Map?)?['multiplierDenied'];
       return denied is String ? denied : null;
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// دوريات اللعبة ومعها ما يتابعه صاحب الحساب.
+  Future<List<LeagueFollow>> leagues() async {
+    try {
+      final res = await _dio.get('/api/leagues');
+      return (res.data['leagues'] as List)
+          .map((j) => LeagueFollow.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// يضبط قائمة المتابعة كاملةً — لا إضافة/حذف.
+  ///
+  /// الحالة النهائية هي ما تُرسله بالضبط، بلا منطقٍ في العميل
+  /// يقرّر ما يُضاف وما يُحذف — وذلك المنطق هو ما يخطئ.
+  Future<void> setFollowedLeagues(List<int> leagueIds) async {
+    try {
+      await _dio.put('/api/leagues/followed', data: {'leagueIds': leagueIds});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// بطاقة رهان لكل دوري متابَع.
+  Future<List<ChampionCard>> championCards() async {
+    try {
+      final res = await _dio.get('/api/champion');
+      return (res.data['cards'] as List)
+          .map((j) => ChampionCard.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// يراهن على بطل دوري — أو يغيّر رهانه بسعر اليوم.
+  Future<void> pickChampion({required int leagueId, required int teamId}) async {
+    try {
+      await _dio.post('/api/champion',
+          data: {'leagueId': leagueId, 'teamId': teamId});
     } on DioException catch (e) {
       _throwReadable(e);
     }
