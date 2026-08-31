@@ -827,52 +827,104 @@ function historyRow(h) {
  * على بريده نفسه، فيصله رمز ويعيّن كلمة — نفس المسار القائم بلا
  * بطاقة إضافية.
  */
-function renderAccount(settings, { user, stats, notice, error, csrf, creds, points, history, champions, leagues }) {
+/**
+ * حسابي — ثلاثة تبويبات فوق ترويسة ثابتة.
+ *
+ * كانت ثماني كتل متساوية الوزن في عمود واحد: إحصاءات، دوريات،
+ * أبطال، توزيع، سجلّ، طريقة دخول، كلمة مرور، حذف. وقرارُ الرهان
+ * النادر يقف فيها بنفس وزن زرّ تسجيل الخروج، والسجلّ الطويل يدفن
+ * ما تحته — فمن أراد حذف حسابه مرّ بعشرين توقّعاً ليصل إليه.
+ *
+ * والتبويبات روابط ?tab= لا سكربت: الخادم يرسل تبويباً واحداً
+ * فتصل الصفحة أخفّ، وكل تبويب رابط يُحفظ ويُشارك ويعمل لمن يعطّل
+ * JavaScript. (بخلاف تبويبات صفحة المباراة: تلك أقسام موجودة
+ * أصلاً في الصفحة نفسها، وإخفاؤها بالسكربت أرخص من رحلة شبكة.)
+ *
+ * والترويسة خارج التبويبات: "من أنت وأين موقعك" سؤالان لا
+ * يخصّان تبويباً بعينه.
+ */
+const ACC_TABS = [
+  { key: 'overview', label: 'نظرة' },
+  { key: 'history', label: 'سجلّي' },
+  { key: 'settings', label: 'الإعدادات' },
+];
+
+function renderAccount(settings, {
+  user, stats, notice, error, csrf, creds, points, history,
+  champions, leagues, teams, tab,
+}) {
+  const active = ACC_TABS.some((t) => t.key === tab) ? tab : 'overview';
   const rank = stats?.rank ? `${stats.rank}` : '—';
   const dist = distribution(stats, points || DEFAULT_SCORING);
-  const body = `
-<div class="page">
-  <div class="wrap auth-wrap" style="max-width:560px">
-    ${notice ? `<div class="note ok">${esc(notice)}</div>` : ''}
-    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+  const num = (v, fallback = '0') =>
+    (v === null || v === undefined ? fallback : esc(String(v)));
 
-    <!-- ترويسة الحساب: من أنت وأين موقعك، في نظرة واحدة. -->
-    <header class="acc-head card">
-      <div class="acc-id">
-        <span class="acc-avatar">${esc((user.display_name || user.email || '?').trim().charAt(0))}</span>
-        <div>
-          <h1>${esc(user.display_name || 'حسابي')}</h1>
-          <span class="acc-mail" dir="ltr">${esc(user.email)}</span>
-        </div>
-      </div>
-      <!-- رابط لا صندوق: الرقم يثير سؤال "ومن فوقي؟"، وتركُه
-           بلا وجهة يجعل الجواب مفقوداً في صفحة تعرضه. -->
-      <a class="acc-rank" href="/throne">
-        <b class="num">${esc(rank)}</b>
-        <span>${stats?.total_competitors ? `من ${esc(String(stats.total_competitors))}` : 'المركز'}</span>
-      </a>
-    </header>
-
+  const overview = `
     <section class="acc-sec">
       <h2>إحصاءاتي</h2>
       <div class="stats-grid">
-        <div class="card st"><b class="num">${esc(String(stats?.total_points ?? 0))}</b><span>نقطة</span></div>
-        <div class="card st"><b class="num">${esc(String(stats?.predictions_count ?? 0))}</b><span>توقّع</span></div>
+        <div class="card st"><b class="num">${num(stats?.total_points)}</b><span>نقطة</span></div>
+        <div class="card st"><b class="num">${num(stats?.predictions_count)}</b><span>توقّع</span></div>
         <div class="card st"><b class="num">${stats?.accuracy === null || stats?.accuracy === undefined ? '—' : esc(String(stats.accuracy)) + '٪'}</b><span>الدقّة</span></div>
-        <div class="card st"><b class="num">${esc(String(stats?.settled_predictions ?? 0))}</b><span>محتسَب</span></div>
-        <div class="card st"><b class="num">${esc(String(stats?.longest_streak ?? 0))}</b><span>أطول سلسلة</span></div>
-        <div class="card st"><b class="num">${esc(String(stats?.current_streak ?? 0))}</b><span>سلسلة حالية</span></div>
+        <div class="card st"><b class="num">${num(stats?.settled_predictions)}</b><span>محتسَب</span></div>
+        <div class="card st"><b class="num">${num(stats?.longest_streak)}</b><span>أطول سلسلة</span></div>
+        <div class="card st"><b class="num">${num(stats?.current_streak)}</b><span>سلسلة حالية</span></div>
       </div>
     </section>
 
-    <!-- رهان البطل قبل الإحصاءات لا بعدها: هذه بطاقة فيها قرار
-         مؤجّل وسعرٌ ينزل كل جولة، وتلك أرقام تُقرأ ولا تُفعَل.
-         ومن تخطّى التهيئة لا يجدها إلا هنا. -->
-    <!-- دورياتك قابلة للتعديل هنا وحدها: التهيئة تُعرض مرة
-         واحدة في العمر، ومن تابع السعودي في يومه الأول ثم أراد
-         الإنجليزي بعد شهر كان أمام باب لا وجود له. -->
-    ${leagues && leagues.length ? `
+    <!-- الرهان قبل التوزيع: هذه بطاقة فيها قرار مؤجّل وسعرٌ ينزل
+         كل جولة، وذاك أرقام تُقرأ ولا تُفعَل. -->
     <section class="acc-sec" id="champion">
+      <h2>من يرفع الكأس؟</h2>
+      ${champions && champions.length ? `
+      <p class="acc-lede">رهان الموسم لكل دوري تتابعه. الجائزة تنقص مع كل جولة تُلعب.</p>
+      ${champions.map((c) => championCard(c, csrf)).join('')}` : `
+      <div class="card" style="text-align:center;padding:26px 18px">
+        <p class="section-sub">
+          تابِع دورياً لتراهن على بطله —
+          <a href="/account?tab=settings#leagues">اختر دورياتك</a>.
+        </p>
+      </div>`}
+    </section>
+
+    ${dist.length ? `
+    <section class="acc-sec">
+      <h2>توزيع نتائجي</h2>
+      <div class="card">
+        <div class="dist">
+          ${dist.map((d) => `
+            <div class="dist-row">
+              <span class="dist-label">${esc(d.label)}</span>
+              <span class="dist-bar"><i style="width:${d.pct}%"></i></span>
+              <span class="dist-n num">${esc(String(d.count))}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </section>` : ''}`;
+
+  const historyTab = `
+    <section class="acc-sec">
+      <h2>سجلّي</h2>
+      ${history && history.length ? `
+      <div class="card">
+        <div class="hx-head">
+          <span>المباراة</span><span>توقّعي</span><span>النتيجة</span><span>النقاط</span>
+        </div>
+        <div class="hxs">${history.map(historyRow).join('')}</div>
+        ${history.length >= 50
+          ? '<p class="section-sub" style="margin-top:10px;text-align:center">آخر 50 توقّعاً</p>' : ''}
+      </div>` : `
+      <div class="card" style="text-align:center;padding:32px 20px">
+        <p class="section-sub">ما سجّلت توقّعاً بعد — <a href="/">ابدأ من المباريات</a>.</p>
+      </div>`}
+    </section>`;
+
+  const settingsTab = `
+    <!-- دورياتي وفريقي هنا لا في التهيئة وحدها: التهيئة تُعرض
+         مرة واحدة في العمر، ومن اختار في يومه الأول ثم غيّر رأيه
+         كان أمام باب لا وجود له. -->
+    ${leagues && leagues.length ? `
+    <section class="acc-sec" id="leagues">
       <h2>دورياتي</h2>
       <p class="acc-lede">توقّعاتك وتذكيراتك ورهانات الأبطال تتبع هذه القائمة.</p>
       <form method="post" action="/account/leagues" class="card wl-card">
@@ -889,42 +941,22 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
       </form>
     </section>` : ''}
 
-    ${champions && champions.length ? `
-    <section class="acc-sec">
-      <h2>من يرفع الكأس؟</h2>
-      <p class="acc-lede">رهان الموسم لكل دوري تتابعه. الجائزة تنقص مع كل جولة تُلعب.</p>
-      ${champions.map((c) => championCard(c, csrf)).join('')}
-    </section>` : ''}
-
-    ${dist.length ? `
-    <section class="acc-sec">
-      <h2>توزيع نتائجي</h2>
-      <div class="card">
-        <div class="dist">
-          ${dist.map((d) => `
-            <div class="dist-row">
-              <span class="dist-label">${esc(d.label)}</span>
-              <span class="dist-bar"><i style="width:${d.pct}%"></i></span>
-              <span class="dist-n num">${esc(String(d.count))}</span>
-            </div>`).join('')}
+    ${teams && teams.length ? `
+    <section class="acc-sec" id="team">
+      <h2>فريقي</h2>
+      <p class="acc-lede">نُذكّرك بمبارياته، ويظهر شعاره بجانب اسمك في العرش.</p>
+      <form method="post" action="/account/team" class="card wl-card">
+        ${csrfField(csrf)}
+        <div class="wl-grid ch-grid">
+          ${teams.map((t) => `
+          <button class="wl-team${user.favorite_team_id === t.id ? ' picked' : ''}"
+                  type="submit" name="team" value="${esc(String(t.id))}">
+            ${teamBadge(t.name, t.logo_url, t.id)}
+            <span>${esc(t.name)}</span>
+          </button>`).join('')}
         </div>
-      </div>
+      </form>
     </section>` : ''}
-
-    <section class="acc-sec">
-      <h2>سجلّي</h2>
-      ${history && history.length ? `
-      <div class="card">
-        <div class="hx-head">
-          <span>المباراة</span><span>توقّعي</span><span>النتيجة</span><span>النقاط</span>
-        </div>
-        <div class="hxs">${history.map(historyRow).join('')}</div>
-        ${history.length >= 20 ? '<p class="section-sub" style="margin-top:10px;text-align:center">آخر 20 توقّعاً</p>' : ''}
-      </div>` : `
-      <div class="card" style="text-align:center;padding:32px 20px">
-        <p class="section-sub">ما سجّلت توقّعاً بعد — <a href="/">ابدأ من المباريات</a>.</p>
-      </div>`}
-    </section>
 
     <section class="acc-sec">
       <h2>إعدادات الحساب</h2>
@@ -952,7 +984,14 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
         </form>
       </div>` : ''}
 
-      <div class="card danger" style="margin-top:12px">
+      <form method="post" action="/logout" style="margin-top:12px">
+        ${csrfField(csrf)}
+        <button class="btn" type="submit">تسجيل الخروج</button>
+      </form>
+
+      <!-- الحذف آخر شيء في آخر تبويب: لا يُصادَف عرضاً، ويُوصَل
+           إليه بقصد. -->
+      <div class="card danger" style="margin-top:24px">
         <h3>حذف الحساب</h3>
         <p class="section-sub" style="margin:8px 0 16px">
           يُحذف حسابك وتوقعاتك ونقاطك نهائياً ولا يمكن التراجع. مجموعاتك
@@ -975,12 +1014,43 @@ function renderAccount(settings, { user, stats, notice, error, csrf, creds, poin
           <button class="btn btn-danger" type="submit">حذف حسابي نهائياً</button>
         </form>
       </div>
-    </section>
+    </section>`;
 
-    <form method="post" action="/logout" style="margin-top:16px">
-      ${csrfField(csrf)}
-      <button class="btn" type="submit">تسجيل الخروج</button>
-    </form>
+  const body = `
+<div class="page">
+  <div class="wrap auth-wrap" style="max-width:620px">
+    ${notice ? `<div class="note ok">${esc(notice)}</div>` : ''}
+    ${error ? `<div class="note bad">${esc(error)}</div>` : ''}
+
+    <header class="acc-head card">
+      <div class="acc-id">
+        <span class="acc-avatar">${esc((user.display_name || user.email || '?').trim().charAt(0))}</span>
+        <div>
+          <h1>${esc(user.display_name || 'حسابي')}</h1>
+          <span class="acc-mail" dir="ltr">${esc(user.email)}</span>
+          ${stats?.favorite_team ? `
+          <span class="acc-team">
+            ${teamBadge(stats.favorite_team.name, stats.favorite_team.logo_url, stats.favorite_team.id)}
+            ${esc(stats.favorite_team.name)}
+          </span>` : ''}
+        </div>
+      </div>
+      <!-- رابط لا صندوق: الرقم يثير سؤال "ومن فوقي؟"، وتركُه
+           بلا وجهة يجعل الجواب مفقوداً في صفحة تعرضه. -->
+      <a class="acc-rank" href="/throne">
+        <b class="num">${esc(rank)}</b>
+        <span>${stats?.total_competitors ? `من ${esc(String(stats.total_competitors))}` : 'المركز'}</span>
+      </a>
+    </header>
+
+    <nav class="acc-tabs">
+      ${ACC_TABS.map((t) => `
+      <a class="acc-tab${t.key === active ? ' on' : ''}"
+         href="/account${t.key === 'overview' ? '' : `?tab=${t.key}`}"
+         ${t.key === active ? 'aria-current="page"' : ''}>${esc(t.label)}</a>`).join('')}
+    </nav>
+
+    ${active === 'history' ? historyTab : active === 'settings' ? settingsTab : overview}
   </div>
 </div>`;
   return layout({ title: 'حسابي', body, settings, active: null });

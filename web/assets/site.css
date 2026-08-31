@@ -2490,3 +2490,46 @@ a.acc-rank:hover { border-color: var(--crown); }
   /* الدقّة أول ما يُضحّى به على الضيّق: النقاط والاسم هما الرسالة. */
   .lb-acc { display: none; }
 }
+
+/* ═══════════════ تبويبات "حسابي" ═══════════════ */
+
+/* روابط لا أزرار: كل تبويب عنوان قابل للحفظ والمشاركة، ويعمل
+   لمن يعطّل JavaScript. */
+.acc-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 18px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--fill);
+}
+.acc-tab {
+  flex: 1;
+  padding: 9px 8px;
+  border-radius: 9px;
+  text-align: center;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background .15s, color .15s;
+}
+.acc-tab:hover { color: var(--text); }
+.acc-tab.on { background: var(--crown); color: var(--on-accent); }
+
+/* الفريق المفضّل في الترويسة: هويةٌ ثانية بعد الاسم والبريد. */
+.acc-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.acc-team .fx-logo { width: 20px; height: 20px; }
+
+@media (max-width: 560px) {
+  .acc-tab { font-size: 12.5px; padding: 8px 4px; }
+}

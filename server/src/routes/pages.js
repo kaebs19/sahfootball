@@ -876,6 +876,20 @@ router.post('/champion', async (req, res) => {
 });
 
 
+
+// تغيير الفريق المفضّل من الإعدادات — التهيئة تُعرض مرة واحدة.
+router.post('/account/team', async (req, res) => {
+  const session = await webSession.read(req);
+  if (!session) return res.redirect(303, '/login');
+  if (!checkCsrf(session, req)) return res.status(403).send('طلب غير صالح');
+
+  const teamId = Number(req.body?.team);
+  if (Number.isInteger(teamId)) {
+    await userRepo.updateProfile(session.userId, { favoriteTeamId: teamId });
+  }
+  res.redirect(303, '/account?tab=settings#team');
+});
+
 // تعديل الدوريات من "حسابي" — نفس مستودع التهيئة، فالقائمة واحدة.
 router.post('/account/leagues', async (req, res) => {
   const session = await webSession.read(req);
@@ -895,8 +909,16 @@ router.post('/account/leagues', async (req, res) => {
   // ورهانات الأبطال لا تُمسّ: من ألغى متابعة دوري راهن فيه لم
   // يسحب رهانه، وحذفه عقوبةٌ لم يطلبها. تختفي بطاقته من الصفحة
   // ويبقى الرهان قائماً إن عاد.
-  res.redirect(303, '/account#champion');
+  res.redirect(303, '/account?tab=settings#leagues');
 });
+
+/** أندية الدوريات التي يتابعها — لاختيار فريقه المفضّل. */
+async function followedTeams(userId) {
+  const followed = await championRepo.followedIds(userId);
+  if (!followed.length) return [];
+  const teams = await teamRepo.findPlayable();
+  return teams.filter((t) => followed.includes(t.league_id));
+}
 
 /** الدوريات القابلة للمتابعة، ومعها ما يتابعه فعلاً. */
 async function followableLeagues(userId) {
@@ -911,7 +933,7 @@ async function followableLeagues(userId) {
 
 /** يبني صفحة الحساب — يستعملها العرض وكل فعل ينتهي إليها. */
 async function showAccount(req, res, session, extra = {}) {
-  const [settings, user, stats, creds, points, history, champions, leagues] = await Promise.all([
+  const [settings, user, stats, creds, points, history, champions, leagues, teams] = await Promise.all([
     pageContext(req),
     userRepo.findById(session.userId),
     predictionRepo.profileStats(session.userId).catch(() => null),
@@ -919,12 +941,16 @@ async function showAccount(req, res, session, extra = {}) {
     predictionService.points().catch(() => null),
     // آخر عشرين: السجل الكامل قد يبلغ مئات الصفوف في نهاية الموسم،
     // ومن يريد أقدم منها يريد تصفّحاً لا صفحة أطول.
-    predictionRepo.findMine(session.userId).then((r) => r.slice(0, 20)).catch(() => []),
+    // خمسون لا عشرون: صار للسجلّ تبويبٌ خاصّ به، ومن يفتحه يفتحه
+    // ليقرأه. العشرون كانت مناسبةً حين كان قسماً بين ستة أقسام.
+    predictionRepo.findMine(session.userId).then((r) => r.slice(0, 50)).catch(() => []),
     // بطاقات البطل تحتاج سعراً حيّاً لكل دوري، وفشلها لا يُسقط
     // الصفحة: من فتح حسابه ليغيّر كلمة سره لا يُحرم منها لأن
     // استعلام رهانٍ تعثّر.
     championCards(session.userId).catch(() => []),
     followableLeagues(session.userId).catch(() => []),
+    // أندية ما يتابعه — لتغيير الفريق المفضّل من الإعدادات.
+    followedTeams(session.userId).catch(() => []),
   ]);
 
   // الحساب حُذف بينما الجلسة حية (من التطبيق مثلاً).
@@ -935,7 +961,8 @@ async function showAccount(req, res, session, extra = {}) {
 
   res.type('html').send(
     renderer.renderAccount(settings, {
-      user, stats, creds, points, history, champions, leagues, csrf: session.csrf, ...extra,
+      user, stats, creds, points, history, champions, leagues, teams,
+      tab: String(req.query.tab || ''), csrf: session.csrf, ...extra,
     })
   );
 }
