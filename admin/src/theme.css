@@ -7,7 +7,7 @@
  *
  * قواعد الاستعمال الثلاث المنقولة من ملف الهوية:
  *  1. الذهبي (--crown) للتاج والنقاط والرتب فقط — لا للأزرار
- *     العادية ولا كخلفية واسعة. الزر الأساسي أخضر.
+ *     العادية ولا كخلفية واسعة. الزر الأساسي أبيض بنص أسود.
  *  2. الأخضر (--correct) للصح والتأكيد فقط، ولا يتشارك مع الذهبي
  *     في نفس البطاقة.
  *  3. لا لون ثالث داخل العلامة: الحفر بلون السطح الذي تجلس عليه.
@@ -16,17 +16,24 @@
 @import url('/fonts/fonts.css');
 
 :root {
-  /* الألوان */
-  --night: #080f0c;
-  --surface: #101e17;
-  --surface-2: #16281e;
+  /* الألوان — أسود/أبيض حيادي، نفس انتقال هوية التطبيق (2026-08-31).
+   * الذهبي والأخضر بقيا دلاليين: رتب ونقاط، صح وتأكيد. */
+  --night: #0a0a0a;
+  --surface: #161616;
+  --surface-2: #1f1f1f;
   --crown: #f2c14e;
   --correct: #12e07e;
   --wrong: #ff5a4e;
-  --text: #edf4ef;
-  --text-muted: #98b0a3;
-  --text-faint: #5a7265;
-  --on-accent: #0b140f;
+  --text: #f5f5f5;
+  --text-muted: #a1a1a1;
+  --text-faint: #6b6b6b;
+  --on-accent: #0a0a0a;
+
+  /* الزر الأساسي أبيض بنص أسود — أعلى تباين على الأسود. */
+  --btn: #ffffff;
+  --btn-hover: #e6e6e6;
+  --on-btn: #0a0a0a;
+  --focus-ring: rgba(255, 255, 255, 0.14);
 
   --fill: rgba(255, 255, 255, 0.06);
   --fill-strong: rgba(255, 255, 255, 0.14);
@@ -188,11 +195,11 @@ a {
   color: var(--text);
 }
 
-/* التبويب الحالي ذهبي: هذا تمييز حالة لا زر، وهو استعمال
- * تسمح به الهوية (نفس منطق الشرائح المختارة في التطبيق). */
+/* التبويب الحالي أبيض على تعبئة رمادية — تمييز حالة بلا لون
+ * دلالي، على نمط شريط التنقل في التطبيق بعد انتقال الثيم. */
 .nav a.active {
-  background: var(--crown-wash);
-  color: var(--crown);
+  background: var(--fill-strong);
+  color: var(--text);
 }
 
 .nav a svg {
@@ -372,8 +379,8 @@ a {
 }
 
 .chip.active {
-  background: var(--crown);
-  color: var(--on-accent);
+  background: var(--btn);
+  color: var(--on-btn);
 }
 
 .badge {
@@ -433,13 +440,17 @@ button,
   border-radius: var(--r-input);
   border: none;
   cursor: pointer;
-  background: var(--correct);
-  color: var(--on-accent);
-  transition: filter 0.12s, background 0.12s;
+  background: var(--btn);
+  color: var(--on-btn);
+  transition: background 0.12s, transform 0.12s;
 }
 
 button:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--btn-hover);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 button:disabled {
@@ -493,9 +504,11 @@ select {
 
 input:focus,
 select:focus {
-  /* الحد المركَّز أخضر لا ذهبي: التركيز تفاعل عادي، والذهبي محجوز. */
+  /* التركيز تفاعل عادي: حد بلون النص وهالة خفيفة — الألوان
+   * الدلالية محجوزة لمعانيها. */
   outline: none;
-  border-color: var(--correct);
+  border-color: var(--text);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .search {

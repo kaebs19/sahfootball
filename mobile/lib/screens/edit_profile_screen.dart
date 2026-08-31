@@ -241,7 +241,7 @@ class _AvatarPreview extends StatelessWidget {
           if (busy)
             const DecoratedBox(
               decoration: BoxDecoration(
-                color: Color(0x99080F0C),
+                color: Color(0x990A0A0A),
                 shape: BoxShape.circle,
               ),
               child: Center(
@@ -249,7 +249,7 @@ class _AvatarPreview extends StatelessWidget {
                   width: 22,
                   height: 22,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Brand.crown),
+                      strokeWidth: 2, color: Brand.text),
                 ),
               ),
             ),

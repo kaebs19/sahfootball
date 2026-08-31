@@ -12,10 +12,11 @@ class Brand {
   // ---------------------------- الألوان ----------------------------
 
   /// ليل — خلفية التطبيق. الهوية داكنة فقط، فلا يوجد وضع فاتح.
-  static const night = Color(0xFF080F0C);
+  /// أسود حيادي (لا درجة خضراء): الثيم أسود/أبيض احترافي.
+  static const night = Color(0xFF0A0A0A);
 
   /// سطح — البطاقات وكل ما يعلو الخلفية.
-  static const surface = Color(0xFF101E17);
+  static const surface = Color(0xFF161616);
 
   /// التاج — ذهبي الملكية.
   ///
@@ -31,17 +32,22 @@ class Brand {
   /// خطأ.
   static const wrong = Color(0xFFFF5A4E);
 
-  /// النص الأساسي.
-  static const text = Color(0xFFEDF4EF);
+  /// النص الأساسي — أبيض شبه صافٍ.
+  static const text = Color(0xFFF5F5F5);
 
-  /// نص ثانوي (الشروح والتواريخ).
-  static const textMuted = Color(0xFF98B0A3);
+  /// نص ثانوي (الشروح والتواريخ) — رمادي حيادي.
+  static const textMuted = Color(0xFFA1A1A1);
 
   /// نص خافت (التسميات الصغيرة تحت العناصر).
-  static const textFaint = Color(0xFF5A7265);
+  static const textFaint = Color(0xFF6B6B6B);
 
-  /// النص فوق الذهبي أو الأخضر — أغمق من الليل قليلاً ليقرأ نظيفاً.
-  static const onAccent = Color(0xFF0B140F);
+  /// النص فوق الذهبي أو الأخضر أو الزر الأبيض — أسود حيادي.
+  static const onAccent = Color(0xFF0A0A0A);
+
+  /// الزر الأساسي — أبيض بنص أسود. أعلى تباين ممكن على الثيم الأسود،
+  /// وهو النمط الاحترافي المعتمد في التطبيقات الداكنة الحديثة.
+  /// الأخضر يبقى دلالياً (توقع صحيح) والذهبي يبقى للملكية فقط.
+  static const primaryButton = Color(0xFFFFFFFF);
 
   /// حدود البطاقات: أبيض شفاف لا لون مصمت، فيبقى الحد ناعماً فوق
   /// أي سطح ولا يتحول لخط صلب.
@@ -87,7 +93,7 @@ class Brand {
 /// فالتقيد بها أهم من التناسق المولَّد.
 ThemeData buildBrandTheme() {
   const scheme = ColorScheme.dark(
-    primary: Brand.crown,
+    primary: Brand.primaryButton,
     onPrimary: Brand.onAccent,
     secondary: Brand.correct,
     onSecondary: Brand.onAccent,
@@ -145,16 +151,16 @@ ThemeData buildBrandTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        // الحد المركَّز أخضر لا ذهبي: التركيز حالة تفاعل عادية،
-        // والذهبي محجوز للملكية.
-        borderSide: const BorderSide(color: Brand.correct, width: 1.5),
+        // الحد المركَّز أبيض: التركيز حالة تفاعل عادية، والألوان
+        // الدلالية (الأخضر/الذهبي) محجوزة لمعانيها.
+        borderSide: const BorderSide(color: Brand.text, width: 1.5),
       ),
     ),
 
-    // الزر الأساسي أخضر "صح" وليس ذهبياً — تطبيقاً لقاعدة الهوية.
+    // الزر الأساسي أبيض بنص أسود — أعلى تباين على الثيم الأسود.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: Brand.correct,
+        backgroundColor: Brand.primaryButton,
         foregroundColor: Brand.onAccent,
         disabledBackgroundColor: Brand.fillStrong,
         disabledForegroundColor: Brand.textFaint,
@@ -177,7 +183,7 @@ ThemeData buildBrandTheme() {
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Brand.surface,
       surfaceTintColor: Colors.transparent,
-      indicatorColor: Brand.crownWash(0.14),
+      indicatorColor: Brand.fillStrong,
       height: 68,
       labelTextStyle: WidgetStateProperty.resolveWith(
         (states) => TextStyle(
@@ -185,7 +191,7 @@ ThemeData buildBrandTheme() {
           fontSize: 11.5,
           fontWeight: FontWeight.w600,
           color: states.contains(WidgetState.selected)
-              ? Brand.crown
+              ? Brand.text
               : Brand.textMuted,
         ),
       ),
@@ -193,7 +199,7 @@ ThemeData buildBrandTheme() {
         (states) => IconThemeData(
           size: 22,
           color: states.contains(WidgetState.selected)
-              ? Brand.crown
+              ? Brand.text
               : Brand.textMuted,
         ),
       ),
@@ -228,7 +234,7 @@ ThemeData buildBrandTheme() {
     ),
 
     progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: Brand.crown,
+      color: Brand.text,
     ),
 
     textTheme: const TextTheme(

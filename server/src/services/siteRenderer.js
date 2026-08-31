@@ -54,7 +54,7 @@ function safeMailto(email) {
 // `carve` لون الحفر ويجب أن يساوي لون السطح خلف الدرع — لا لون
 // ثالث داخل العلامة أبداً. و`full` يحمل قاعدة "تحت 64 بكسل تُحذف
 // الدرجات": الشرط في مكان واحد فلا يُنسى في استدعاء.
-function brandMark(size = 28, carve = '#101e17') {
+function brandMark(size = 28, carve = '#161616') {
   const full = size >= 64;
   const steps = full
     ? `<g fill="${carve}">
@@ -159,7 +159,7 @@ function layout({ title, description, body, settings, active, canonicalPath }) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(fullTitle)}</title>
 <meta name="description" content="${esc(description || settings?.description || '')}">
-<meta name="theme-color" content="${settings?.theme === 'light' ? '#f6f8f7' : '#080f0c'}">
+<meta name="theme-color" content="${settings?.theme === 'light' ? '#f7f7f7' : '#0a0a0a'}">
 <meta property="og:title" content="${esc(fullTitle)}">
 <meta property="og:description" content="${esc(description || settings?.description || '')}">
 <meta property="og:type" content="website">
@@ -176,7 +176,7 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
 
 <header class="topbar">
   <div class="wrap">
-    <a class="brand" href="/">${brandMark(28, '#080f0c')}<span>${esc(siteName)}</span></a>
+    <a class="brand" href="/">${brandMark(28, settings?.theme === 'light' ? '#f7f7f7' : '#0a0a0a')}<span>${esc(siteName)}</span></a>
 
     <nav class="topnav">
       ${NAV.map((n) =>
@@ -209,7 +209,7 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
   <div class="wrap">
     <div class="footer-top">
       <div class="about">
-        <a class="brand" href="/">${brandMark(26, '#080f0c')}<span>${esc(siteName)}</span></a>
+        <a class="brand" href="/">${brandMark(26, settings?.theme === 'light' ? '#f7f7f7' : '#0a0a0a')}<span>${esc(siteName)}</span></a>
         <p>${esc(settings?.description || settings?.tagline || '')}</p>
         ${socialLinks(settings)}
       </div>
