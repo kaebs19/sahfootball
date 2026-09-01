@@ -109,13 +109,29 @@ async function exchangeCode(code) {
 }
 
 /**
+ * جماهير (aud) التوكنات التي نقبلها من التطبيق.
+ *
+ * لجوجل أكثر من عميل عندنا لا واحد: عميل الويب (هو نفسه serverClientId
+ * في التطبيق، وأندرويد يُصدر التوكن باسمه)، وعميل iOS الذي تُصدر
+ * مكتبة GIDSignIn توكنها باسمه أحياناً. كلها عملاؤنا في نفس مشروع
+ * Google Cloud، وتوثيق جوجل نفسه يقول: تحقق أن aud أحد معرّفات
+ * عملاء تطبيقك — لا معرّف واحد بعينه.
+ */
+function appAudiences() {
+  return [clientId(), process.env.GOOGLE_IOS_CLIENT_ID].filter(Boolean);
+}
+
+/**
  * التحقق من id_token.
  *
  * نتحقق رغم أن التوكن وصلنا من خادم جوجل مباشرة عبر TLS: الفحص
  * رخيص، وaudience تحديداً حاسم — بدونه أي توكن جوجل صالح من أي
  * تطبيق آخر يفتح حساباتنا.
+ *
+ * audience قابل للتمرير لنفس سبب appleAuth: رحلة الويب توكنها
+ * باسم عميل الويب حصراً، ورحلة التطبيق تقبل قائمة عملائنا.
  */
-async function verifyIdToken(idToken) {
+async function verifyIdToken(idToken, { audience } = {}) {
   const decoded = jwt.decode(idToken, { complete: true });
   if (!decoded?.header?.kid) throw invalid('id_token غير قابل للفك');
 
@@ -126,7 +142,7 @@ async function verifyIdToken(idToken) {
     payload = jwt.verify(idToken, key.getPublicKey(), {
       algorithms: ['RS256'], // مثبّتة صراحة — قبول غيرها ثغرة معروفة
       issuer: ISSUERS,
-      audience: clientId(),
+      audience: audience || clientId(),
     });
   } catch (err) {
     throw invalid('فشل التحقق من توكن جوجل');
@@ -150,4 +166,7 @@ function invalid(message) {
   return err;
 }
 
-module.exports = { isConfigured, authUrl, newState, exchangeCode, redirectUri };
+module.exports = {
+  isConfigured, authUrl, newState, exchangeCode, redirectUri,
+  verifyIdToken, appAudiences,
+};

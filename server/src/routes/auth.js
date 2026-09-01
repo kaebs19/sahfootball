@@ -43,6 +43,15 @@ router.post('/apple', async (req, res) => {
   res.json(result);
 });
 
+// POST /api/auth/google — { idToken }
+// idToken من مكتبة google_sign_in في التطبيق (أندرويد وiOS).
+// رحلة الويب لها مسار آخر (/auth/google في site) — هذا باب التطبيق.
+router.post('/google', async (req, res) => {
+  const { idToken } = req.body || {};
+  const result = await authService.loginWithGoogleIdToken({ idToken });
+  res.json(result);
+});
+
 // POST /api/auth/refresh — { refreshToken }
 router.post('/refresh', async (req, res) => {
   const result = await authService.refresh(req.body?.refreshToken);

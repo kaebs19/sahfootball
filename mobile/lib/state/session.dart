@@ -86,6 +86,41 @@ class Session extends ChangeNotifier {
     _push.enable();
   }
 
+  /// الدخول بهوية Apple — نفس مسار login تماماً بعد أن يتسلم
+  /// التوكن من الطبقة الأصلية (SocialAuth). الحساب الجديد يُنشأ في
+  /// السيرفر ضمن نفس الطلب، فلا فرق هنا بين دخول وتسجيل.
+  Future<void> loginWithApple({
+    required String identityToken,
+    String? displayName,
+  }) async {
+    _user = await api.loginWithApple(
+        identityToken: identityToken, displayName: displayName);
+    _endedReason = null;
+    _setStatus(SessionStatus.loggedIn);
+    _push.enable();
+  }
+
+  Future<void> loginWithGoogle(String idToken) async {
+    _user = await api.loginWithGoogle(idToken: idToken);
+    _endedReason = null;
+    _setStatus(SessionStatus.loggedIn);
+    _push.enable();
+  }
+
+  /// إتمام استعادة كلمة المرور. السيرفر يرد بجلسة كاملة (المستخدم
+  /// أثبت ملكية بريده للتو) — فهي دخول ناجح بكل آثاره.
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    _user = await api.resetPassword(
+        email: email, code: code, newPassword: newPassword);
+    _endedReason = null;
+    _setStatus(SessionStatus.loggedIn);
+    _push.enable();
+  }
+
   Future<void> register(String email, String password,
       {String? displayName}) async {
     _user =

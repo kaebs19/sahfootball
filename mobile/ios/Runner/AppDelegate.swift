@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Flutter
 import UIKit
 import UserNotifications
@@ -22,6 +23,12 @@ import UserNotifications
   /// إلا في الإقلاع التالي — أي مستخدم بلا إشعارات ليوم كامل بلا
   /// أي خطأ ظاهر.
   private var pendingToken: String?
+
+  /// منسّق تفويض Apple الجاري — يُحتفظ به لأن ASAuthorizationController
+  /// لا يمسك مندوبه إلا بمرجع ضعيف: بلا هذا المتغير يتحرر المنسّق
+  /// فور خروج الدالة وتُغلق النافذة بلا رد، ويعلق Future في Dart
+  /// إلى الأبد.
+  private var appleSignIn: AppleSignInCoordinator?
 
   /// ضغطة على إشعار وصلت قبل أن يصبح Dart جاهزاً.
   ///
@@ -65,6 +72,38 @@ import UserNotifications
         result(FlutterMethodNotImplemented)
       }
     }
+
+    // قناة الدخول بحساب Apple. كود أصلي بلا حزمة لنفس منطق قناة
+    // الإشعارات أعلاه: ما نحتاجه من AuthenticationServices طلبٌ
+    // واحد وتسليم توكن — حزمة كاملة مقابل هذا ثمن بلا مقابل.
+    let appleChannel = FlutterMethodChannel(
+      name: "sahfootball/apple_signin",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    appleChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      switch call.method {
+      case "signIn":
+        self?.startAppleSignIn(result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func startAppleSignIn(result: @escaping FlutterResult) {
+    let coordinator = AppleSignInCoordinator { [weak self] payload, error in
+      // تحرير المنسّق قبل الرد: الرد قد يفتح رحلة جديدة فوراً.
+      self?.appleSignIn = nil
+      if let error = error {
+        result(error)
+      } else {
+        // payload قد يكون nil = إلغاء من المستخدم، وDart يفهم null
+        // على أنه إلغاء صامت لا خطأ.
+        result(payload)
+      }
+    }
+    appleSignIn = coordinator
+    coordinator.start()
   }
 
   /// يطلب الإذن ثم يسجّل عند القبول. يرجع لـ Dart هل مُنح الإذن.
@@ -169,5 +208,87 @@ import UserNotifications
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     completionHandler([.banner, .sound, .badge])
+  }
+}
+
+/// رحلة تفويض Apple واحدة من البداية للنهاية.
+///
+/// صنف مستقل لا امتداد على AppDelegate: المندوب يعيش بعمر الرحلة
+/// لا بعمر التطبيق، وحصر الحالة كلها في كائن يُنشأ ويُرمى يمنع
+/// تسرب رد قديم إلى رحلة جديدة.
+private class AppleSignInCoordinator: NSObject,
+  ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+
+  /// (الحمولة، الخطأ): حمولة بلا خطأ = نجاح، لا حمولة ولا خطأ =
+  /// إلغاء من المستخدم، خطأ = فشل حقيقي يستحق رسالة.
+  private let completion: ([String: Any]?, FlutterError?) -> Void
+
+  init(completion: @escaping ([String: Any]?, FlutterError?) -> Void) {
+    self.completion = completion
+  }
+
+  func start() {
+    let request = ASAuthorizationAppleIDProvider().createRequest()
+    // fullName يصل في أول تفويض فقط في عمر الحساب عند Apple —
+    // بعدها تعيد التوكن بلا اسم أبداً، والسيرفر يعرف ذلك ويخزنه
+    // من الطلب الأول.
+    request.requestedScopes = [.fullName, .email]
+
+    let controller = ASAuthorizationController(authorizationRequests: [request])
+    controller.delegate = self
+    controller.presentationContextProvider = self
+    controller.performRequests()
+  }
+
+  func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+    // النافذة المفتاحية عبر المشاهد — التطبيق يستخدم SceneDelegate
+    // فلا توجد UIApplication.keyWindow مباشرة.
+    for scene in UIApplication.shared.connectedScenes {
+      if let windowScene = scene as? UIWindowScene,
+         let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first {
+        return window
+      }
+    }
+    return ASPresentationAnchor()
+  }
+
+  func authorizationController(
+    controller: ASAuthorizationController,
+    didCompleteWithAuthorization authorization: ASAuthorization
+  ) {
+    guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+          let tokenData = credential.identityToken,
+          let token = String(data: tokenData, encoding: .utf8) else {
+      completion(nil, FlutterError(
+        code: "apple_signin",
+        message: "رد Apple بلا identityToken",
+        details: nil))
+      return
+    }
+
+    var payload: [String: Any] = ["identityToken": token]
+    if let components = credential.fullName {
+      let name = PersonNameComponentsFormatter().string(from: components)
+        .trimmingCharacters(in: .whitespaces)
+      if !name.isEmpty { payload["displayName"] = name }
+    }
+    completion(payload, nil)
+  }
+
+  func authorizationController(
+    controller: ASAuthorizationController,
+    didCompleteWithError error: Error
+  ) {
+    // الإلغاء فعل مقصود لا عطل — يُرد بـ nil فيصمت Dart. غيره
+    // (لا شبكة، جهاز بلا Apple ID) خطأ يستحق رسالة.
+    if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+      completion(nil, nil)
+      return
+    }
+    NSLog("[apple-signin] فشل التفويض: \(error.localizedDescription)")
+    completion(nil, FlutterError(
+      code: "apple_signin",
+      message: error.localizedDescription,
+      details: nil))
   }
 }

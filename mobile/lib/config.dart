@@ -16,6 +16,27 @@ class AppConfig {
     defaultValue: 'http://localhost:3000',
   );
 
+  // ── الدخول بحساب جوجل ──────────────────────────────────────────
+  //
+  // معرّفات عملاء OAuth من Google Cloud Console — معرّفات عامة
+  // (تظهر في روابط OAuth لكل مستخدم) لا أسرار، فوضعها هنا آمن.
+  //
+  // إن بقيت فارغة اختفى زر جوجل من الشاشات ولم ينكسر شيء — نفس
+  // فلسفة الموقع (googleAuth.isConfigured يخفي الزر هناك).
+  //
+  // serverClientId: عميل "Web application" نفسه المستعمل في السيرفر
+  // (GOOGLE_CLIENT_ID) — به يُصدر أندرويد توكنه، وبه يتحقق السيرفر.
+  // iosClientId: عميل من نوع iOS لحزمة com.sahfootball.app —
+  // يُنشأ مرة واحدة من Console ويُلصق هنا وفي Info.plist (CFBundleURLTypes).
+  static const googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
+  static const googleIosClientId = String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '',
+  );
+
   /// روابط الصور (الشعارات من المزود مطلقة، والأفاتار عندنا نسبية مثل
   /// "/uploads/x.png") — هذه تكمّل النسبية بعنوان السيرفر.
   static String absoluteUrl(String url) {

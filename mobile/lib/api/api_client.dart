@@ -243,6 +243,79 @@ class ApiClient {
     }
   }
 
+  /// الدخول بهوية Apple. displayName يُرسل فقط حين تعطيه Apple —
+  /// وهي تعطيه لأول تفويض في عمر الحساب ثم لا تكرره أبداً، فضياعه
+  /// هنا ضياع نهائي (السيرفر يخزنه من هذا الطلب الأول).
+  Future<User> loginWithApple({
+    required String identityToken,
+    String? displayName,
+  }) async {
+    try {
+      final res = await _dio.post('/api/auth/apple', data: {
+        'identityToken': identityToken,
+        if (displayName != null && displayName.isNotEmpty)
+          'displayName': displayName,
+      });
+      await tokens.save(
+        access: res.data['accessToken'] as String,
+        refresh: res.data['refreshToken'] as String,
+      );
+      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// الدخول بحساب جوجل — idToken من مكتبة google_sign_in.
+  /// التحقق كله في السيرفر (توقيع جوجل + الجمهور)؛ التطبيق مجرد ساعٍ.
+  Future<User> loginWithGoogle({required String idToken}) async {
+    try {
+      final res =
+          await _dio.post('/api/auth/google', data: {'idToken': idToken});
+      await tokens.save(
+        access: res.data['accessToken'] as String,
+        refresh: res.data['refreshToken'] as String,
+      );
+      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// استعادة كلمة المرور — الخطوة 1: يرسل السيرفر رمزاً من 6 أرقام
+  /// للبريد. الرد واحد وُجد البريد أم لا (حماية من اكتشاف البريدات).
+  Future<void> forgotPassword(String email) async {
+    try {
+      await _dio.post('/api/auth/forgot-password', data: {'email': email});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// استعادة كلمة المرور — الخطوة 2: الرمز + الكلمة الجديدة.
+  /// السيرفر يسجّل الدخول مباشرة (أثبت ملكية البريد للتو) فنحفظ
+  /// التوكنات كأي دخول ناجح.
+  Future<User> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      final res = await _dio.post('/api/auth/reset-password', data: {
+        'email': email,
+        'code': code,
+        'newPassword': newPassword,
+      });
+      await tokens.save(
+        access: res.data['accessToken'] as String,
+        refresh: res.data['refreshToken'] as String,
+      );
+      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
   Future<User> me() async {
     try {
       final res = await _dio.get('/api/auth/me');

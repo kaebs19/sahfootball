@@ -324,6 +324,23 @@ async function loginWithGoogle(profile) {
   return { user, ...tokens };
 }
 
+/**
+ * باب التطبيق إلى الدخول بجوجل: توكن خام من google_sign_in.
+ *
+ * فُصل عن loginWithGoogle لنفس سبب فصل loginWithApple عن
+ * loginWithAppleProfile: للموقع رحلة OAuth كاملة تصل بهوية مُثبتة،
+ * والتطبيق يرسل idToken خاماً نتحقق منه هنا — ومنطق الربط الثلاثي
+ * الحالات يبقى نسخة واحدة في loginWithGoogle.
+ */
+async function loginWithGoogleIdToken({ idToken }) {
+  if (!idToken) throw new AuthError(400, 'idToken مطلوب');
+
+  const profile = await googleAuth.verifyIdToken(idToken, {
+    audience: googleAuth.appAudiences(),
+  });
+  return loginWithGoogle(profile);
+}
+
 async function loginWithApple({ identityToken, displayName }) {
   if (!identityToken) throw new AuthError(400, 'identityToken مطلوب');
 
@@ -545,7 +562,8 @@ async function credentials(userId) {
 }
 
 module.exports = {
-  register, login, loginWithApple, loginWithAppleProfile, loginWithGoogle, refresh, logout,
+  register, login, loginWithApple, loginWithAppleProfile, loginWithGoogle,
+  loginWithGoogleIdToken, refresh, logout,
   credentials,
   changePassword, changeEmail, forgotPassword, resetPassword,
   deleteAccount,

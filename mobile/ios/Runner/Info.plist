@@ -66,6 +66,20 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- الدخول بحساب جوجل على iOS: عند إنشاء عميل OAuth من نوع iOS
+	     في Google Cloud Console، أزل التعليق وضع المعرّف المعكوس
+	     (com.googleusercontent.apps.xxxx) — به تعود رحلة جوجل إلى
+	     التطبيق. المعرّف نفسه (غير المعكوس) يوضع في lib/config.dart.
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.REPLACE_ME</string>
+			</array>
+		</dict>
+	</array>
+	-->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>نحتاج الوصول لصورك كي تختار صورة ملفك الشخصي. لا نقرأ غير الصورة التي تختارها.</string>
 </dict>

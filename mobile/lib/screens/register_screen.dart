@@ -4,12 +4,20 @@
 // تحقق العميل للتجربة (رسالة فورية بلا رحلة شبكة)، وتحقق السيرفر
 // للأمان (الحقيقة النهائية). الاثنان معاً دائماً، ولا يغني أحدهما
 // عن الآخر.
+//
+// حقل إعادة كلمة المرور من نفس المنطق: السيرفر لا يستطيع أن يعرف
+// أن المستخدم أخطأ في الكتابة — الحرف الزائد يمر التحقق ويقفل
+// الحساب على كلمة لا يعرفها صاحبه. التأكيد يصطاد الخطأ في مكانه
+// الوحيد الممكن: قبل الإرسال.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInput;
 import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../brand.dart';
 import '../state/session.dart';
+import '../widgets/password_field.dart';
+import '../widgets/social_auth_buttons.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -23,6 +31,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _confirm = TextEditingController();
   bool _busy = false;
   String? _error;
 
@@ -31,6 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _name.dispose();
     _email.dispose();
     _password.dispose();
+    _confirm.dispose();
     super.dispose();
   }
 
@@ -46,6 +56,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _password.text,
             displayName: _name.text.trim(),
           );
+      // النظام يعرض حفظ كلمة المرور الجديدة في الـ Keychain —
+      // أثمن ما يكون لحساب أُنشئ للتو بكلمة لن يتذكرها أحد غداً.
+      TextInput.finishAutofillContext();
       // نجاح التسجيل يبدل الجذر للرئيسية، لكن هذه الشاشة مدفوعة فوق
       // شاشة الدخول بـ push فنزيلها يدوياً.
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
@@ -66,71 +79,96 @@ class _RegisterScreenState extends State<RegisterScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 24),
             child: Form(
               key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'ابدأ من رتبة مشجّع، واصعد حتى العرش.',
-                    style: TextStyle(color: Brand.textMuted, fontSize: 14),
-                  ),
-                  const SizedBox(height: 26),
-                  TextFormField(
-                    controller: _name,
-                    decoration:
-                        const InputDecoration(labelText: 'الاسم المعروض'),
-                    textInputAction: TextInputAction.next,
-                    style: const TextStyle(color: Brand.text),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _email,
-                    decoration:
-                        const InputDecoration(labelText: 'البريد الإلكتروني'),
-                    keyboardType: TextInputType.emailAddress,
-                    textDirection: TextDirection.ltr,
-                    textInputAction: TextInputAction.next,
-                    style: const TextStyle(color: Brand.text),
-                    validator: (v) => (v == null || !v.contains('@'))
-                        ? 'أدخل بريداً صحيحاً'
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _password,
-                    decoration: const InputDecoration(
-                      labelText: 'كلمة المرور',
-                      helperText: '8 أحرف على الأقل',
-                      helperStyle: TextStyle(color: Brand.textFaint),
+              child: AutofillGroup(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'ابدأ من رتبة مشجّع، واصعد حتى العرش.',
+                      style: TextStyle(color: Brand.textMuted, fontSize: 14),
                     ),
-                    obscureText: true,
-                    style: const TextStyle(color: Brand.text),
-                    validator: (v) => (v == null || v.length < 8)
-                        ? 'كلمة المرور 8 أحرف على الأقل'
-                        : null,
-                    onFieldSubmitted: (_) => _submit(),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Brand.wrong, fontSize: 13),
+                    const SizedBox(height: 26),
+                    TextFormField(
+                      controller: _name,
+                      decoration:
+                          const InputDecoration(labelText: 'الاسم المعروض'),
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.name],
+                      style: const TextStyle(color: Brand.text),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _email,
+                      decoration:
+                          const InputDecoration(labelText: 'البريد الإلكتروني'),
+                      keyboardType: TextInputType.emailAddress,
+                      textDirection: TextDirection.ltr,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.email],
+                      style: const TextStyle(color: Brand.text),
+                      validator: (v) => (v == null || !v.contains('@'))
+                          ? 'أدخل بريداً صحيحاً'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    PasswordField(
+                      controller: _password,
+                      label: 'كلمة المرور',
+                      helperText: '8 أحرف على الأقل',
+                      // newPassword لا password: بها يقترح iOS كلمة
+                      // قوية بدل أن يعرض كلمة محفوظة لحساب آخر.
+                      autofillHints: const [AutofillHints.newPassword],
+                      textInputAction: TextInputAction.next,
+                      validator: (v) => (v == null || v.length < 8)
+                          ? 'كلمة المرور 8 أحرف على الأقل'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    PasswordField(
+                      controller: _confirm,
+                      label: 'إعادة كلمة المرور',
+                      autofillHints: const [AutofillHints.newPassword],
+                      textInputAction: TextInputAction.done,
+                      validator: (v) => (v != _password.text)
+                          ? 'كلمتا المرور غير متطابقتين'
+                          : null,
+                      onFieldSubmitted: (_) => _submit(),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style:
+                            const TextStyle(color: Brand.wrong, fontSize: 13),
+                      ),
+                    ],
+                    const SizedBox(height: 22),
+                    FilledButton(
+                      onPressed: _busy ? null : _submit,
+                      child: _busy
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Brand.onAccent),
+                            )
+                          : const Text('إنشاء الحساب'),
+                    ),
+                    const SizedBox(height: 22),
+                    // نفس أزرار الدخول: المزوّد ينشئ الحساب إن لم
+                    // يوجد، فلا فرق بين "دخول" و"تسجيل" عبره. الشاشة
+                    // مدفوعة فوق الجذر، فالنجاح يحتاج popUntil وإلا
+                    // بقيت فوق الرئيسية (فخ موثّق في main).
+                    SocialAuthButtons(
+                      enabled: !_busy,
+                      onError: (m) => setState(() => _error = m),
+                      onSuccess: () =>
+                          Navigator.of(context).popUntil((r) => r.isFirst),
                     ),
                   ],
-                  const SizedBox(height: 22),
-                  FilledButton(
-                    onPressed: _busy ? null : _submit,
-                    child: _busy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Brand.onAccent),
-                          )
-                        : const Text('إنشاء الحساب'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
