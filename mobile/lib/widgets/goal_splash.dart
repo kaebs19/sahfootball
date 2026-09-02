@@ -176,7 +176,9 @@ class _GoalSplashState extends State<GoalSplash>
   /// أن تُحمَّل على الأنميشن كله بلا أثر يُرى.
   Widget _scene(double t) {
     final scene = RepaintBoundary(
-      child: CustomPaint(painter: _ScenePainter(t: t, confetti: _confetti)),
+      child: CustomPaint(
+        painter: _ScenePainter(t: t, confetti: _confetti),
+      ),
     );
     final sigma = 7 * _seg(t, _tSettle, _tEnd);
     if (sigma < 0.1) return scene;
@@ -275,13 +277,139 @@ class _GoalSplashState extends State<GoalSplash>
   }
 }
 
+/// خلفية شاشة الدخول — الإطار الأخير من الافتتاح، مجمّداً.
+///
+/// هذه هي النسخة الأولى في المواصفة: «تشتغل مرة واحدة وتثبت على
+/// شاشة تسجيل الدخول». الافتتاح يتلاشى خلال نصف ثانية إلى هذه
+/// الصورة — كلاهما مشهد داكن مشوّش، فيُقرأ الانتقال هدوءاً بعد
+/// الحركة. وليس تطابقاً بالإطار: الخلفية أوسع تأطيراً وبلا لاعبين،
+/// لأن ما يخدم لقطةَ هدفٍ لا يخدم خلفيةَ نموذجٍ يُقرأ ويُكتب فيه.
+///
+/// ولماذا لا تتكرر الحركة خلف النموذج (النسخة الثانية في المواصفة)؟
+/// لأن الشاشة تحمل تسعة عناصر تفاعلية، وفي الحركة وميض أبيض ملء
+/// الشاشة عند الهدف يقع كل بضع ثوانٍ بينما المستخدم يكتب كلمة مروره؛
+/// ولأن نهاية الأنميشن هي بعينها ترويسة هذه الشاشة (درع + اسم +
+/// شعار) فيتكرر الدرع مرتين. الهدوء هنا قرار لا كسل.
+///
+/// **الكلفة**: المشهد يُرسم ويُشوَّش مرة واحدة داخل RepaintBoundary،
+/// والحياة الوحيدة فيه زحف Ken Burns يُطبَّق كتحويل فوق تلك الطبقة
+/// المخزّنة — فلا إعادة رسم ولا إعادة تشويش في كل إطار. ومن فعّل
+/// تقليل الحركة يحصل على صورة ساكنة تماماً.
+class GoalBackdrop extends StatefulWidget {
+  const GoalBackdrop({super.key});
+
+  @override
+  State<GoalBackdrop> createState() => _GoalBackdropState();
+}
+
+class _GoalBackdropState extends State<GoalBackdrop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _drift = AnimationController(
+    vsync: this,
+    // بطيء عمداً: الزحف الذي يُلاحَظ يزعج، والذي يُحسّ ولا يُلاحَظ
+    // هو ما يجعل الشاشة تبدو حيّة.
+    duration: const Duration(seconds: 28),
+  );
+
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
+    _drift.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _drift.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // t = _tEnd يعطي المشهد المستقرّ وحده: الكرة واللمعان والرشّ
+    // والكونفيتي كلها مشروطة بزمنها وقد انتهت، فيبقى الملعب والمرمى
+    // والشبكة والجمهور. لا حاجة لعَلَم "خلفية" — المحور الزمني نفسه
+    // يحذف العابر.
+    // ImageFilter.blur ليست const، فالمشهد يُبنى هنا لا كثابت —
+    // ولا فرق في الكلفة: AnimatedBuilder يستلمه عبر child فلا
+    // يُعاد بناؤه مع كل إطار من الزحف.
+    final scene = ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+      child: const RepaintBoundary(
+        child: CustomPaint(
+          painter: _ScenePainter(
+            t: _tEnd,
+            confetti: [],
+            actors: false,
+            camera: (scale: 1.05, focus: Offset(430, 1180)),
+            vignetteExtra: 0.05,
+          ),
+          isComplex: true,
+          willChange: false,
+        ),
+      ),
+    );
+
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          AnimatedBuilder(
+            animation: _drift,
+            builder: (context, child) {
+              final p = Curves.easeInOut.transform(_drift.value);
+              return Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..scaleByDouble(1.04 + 0.07 * p, 1.04 + 0.07 * p, 1, 1)
+                  ..translateByDouble(-10.0 * p, 16.0 * p, 0, 1),
+                child: child,
+              );
+            },
+            child: scene,
+          ),
+          // تدرّج القراءة: الحقول والأزرار مصمتة أصلاً، لكن العنوان
+          // والشعار و«تذكرني» والروابط نصوص عارية — وهذا ما يضمن
+          // تباينها على أي جزء من الصورة.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x5E0A0A0A),
+                  Color(0x990A0A0A),
+                  Color(0xD60A0A0A),
+                ],
+                stops: [0.0, 0.55, 1.0],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─────────────────────────── الرسم ───────────────────────────
 
 class _Confetti {
   final double x, delay, vy, sway, size, rot, spin;
   final Color color;
-  const _Confetti(this.x, this.delay, this.vy, this.sway, this.size, this.rot,
-      this.spin, this.color);
+  const _Confetti(
+    this.x,
+    this.delay,
+    this.vy,
+    this.sway,
+    this.size,
+    this.rot,
+    this.spin,
+    this.color,
+  );
 }
 
 List<_Confetti> _makeConfetti() {
@@ -307,7 +435,31 @@ class _ScenePainter extends CustomPainter {
   final double t;
   final List<_Confetti> confetti;
 
-  _ScenePainter({required this.t, required this.confetti});
+  /// هل يُرسم اللاعبون؟ الخلفية الساكنة تطفئهم: الحارس الملقى في
+  /// الشبكة يصلح لقطةَ هدفٍ لا خلفيةَ شاشة دخول، ومشوّشاً يصير
+  /// كتلة داكنة لا تُفهم. المرمى الخالي أنظف وأقرب لما تفعله
+  /// تطبيقات الرياضة المعروفة.
+  final bool actors;
+
+  /// تأطير ثابت يتجاوز الكاميرا المشتقّة من الزمن.
+  ///
+  /// كاميرا المحور الزمني كلها لقطات حركة قريبة (تصل 1.32 عند
+  /// الهدف)، وأيّ منها كخلفية ساكنة يُظهر قائماً وطرف شبكة فيُقرأ
+  /// خطوطاً لا ملعباً. الخلفية تحتاج لقطة تأسيسية أوسع.
+  final ({double scale, Offset focus})? camera;
+
+  /// تجاوز شدّة تعتيم الأطراف. المشتقّة من الزمن (0.42 عند النهاية)
+  /// مضبوطة ليُقرأ اسم العلامة فوقها في الافتتاح؛ والخلفية الساكنة
+  /// تريد أن تُرى فتمرّر قيمة أخفّ.
+  final double? vignetteExtra;
+
+  const _ScenePainter({
+    required this.t,
+    required this.confetti,
+    this.actors = true,
+    this.camera,
+    this.vignetteExtra,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -330,8 +482,10 @@ class _ScenePainter extends CustomPainter {
     _drawSky(canvas);
     _drawPitch(canvas);
     _drawGoal(canvas);
-    _drawKeeper(canvas);
-    _drawStriker(canvas);
+    if (actors) {
+      _drawKeeper(canvas);
+      _drawStriker(canvas);
+    }
     _drawBall(canvas);
     _drawImpact(canvas);
     _drawConfetti(canvas);
@@ -347,6 +501,15 @@ class _ScenePainter extends CustomPainter {
   void _applyCamera(Canvas canvas) {
     double scale;
     Offset focus;
+
+    final fixed = camera;
+    if (fixed != null) {
+      canvas.save();
+      canvas.translate(_stageW / 2, _stageH / 2);
+      canvas.scale(fixed.scale);
+      canvas.translate(-fixed.focus.dx, -fixed.focus.dy);
+      return;
+    }
 
     if (t < _tShot) {
       final p = Curves.easeInOut.transform(_seg(t, 0, _tShot));
@@ -444,7 +607,10 @@ class _ScenePainter extends CustomPainter {
     // قوس منطقة الجزاء أمام المرمى.
     canvas.drawArc(
       Rect.fromCenter(
-          center: const Offset(150, _ground + 120), width: 700, height: 300),
+        center: const Offset(150, _ground + 120),
+        width: 700,
+        height: 300,
+      ),
       -math.pi * 0.42,
       math.pi * 0.84,
       false,
@@ -520,12 +686,21 @@ class _ScenePainter extends CustomPainter {
       ..strokeWidth = 13
       ..strokeCap = StrokeCap.round;
 
-    canvas.drawLine(Offset(_goalMouth.left, _goalMouth.bottom),
-        Offset(_goalMouth.left, _goalMouth.top), post);
-    canvas.drawLine(Offset(_goalMouth.right, _goalMouth.bottom),
-        Offset(_goalMouth.right, _goalMouth.top), post);
-    canvas.drawLine(Offset(_goalMouth.left, _goalMouth.top),
-        Offset(_goalMouth.right, _goalMouth.top), post);
+    canvas.drawLine(
+      Offset(_goalMouth.left, _goalMouth.bottom),
+      Offset(_goalMouth.left, _goalMouth.top),
+      post,
+    );
+    canvas.drawLine(
+      Offset(_goalMouth.right, _goalMouth.bottom),
+      Offset(_goalMouth.right, _goalMouth.top),
+      post,
+    );
+    canvas.drawLine(
+      Offset(_goalMouth.left, _goalMouth.top),
+      Offset(_goalMouth.right, _goalMouth.top),
+      post,
+    );
   }
 
   /// موضع الكرة على المحور الزمني.
@@ -571,10 +746,16 @@ class _ScenePainter extends CustomPainter {
       );
     }
 
-    canvas.drawCircle(pos, _ballR * 2.4,
-        Paint()..color = Brand.crownWash(0.06 * fade));
     canvas.drawCircle(
-        pos, _ballR, Paint()..color = Brand.text.withValues(alpha: fade));
+      pos,
+      _ballR * 2.4,
+      Paint()..color = Brand.crownWash(0.06 * fade),
+    );
+    canvas.drawCircle(
+      pos,
+      _ballR,
+      Paint()..color = Brand.text.withValues(alpha: fade),
+    );
 
     // نقش كرة القدم: خماسي في الوسط وخمس درزات تخرج من رؤوسه.
     // (رقعتان دائريتان — أول محاولة — جعلتا الكرة تُقرأ كرةَ بولينج
@@ -598,8 +779,11 @@ class _ScenePainter extends CustomPainter {
     for (var i = 0; i < 5; i++) {
       final a = spin + i * math.pi * 2 / 5 - math.pi / 2;
       final dir = Offset(math.cos(a), math.sin(a));
-      canvas.drawLine(pos + dir * (_ballR * 0.36), pos + dir * (_ballR * 0.92),
-          seam);
+      canvas.drawLine(
+        pos + dir * (_ballR * 0.36),
+        pos + dir * (_ballR * 0.92),
+        seam,
+      );
     }
   }
 
@@ -634,18 +818,25 @@ class _ScenePainter extends CustomPainter {
     final head = shoulder + Offset(-8 - 18 * lean, -46);
     canvas.drawCircle(head, 30, Paint()..color = const Color(0xFF33352F));
     canvas.drawCircle(
-        head,
-        30,
-        Paint()
-          ..color = Brand.crown.withValues(alpha: 0.50)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 4);
+      head,
+      30,
+      Paint()
+        ..color = Brand.crown.withValues(alpha: 0.50)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4,
+    );
 
     // الذراعان للاتزان
-    canvas.drawLine(shoulder, shoulder + Offset(74 * swing.abs() + 30, -46),
-        body..strokeWidth = 20);
-    canvas.drawLine(shoulder, shoulder + Offset(-64, 26 - 40 * swing.abs()),
-        body..strokeWidth = 20);
+    canvas.drawLine(
+      shoulder,
+      shoulder + Offset(74 * swing.abs() + 30, -46),
+      body..strokeWidth = 20,
+    );
+    canvas.drawLine(
+      shoulder,
+      shoulder + Offset(-64, 26 - 40 * swing.abs()),
+      body..strokeWidth = 20,
+    );
 
     // الساق الثابتة
     body.strokeWidth = 30;
@@ -694,10 +885,17 @@ class _ScenePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     canvas.drawLine(const Offset(0, 60), const Offset(0, -50), body);
-    canvas.drawCircle(const Offset(0, -84), 26, Paint()..color = const Color(0xFF2A2C27));
+    canvas.drawCircle(
+      const Offset(0, -84),
+      26,
+      Paint()..color = const Color(0xFF2A2C27),
+    );
     // ذراعان ممدودتان نحو الكرة
-    canvas.drawLine(const Offset(0, -46), Offset(-52 - 26 * dive, -108),
-        body..strokeWidth = 19);
+    canvas.drawLine(
+      const Offset(0, -46),
+      Offset(-52 - 26 * dive, -108),
+      body..strokeWidth = 19,
+    );
     canvas.drawLine(const Offset(0, -40), Offset(-34, -84), body);
     body.strokeWidth = 27;
     canvas.drawLine(const Offset(0, 56), Offset(44 + 20 * dive, 104), body);
@@ -731,11 +929,15 @@ class _ScenePainter extends CustomPainter {
         final r0 = 24 + burst * (86 + rnd.nextDouble() * 60);
         final dir = Offset(math.cos(a), math.sin(a));
         paint
-          ..color = (i.isEven ? Brand.crown : Brand.text)
-              .withValues(alpha: 0.55 * (1 - burst))
+          ..color = (i.isEven ? Brand.crown : Brand.text).withValues(
+            alpha: 0.55 * (1 - burst),
+          )
           ..strokeWidth = 5 * (1 - burst) + 1;
         canvas.drawLine(
-            _impact + dir * r0, _impact + dir * (r0 + len * (1 - burst)), paint);
+          _impact + dir * r0,
+          _impact + dir * (r0 + len * (1 - burst)),
+          paint,
+        );
       }
     }
   }
@@ -758,7 +960,10 @@ class _ScenePainter extends CustomPainter {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(
-              center: Offset.zero, width: c.size, height: c.size * 1.7),
+            center: Offset.zero,
+            width: c.size,
+            height: c.size * 1.7,
+          ),
           const Radius.circular(2),
         ),
         Paint()..color = c.color.withValues(alpha: 0.85 * fade),
@@ -771,7 +976,7 @@ class _ScenePainter extends CustomPainter {
   /// حتى تقرأ حقول الدخول فوقه.
   void _drawVignette(Canvas canvas) {
     const rect = Rect.fromLTWH(-200, -200, _stageW + 400, _stageH + 400);
-    final extra = _seg(t, _tSettle, _tEnd) * 0.42;
+    final extra = vignetteExtra ?? _seg(t, _tSettle, _tEnd) * 0.42;
     canvas.drawRect(
       rect,
       Paint()
@@ -789,5 +994,8 @@ class _ScenePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ScenePainter old) => old.t != t;
+  bool shouldRepaint(_ScenePainter old) => old.t != t ||
+      old.actors != actors ||
+      old.camera != camera ||
+      old.vignetteExtra != vignetteExtra;
 }
