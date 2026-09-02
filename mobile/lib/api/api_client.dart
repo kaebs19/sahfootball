@@ -246,7 +246,11 @@ class ApiClient {
   /// الدخول بهوية Apple. displayName يُرسل فقط حين تعطيه Apple —
   /// وهي تعطيه لأول تفويض في عمر الحساب ثم لا تكرره أبداً، فضياعه
   /// هنا ضياع نهائي (السيرفر يخزنه من هذا الطلب الأول).
-  Future<User> loginWithApple({
+  ///
+  /// created من السيرفر: هل أُنشئ الحساب في هذا الطلب؟ عليه تُبنى
+  /// رحلة "أول مرة" — الطلب واحد للجديد والعائد ولا يفرّق بينهما
+  /// غير الخادم.
+  Future<({User user, bool created})> loginWithApple({
     required String identityToken,
     String? displayName,
   }) async {
@@ -260,7 +264,10 @@ class ApiClient {
         access: res.data['accessToken'] as String,
         refresh: res.data['refreshToken'] as String,
       );
-      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+      return (
+        user: User.fromJson(res.data['user'] as Map<String, dynamic>),
+        created: res.data['created'] == true,
+      );
     } on DioException catch (e) {
       _throwReadable(e);
     }
@@ -268,7 +275,8 @@ class ApiClient {
 
   /// الدخول بحساب جوجل — idToken من مكتبة google_sign_in.
   /// التحقق كله في السيرفر (توقيع جوجل + الجمهور)؛ التطبيق مجرد ساعٍ.
-  Future<User> loginWithGoogle({required String idToken}) async {
+  Future<({User user, bool created})> loginWithGoogle(
+      {required String idToken}) async {
     try {
       final res =
           await _dio.post('/api/auth/google', data: {'idToken': idToken});
@@ -276,7 +284,10 @@ class ApiClient {
         access: res.data['accessToken'] as String,
         refresh: res.data['refreshToken'] as String,
       );
-      return User.fromJson(res.data['user'] as Map<String, dynamic>);
+      return (
+        user: User.fromJson(res.data['user'] as Map<String, dynamic>),
+        created: res.data['created'] == true,
+      );
     } on DioException catch (e) {
       _throwReadable(e);
     }

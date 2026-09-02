@@ -19,6 +19,7 @@ import '../brand.dart';
 import '../state/app_tab.dart';
 import '../state/session.dart';
 import '../widgets/brand_mark.dart';
+import '../widgets/guest_gate.dart';
 import 'leaderboard_screen.dart';
 import 'live_screen.dart';
 import 'matches_screen.dart';
@@ -33,7 +34,13 @@ class HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<Session>().user;
+    final session = context.watch<Session>();
+    final user = session.user;
+    // الضيف يرى الهيكل نفسه: المباريات والعرش مسارات عامة في
+    // الخادم تعمل بلا توكن، وما يحتاج حساباً (مباشر بتوقعاتك،
+    // ملفك) يُستبدل بدعوة تسجيل في مكانه — التبويب يبقى ليعرف
+    // الضيف ماذا سيكسب، ولا يختفي فيظن التطبيق ناقصاً.
+    final guest = session.status == SessionStatus.guest;
     // watch لا read: فتح التطبيق من إشعار يغيّر التبويب من خارج
     // هذه الشجرة، ولا بد أن يُعاد البناء حينها.
     final index = context.watch<AppTab>().index;
@@ -52,7 +59,8 @@ class HomeShell extends StatelessWidget {
         actions: [
           // الترس في تبويب ملفي وحده: الإعدادات جزء من "أنا" لا من
           // المباريات، وإظهاره في كل تبويب يجعله زينة تُتجاهل.
-          if (index == _profileTab)
+          // والضيف بلا إعدادات أصلاً — كلها شؤون حساب.
+          if (!guest && index == _profileTab)
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               tooltip: 'الإعدادات',
@@ -81,12 +89,30 @@ class HomeShell extends StatelessWidget {
       ),
       body: IndexedStack(
         index: index,
-        children: const [
-          MatchesScreen(),
-          LiveScreen(),
-          LeaderboardScreen(),
-          ProfileScreen(),
-        ],
+        children: guest
+            ? const [
+                MatchesScreen(),
+                GuestGate(
+                  icon: Icons.sensors,
+                  title: 'مباشر يحتاج حساباً',
+                  message: 'تبويب مباشر يعرض ما يحدث لتوقّعك الآن — '
+                      'النتيجة لحظة بلحظة وماذا تعني لنقاطك. '
+                      'سجّل وتوقّع لتكون لك مباراة تتابعها.',
+                ),
+                LeaderboardScreen(),
+                GuestGate(
+                  icon: Icons.person_outline,
+                  title: 'ملفك ينتظرك',
+                  message: 'رتبتك ودقتك وسلسلتك وأوسمتك — كلها تُبنى '
+                      'من توقعاتك. أنشئ حساباً وابدأ من رتبة مشجّع.',
+                ),
+              ]
+            : const [
+                MatchesScreen(),
+                LiveScreen(),
+                LeaderboardScreen(),
+                ProfileScreen(),
+              ],
       ),
       bottomNavigationBar: DecoratedBox(
         // خط فاصل رفيع فوق الشريط: الهوية تفصل الأسطح بالحدود لا

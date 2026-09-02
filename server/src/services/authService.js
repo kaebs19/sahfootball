@@ -127,7 +127,10 @@ async function register({ email, password, displayName }) {
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const user = await userRepo.create({ email, passwordHash, displayName });
   const tokens = await issueTokens(user.id);
-  return { user, ...tokens };
+  // created: التطبيق يعرض رحلة "أول مرة" (الدوريات ← البطل ← الشرح)
+  // للحساب الجديد فقط — والخادم وحده من يعرف الجديد من العائد،
+  // خصوصاً في دخول المزوّدات حيث الطلب واحد للحالتين.
+  return { user, created: true, ...tokens };
 }
 
 async function login({ email, password }) {
@@ -292,6 +295,7 @@ async function changeEmail(userId, { newEmail, currentPassword }) {
  */
 async function loginWithGoogle(profile) {
   const { googleSub, email, emailVerified, name } = profile;
+  let created = false;
 
   // الحالة 1: نعرف هذا الـ google_sub — مستخدم عائد.
   let user = await userRepo.findByGoogleSub(googleSub);
@@ -315,13 +319,14 @@ async function loginWithGoogle(profile) {
     user = await userRepo.createWithGoogle({
       email, googleSub, displayName: name,
     });
+    created = true;
   }
 
   // بعد إثبات جوجل للهوية: الحساب الموقوف لا يلتف على الإيقاف
   // بتبديل طريقة الدخول.
   await assertNotSuspended(user.id);
   const tokens = await issueTokens(user.id);
-  return { user, ...tokens };
+  return { user, created, ...tokens };
 }
 
 /**
@@ -358,6 +363,8 @@ async function loginWithApple({ identityToken, displayName }) {
  * باب ويُنسى في الآخر، وذلك ثغرة استيلاء على حساب لا خطأ ظاهر.
  */
 async function loginWithAppleProfile({ appleSub, email, emailVerified, displayName }) {
+  let created = false;
+
   // الحالة 1: نعرف هذا الـ apple_sub — مستخدم عائد، دخول مباشر.
   let user = await userRepo.findByAppleSub(appleSub);
 
@@ -389,6 +396,7 @@ async function loginWithAppleProfile({ appleSub, email, emailVerified, displayNa
       throw new AuthError(401, 'بريد حساب آبل غير موثّق — جرّب طريقة أخرى');
     }
     user = await userRepo.createWithApple({ email, appleSub, displayName });
+    created = true;
   }
 
   // بعد إثبات Apple للهوية: الحساب الموقوف لا يلتف على الإيقاف
@@ -397,7 +405,7 @@ async function loginWithAppleProfile({ appleSub, email, emailVerified, displayNa
   await assertNotSuspended(user.id);
 
   const tokens = await issueTokens(user.id);
-  return { user, ...tokens };
+  return { user, created, ...tokens };
 }
 
 // طلب استعادة كلمة السر — الخطوة 1.

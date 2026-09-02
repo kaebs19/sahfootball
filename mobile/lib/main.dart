@@ -14,6 +14,7 @@ import 'api/api_client.dart';
 import 'brand.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'state/app_tab.dart';
 import 'state/session.dart';
 import 'widgets/brand_mark.dart';
@@ -99,8 +100,16 @@ class _Root extends StatelessWidget {
         );
       case SessionStatus.loggedOut:
         return const LoginScreen();
-      case SessionStatus.loggedIn:
+      // الضيف يرى نفس الهيكل — HomeShell نفسه يقرأ الحالة ويستبدل
+      // التبويبات التي تحتاج حساباً بدعوة للتسجيل.
+      case SessionStatus.guest:
         return const HomeShell();
+      case SessionStatus.loggedIn:
+        // حساب أُنشئ للتو: رحلة أول مرة قبل الهيكل — تابع دورياتك،
+        // راهن على البطل، وافهم كيف تُحسب النقاط.
+        return context.watch<Session>().needsOnboarding
+            ? const OnboardingScreen()
+            : const HomeShell();
     }
   }
 }

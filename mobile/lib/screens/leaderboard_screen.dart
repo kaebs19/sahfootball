@@ -74,7 +74,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     _load();
   }
 
+  bool get _isGuest =>
+      context.read<Session>().status == SessionStatus.guest;
+
   Future<void> _load() async {
+    // العرش العام مسار عام في الخادم؛ المجالس وقائمة الدوريات
+    // محميان. الضيف يرى الترتيب العام وحده — وهو وعد التبويب أصلاً.
+    final guest = _isGuest;
     setState(() => _error = null);
     try {
       // الاثنان معاً في طلبين متوازيين: التبديل بين الوضعين يجب أن
@@ -85,13 +91,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       // المختارة، وإعادة جلبها مع كل ضغطة رحلةٌ بلا جديد.
       final results = await Future.wait([
         api.leaderboard(leagueId: _leagueId),
-        api.myGroups(),
-        if (_leagues == null) api.leagues(),
+        if (!guest) api.myGroups(),
+        if (!guest && _leagues == null) api.leagues(),
       ]);
       if (!mounted) return;
       setState(() {
         _entries = results[0] as List<LeaderboardEntry>;
-        _groups = results[1] as List<Group>;
+        _groups = guest ? const [] : results[1] as List<Group>;
         if (results.length > 2) _leagues = results[2] as List<LeagueFollow>;
       });
     } on ApiException catch (e) {
@@ -110,24 +116,29 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-          child: Row(
-            children: [
-              BrandModeTab(
-                label: 'العام',
-                selected: _board == _Board.global,
-                onTap: () => setState(() => _board = _Board.global),
-              ),
-              const SizedBox(width: 8),
-              BrandModeTab(
-                label: 'مجالسي',
-                selected: _board == _Board.councils,
-                onTap: () => setState(() => _board = _Board.councils),
-              ),
-            ],
-          ),
-        ),
+        // شريط "العام / مجالسي" للمسجّلين وحدهم: مجالس الضيف صفر
+        // حتماً، وعرض تبويب فارغ وعدٌ كاذب.
+        if (!_isGuest)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+            child: Row(
+              children: [
+                BrandModeTab(
+                  label: 'العام',
+                  selected: _board == _Board.global,
+                  onTap: () => setState(() => _board = _Board.global),
+                ),
+                const SizedBox(width: 8),
+                BrandModeTab(
+                  label: 'مجالسي',
+                  selected: _board == _Board.councils,
+                  onTap: () => setState(() => _board = _Board.councils),
+                ),
+              ],
+            ),
+          )
+        else
+          const SizedBox(height: 12),
         // الشرائح في وضع "العام" وحده: ترتيب المجلس محسوب على
         // أعضائه لا على دوري، فشريحةٌ فوقه تَعِد بتصفية لا تقع.
         if (_board == _Board.global && (_leagues?.isNotEmpty ?? false))

@@ -16,6 +16,12 @@ enum SessionStatus {
   restoring, // لحظة الإقلاع: نفحص التخزين الآمن — تعرض شاشة تحميل
   loggedOut,
   loggedIn,
+
+  /// تصفّح بلا حساب: المباريات والعرش متاحة للقراءة، وكل فعل يحتاج
+  /// حساباً (توقّع، مباشر، ملفي) يقود لشاشة الدخول. الوضع لا يُحفظ
+  /// بين التشغيلات عمداً — الإقلاع التالي يبدأ من شاشة الدخول التي
+  /// فيها زر الضيف نفسه، فلا يعلق أحد ضيفاً بالنسيان.
+  guest,
 }
 
 class Session extends ChangeNotifier {
@@ -79,6 +85,30 @@ class Session extends ChangeNotifier {
     }
   }
 
+  /// هل يجب عرض رحلة "أول مرة" (الدوريات ← البطل ← شرح اللعبة)؟
+  /// تُرفع عند إنشاء حساب جديد فقط — التسجيل المباشر دائماً جديد،
+  /// ودخول المزوّدات حسب علم created من السيرفر.
+  bool _needsOnboarding = false;
+  bool get needsOnboarding => _needsOnboarding;
+
+  void completeOnboarding() {
+    if (!_needsOnboarding) return;
+    _needsOnboarding = false;
+    notifyListeners();
+  }
+
+  /// الدخول كضيف — من شاشة الدخول فقط.
+  void enterGuest() {
+    _endedReason = null;
+    _setStatus(SessionStatus.guest);
+  }
+
+  /// خروج الضيف إلى شاشة الدخول — من أي زر "سجّل" في وضع الضيف.
+  void leaveGuest() {
+    if (_status != SessionStatus.guest) return;
+    _setStatus(SessionStatus.loggedOut);
+  }
+
   Future<void> login(String email, String password) async {
     _user = await api.login(email: email, password: password);
     _endedReason = null; // دخول ناجح يمسح سبب الخروج السابق
@@ -93,15 +123,19 @@ class Session extends ChangeNotifier {
     required String identityToken,
     String? displayName,
   }) async {
-    _user = await api.loginWithApple(
+    final res = await api.loginWithApple(
         identityToken: identityToken, displayName: displayName);
+    _user = res.user;
+    _needsOnboarding = res.created;
     _endedReason = null;
     _setStatus(SessionStatus.loggedIn);
     _push.enable();
   }
 
   Future<void> loginWithGoogle(String idToken) async {
-    _user = await api.loginWithGoogle(idToken: idToken);
+    final res = await api.loginWithGoogle(idToken: idToken);
+    _user = res.user;
+    _needsOnboarding = res.created;
     _endedReason = null;
     _setStatus(SessionStatus.loggedIn);
     _push.enable();
@@ -125,6 +159,8 @@ class Session extends ChangeNotifier {
       {String? displayName}) async {
     _user =
         await api.register(email: email, password: password, displayName: displayName);
+    // التسجيل المباشر ينشئ حساباً دائماً — رحلة أول مرة بلا سؤال.
+    _needsOnboarding = true;
     _setStatus(SessionStatus.loggedIn);
     // أول تسجيل هو أفضل لحظة لطلب الإذن: المستخدم اختار للتو أن
     // يستعمل التطبيق، والسؤال مفهوم في سياقه.

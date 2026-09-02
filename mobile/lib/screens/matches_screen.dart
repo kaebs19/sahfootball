@@ -17,8 +17,10 @@ import '../api/api_client.dart';
 import '../brand.dart';
 import '../format.dart';
 import '../models/fixture.dart';
+import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/fixture_card.dart';
+import '../widgets/guest_gate.dart';
 import '../widgets/prediction_sheet.dart';
 
 enum _Mode { upcoming, byDate }
@@ -44,8 +46,14 @@ class _MatchesScreenState extends State<MatchesScreen> {
     _load();
   }
 
+  bool get _isGuest =>
+      context.read<Session>().status == SessionStatus.guest;
+
   Future<void> _load() async {
     final api = context.read<ApiClient>();
+    // الضيف بلا توقعات: طلب "توقعاتي" سيرد 401 ويُفشل الشاشة كلها،
+    // بينما المباريات نفسها مسار عام يعمل بلا توكن.
+    final guest = _isGuest;
     setState(() {
       _error = null;
       _fixtures = null; // يعيد مؤشر التحميل عند تبديل اليوم أو الوضع
@@ -56,10 +64,10 @@ class _MatchesScreenState extends State<MatchesScreen> {
         _mode == _Mode.upcoming
             ? api.upcomingFixtures()
             : api.fixturesByDate(_day),
-        api.myPredictions(),
+        if (!guest) api.myPredictions(),
       ]);
       final fixtures = results[0] as List<Fixture>;
-      final predictions = results[1] as List;
+      final predictions = guest ? const [] : results[1] as List;
       if (!mounted) return;
       setState(() {
         _fixtures = fixtures;
@@ -74,6 +82,12 @@ class _MatchesScreenState extends State<MatchesScreen> {
   }
 
   Future<void> _openPredictionSheet(Fixture fixture) async {
+    // ضغطة توقّع من ضيف = لحظة الدعوة الطبيعية: هو يريد الفعل
+    // الذي يحتاج الحساب، لا نحن من يقاطعه به.
+    if (_isGuest) {
+      await showGuestPredictDialog(context);
+      return;
+    }
     final existing = _myPicks[fixture.id];
     final result = await showPredictionSheet(
       context,

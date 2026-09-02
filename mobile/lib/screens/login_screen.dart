@@ -249,6 +249,19 @@ class _LoginScreenState extends State<LoginScreen> {
                               builder: (_) => const RegisterScreen())),
                       child: const Text('ما عندك حساب؟ سجّل الآن'),
                     ),
+                    // باب الضيف: يتصفح المباريات والعرش بلا حساب،
+                    // وأول فعل يحتاج حساباً يعيده إلى هنا. مطلب
+                    // مراجعة آبل أيضاً (5.1.1): التصفح قبل التسجيل.
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => context.read<Session>().enterGuest(),
+                      child: const Text(
+                        'تصفّح المباريات كضيف',
+                        style: TextStyle(
+                            color: Brand.textFaint, fontSize: 13),
+                      ),
+                    ),
                   ],
                 ),
               ),
