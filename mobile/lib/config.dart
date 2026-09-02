@@ -30,7 +30,10 @@ class AppConfig {
   // يُنشأ مرة واحدة من Console ويُلصق هنا وفي Info.plist (CFBundleURLTypes).
   static const googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
-    defaultValue: '',
+    // عميل الويب الحي نفسه (GOOGLE_CLIENT_ID في سيرفر الإنتاج) —
+    // مأخوذ من رابط تحويل /auth/google العام في الموقع.
+    defaultValue:
+        '574556220987-e1dnkgmscv20cun4pgfui5bv4amba02i.apps.googleusercontent.com',
   );
   static const googleIosClientId = String.fromEnvironment(
     'GOOGLE_IOS_CLIENT_ID',

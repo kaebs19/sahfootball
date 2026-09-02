@@ -230,8 +230,10 @@ class _LegalLink extends StatelessWidget {
           : null,
       child: Text(
         label,
+        // نفس لون بقية السطر — الخط السفلي وحده يقول «هذا رابط»،
+        // والسطر كله يبقى هامشاً هادئاً لا ينافس الزر فوقه.
         style: const TextStyle(
-          color: Brand.text,
+          color: Brand.textFaint,
           fontSize: 12,
           decoration: TextDecoration.underline,
           decorationColor: Brand.textFaint,
