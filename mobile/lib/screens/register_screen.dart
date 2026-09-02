@@ -156,52 +156,50 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             )
                           : const Text('إنشاء الحساب'),
                     ),
-                    const SizedBox(height: 16),
-                    // سطر الموافقة القانونية. لا مربع اختيار: الضغط
-                    // على «إنشاء الحساب» هو الموافقة (النمط المعتمد
-                    // في المتاجر)، والرابطان يفتحان الصفحتين من
-                    // السيرفر نفسه المعروضتين في الإعدادات — نص واحد
-                    // يحرّره الأدمن، لا نسخة ثانية تتقادم.
-                    //
-                    // (أزرار Apple/جوجل هنا أُزيلت عمداً: التسجيل
-                    // عبر مزوّد يتم من شاشة الدخول، وشاشة إنشاء
-                    // الحساب مخصصة للبريد وكلمة المرور.)
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        const Text(
-                          'بالضغط على التسجيل فإنك توافق على ',
-                          style: TextStyle(
-                              color: Brand.textFaint, fontSize: 12.5),
-                        ),
-                        _LegalLink(
-                          label: 'سياسة الخصوصية',
-                          slug: 'privacy',
-                          enabled: !_busy,
-                        ),
-                        // «و» والرابط في صف واحد كي ينكسرا معاً —
-                        // واو معلقة وحدها آخر السطر تقرأ خطأً.
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              ' و',
-                              style: TextStyle(
-                                  color: Brand.textFaint, fontSize: 12.5),
-                            ),
-                            _LegalLink(
-                              label: 'شروط الاستخدام',
-                              slug: 'terms',
-                              enabled: !_busy,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+      // سطر الموافقة القانونية — مثبّت أسفل الشاشة لا تحت الزر.
+      // لا مربع اختيار: الضغط على «إنشاء الحساب» هو الموافقة (النمط
+      // المعتمد في المتاجر)، والرابطان يفتحان صفحتي السيرفر نفسيهما
+      // المعروضتين في الإعدادات — نص واحد يحرّره الأدمن.
+      //
+      // FittedBox تضمن سطراً واحداً دائماً: لو ضاق العرض صغّرت
+      // النص كله بدل كسره — وكسرُه هو ما نتفاداه.
+      //
+      // (أزرار Apple/جوجل أُزيلت من هذه الشاشة عمداً: التسجيل عبر
+      // مزوّد يتم من شاشة الدخول.)
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(26, 0, 26, 12),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'بالضغط على التسجيل فإنك توافق على ',
+                  style: TextStyle(color: Brand.textFaint, fontSize: 12),
+                ),
+                _LegalLink(
+                  label: 'سياسة الخصوصية',
+                  slug: 'privacy',
+                  enabled: !_busy,
+                ),
+                const Text(
+                  ' و',
+                  style: TextStyle(color: Brand.textFaint, fontSize: 12),
+                ),
+                _LegalLink(
+                  label: 'شروط الاستخدام',
+                  slug: 'terms',
+                  enabled: !_busy,
+                ),
+              ],
             ),
           ),
         ),
@@ -234,7 +232,7 @@ class _LegalLink extends StatelessWidget {
         label,
         style: const TextStyle(
           color: Brand.text,
-          fontSize: 12.5,
+          fontSize: 12,
           decoration: TextDecoration.underline,
           decorationColor: Brand.textFaint,
         ),
