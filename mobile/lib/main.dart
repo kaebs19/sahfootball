@@ -18,6 +18,7 @@ import 'screens/onboarding_screen.dart';
 import 'state/app_tab.dart';
 import 'state/session.dart';
 import 'widgets/brand_mark.dart';
+import 'widgets/goal_splash.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,7 +66,10 @@ class SahApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const _Root(),
+      // الافتتاح فوق الجذر لا بدلاً منه: التطبيق يبني شاشته ويطلق
+      // طلباته خلف الأنميشن، فالثانيتان تُقضيان في عمل حقيقي بدل
+      // أن تكونا انتظاراً مضافاً. وحين ينتهي يزيل نفسه من الشجرة.
+      home: const GoalSplash(child: _Root()),
     );
   }
 }
