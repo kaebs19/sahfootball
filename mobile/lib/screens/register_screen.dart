@@ -17,7 +17,7 @@ import '../api/api_client.dart';
 import '../brand.dart';
 import '../state/session.dart';
 import '../widgets/password_field.dart';
-import '../widgets/social_auth_buttons.dart';
+import 'page_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -156,22 +156,87 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             )
                           : const Text('إنشاء الحساب'),
                     ),
-                    const SizedBox(height: 22),
-                    // نفس أزرار الدخول: المزوّد ينشئ الحساب إن لم
-                    // يوجد، فلا فرق بين "دخول" و"تسجيل" عبره. الشاشة
-                    // مدفوعة فوق الجذر، فالنجاح يحتاج popUntil وإلا
-                    // بقيت فوق الرئيسية (فخ موثّق في main).
-                    SocialAuthButtons(
-                      enabled: !_busy,
-                      onError: (m) => setState(() => _error = m),
-                      onSuccess: () =>
-                          Navigator.of(context).popUntil((r) => r.isFirst),
+                    const SizedBox(height: 16),
+                    // سطر الموافقة القانونية. لا مربع اختيار: الضغط
+                    // على «إنشاء الحساب» هو الموافقة (النمط المعتمد
+                    // في المتاجر)، والرابطان يفتحان الصفحتين من
+                    // السيرفر نفسه المعروضتين في الإعدادات — نص واحد
+                    // يحرّره الأدمن، لا نسخة ثانية تتقادم.
+                    //
+                    // (أزرار Apple/جوجل هنا أُزيلت عمداً: التسجيل
+                    // عبر مزوّد يتم من شاشة الدخول، وشاشة إنشاء
+                    // الحساب مخصصة للبريد وكلمة المرور.)
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Text(
+                          'بالضغط على التسجيل فإنك توافق على ',
+                          style: TextStyle(
+                              color: Brand.textFaint, fontSize: 12.5),
+                        ),
+                        _LegalLink(
+                          label: 'سياسة الخصوصية',
+                          slug: 'privacy',
+                          enabled: !_busy,
+                        ),
+                        // «و» والرابط في صف واحد كي ينكسرا معاً —
+                        // واو معلقة وحدها آخر السطر تقرأ خطأً.
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              ' و',
+                              style: TextStyle(
+                                  color: Brand.textFaint, fontSize: 12.5),
+                            ),
+                            _LegalLink(
+                              label: 'شروط الاستخدام',
+                              slug: 'terms',
+                              enabled: !_busy,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// رابط قانوني داخل سطر الموافقة — نص بلون النص الأساسي وتحته خط،
+/// يفتح صفحة السيرفر المقابلة (نفس PageScreen في الإعدادات).
+class _LegalLink extends StatelessWidget {
+  final String label;
+  final String slug;
+  final bool enabled;
+
+  const _LegalLink({
+    required this.label,
+    required this.slug,
+    required this.enabled,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled
+          ? () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => PageScreen(slug: slug, fallbackTitle: label)))
+          : null,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Brand.text,
+          fontSize: 12.5,
+          decoration: TextDecoration.underline,
+          decorationColor: Brand.textFaint,
         ),
       ),
     );
