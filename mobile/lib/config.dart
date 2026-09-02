@@ -37,7 +37,10 @@ class AppConfig {
   );
   static const googleIosClientId = String.fromEnvironment(
     'GOOGLE_IOS_CLIENT_ID',
-    defaultValue: '',
+    // عميل iOS (أُنشئ 2026-09-02 لحزمة com.sahfootball.app).
+    // معكوسه مسجّل في Info.plist كمخطط URL للعودة من رحلة جوجل.
+    defaultValue:
+        '574556220987-l59ck4rrucs4qo7atngb5nrp74phqo12.apps.googleusercontent.com',
   );
 
   /// روابط الصور (الشعارات من المزود مطلقة، والأفاتار عندنا نسبية مثل
