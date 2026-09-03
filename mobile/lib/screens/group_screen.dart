@@ -1622,6 +1622,10 @@ class _PredictionsList extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(
                 children: [
+                  // الصورة قبل الاسم: قائمة التوقعات تُقرأ بسرعة بين
+                  // أصدقاء، والوجه أسرع من الاسم.
+                  _SmallAvatar(url: p.avatarUrl, name: p.displayName),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       p.displayName,

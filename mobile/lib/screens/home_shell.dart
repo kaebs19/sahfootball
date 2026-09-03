@@ -12,10 +12,12 @@
 // تسمية "العرش" للصدارة من الهوية لا اختراعاً: اللغة جزء من العلامة
 // مثل اللون تماماً، و"العرش" تحمل وعد التطبيق بينما "الصدارة" كلمة
 // محايدة تصلح لأي تطبيق.
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../brand.dart';
+import '../config.dart';
 import '../state/app_tab.dart';
 import '../state/session.dart';
 import '../widgets/brand_mark.dart';
@@ -60,6 +62,36 @@ class _GroupOpenerState extends State<_GroupOpener> {
       });
     }
     return widget.child;
+  }
+}
+
+/// أيقونة تبويب «ملفي»: صورة المستخدم إن وُجدت، وإلا أيقونة الشخص.
+/// الحلقة الذهبية حين يكون التبويب مختاراً — التاج للمستخدم نفسه.
+class _ProfileTabIcon extends StatelessWidget {
+  final String? url;
+  final bool selected;
+  const _ProfileTabIcon({required this.url, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    if (url == null) {
+      return Icon(selected ? Icons.person : Icons.person_outline);
+    }
+    return Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? Brand.crown : Brand.border,
+          width: selected ? 2 : 1,
+        ),
+        image: DecorationImage(
+          image: CachedNetworkImageProvider(AppConfig.absoluteUrl(url!)),
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
   }
 }
 
@@ -161,22 +193,26 @@ class HomeShell extends StatelessWidget {
         child: NavigationBar(
           selectedIndex: index,
           onDestinationSelected: (i) => context.read<AppTab>().select(i),
-          destinations: const [
-            NavigationDestination(
+          destinations: [
+            const NavigationDestination(
                 icon: Icon(Icons.sports_soccer_outlined),
                 selectedIcon: Icon(Icons.sports_soccer),
                 label: 'المباريات'),
-            NavigationDestination(
+            const NavigationDestination(
                 icon: Icon(Icons.sensors),
                 selectedIcon: Icon(Icons.sensors),
                 label: 'مباشر'),
-            NavigationDestination(
+            const NavigationDestination(
                 icon: Icon(Icons.workspace_premium_outlined),
                 selectedIcon: Icon(Icons.workspace_premium),
                 label: 'العرش'),
+            // صورة المستخدم مكان أيقونة «ملفي» حين يرفع واحدة: الوجه
+            // في الشريط هو ما تفعله التطبيقات المألوفة، ويجعل التبويب
+            // «أنا» لا «ملفاً». بلا صورة تبقى الأيقونة.
             NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
+                icon: _ProfileTabIcon(url: user?.avatarUrl, selected: false),
+                selectedIcon:
+                    _ProfileTabIcon(url: user?.avatarUrl, selected: true),
                 label: 'ملفي'),
           ],
         ),
