@@ -26,28 +26,16 @@ import '../models/leaderboard_entry.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/league_strip.dart';
+import '../widgets/stage_card.dart';
+import '../models/rank.dart';
+
+// الرتب تُصدَّر من هنا كما كانت: شاشات أخرى تستوردها بهذا الاسم.
+export '../models/rank.dart' show Rank;
+import 'discover_councils_screen.dart';
 import 'group_screen.dart';
-
-/// سلّم الرتب الموسمية كما في ملف الهوية.
-enum Rank {
-  fan('مشجّع', 0),
-  player('لاعب', 500),
-  knight('فارس', 1500),
-  prince('أمير', 3000),
-  king('الملك', 5000);
-
-  final String label;
-  final int from;
-  const Rank(this.label, this.from);
-
-  static Rank of(int points) {
-    // من الأعلى للأدنى: أول عتبة يبلغها المستخدم هي رتبته.
-    for (final r in Rank.values.reversed) {
-      if (points >= r.from) return r;
-    }
-    return Rank.fan;
-  }
-}
+import 'player_screen.dart';
+import '../widgets/group_form_sheet.dart';
+import '../widgets/group_avatar.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -203,7 +191,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           // كانت المنصّة معلّقة فوق فراغ أسود بلا إطار، فبدت الشاشة
           // ناقصة كلما قلّ المتنافسون — والبطاقة تعطيها حدّاً
           // وسياقاً مهما كان عددهم.
-          _StageCard(
+          StageCard(
             title: league == null ? 'ملوك كل الدوريات' : 'ملوك ${league.name}',
             hint: league == null
                 ? 'المجموع من كل الدوريات التي تلعب فيها'
@@ -213,27 +201,27 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             // منصّة التتويج: الأول في الوسط وأعلى، والثاني عن يمينه
             // (أول القراءة) والثالث عن يساره. والمقعد الشاغر يُعرض
             // شاغراً لا يُخفى: مقعد فارغ في العرش أقوى دعوة للعب.
-            podium: _Podium(entries: entries, myId: myId),
+            podium: Podium(entries: entries, myId: myId),
             // صفّ «أنت»: أول سؤال عند كل مستخدم في أي ترتيب هو «وين
             // أنا؟» — يُجاب هنا دائماً، على المنصّة أو تحتها أو خارجها.
             footer: guest
-                ? _StageFooter(
+                ? StageFooter(
                     icon: Icons.person_outline,
                     text: 'سجّل الدخول لتظهر في الترتيب',
                     onTap: () => session.leaveGuest(),
                   )
                 : myIndex < 0
-                    ? const _StageFooter(
+                    ? const StageFooter(
                         icon: Icons.sports_soccer_outlined,
                         text: 'لم تدخل الترتيب بعد — توقّع مباراة واحدة وستظهر هنا',
                       )
                     : myIndex < 3
-                        ? _StageFooter(
+                        ? StageFooter(
                             icon: Icons.emoji_events_outlined,
                             text: 'أنت على المنصّة — المركز ${entries[myIndex].rank}',
                             gold: true,
                           )
-                        : _StageFooter(
+                        : StageFooter(
                             icon: Icons.person,
                             text:
                                 'أنت · المركز ${entries[myIndex].rank} · ${entries[myIndex].totalPoints} نقطة',
@@ -256,313 +244,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 }
 
-/// بطاقة المسرح — إطار المنصّة وسياقها.
-class _StageCard extends StatelessWidget {
-  final String title;
-  final String hint;
-  final String meta;
-  final Widget podium;
-  final Widget footer;
-
-  const _StageCard({
-    required this.title,
-    required this.hint,
-    required this.meta,
-    required this.podium,
-    required this.footer,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return BrandCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontFamily: Brand.displayFont,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: Brand.text,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        hint,
-                        style: const TextStyle(
-                            color: Brand.textMuted, fontSize: 12, height: 1.5),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                BrandChip(label: meta),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          // وهج ذهبي خلف المقعد الأول — ضوء المسرح على البطل.
-          Stack(
-            alignment: Alignment.bottomCenter,
-            children: [
-              Positioned(
-                bottom: 30,
-                child: Container(
-                  width: 230,
-                  height: 170,
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      colors: [Brand.crownWash(0.20), Brand.crownWash(0.0)],
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: podium,
-              ),
-            ],
-          ),
-          const Divider(color: Brand.border, height: 1),
-          footer,
-        ],
-      ),
-    );
-  }
-}
-
-/// صفّ أسفل المسرح — «أنت» أو دعوة.
-class _StageFooter extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final bool gold;
-  final VoidCallback? onTap;
-
-  const _StageFooter({
-    required this.icon,
-    required this.text,
-    this.gold = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = gold ? Brand.crown : Brand.textMuted;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12.5,
-                  fontWeight: gold ? FontWeight.w600 : FontWeight.w400,
-                  fontFeatures: Brand.tabular,
-                ),
-              ),
-            ),
-            if (onTap != null)
-              const Icon(Icons.chevron_right, size: 18, color: Brand.textFaint),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// منصّة التتويج — المقاعد الثلاثة الأولى.
-class _Podium extends StatelessWidget {
-  final List<LeaderboardEntry> entries;
-  final String? myId;
-  const _Podium({required this.entries, required this.myId});
-
-  LeaderboardEntry? _at(int i) => i < entries.length ? entries[i] : null;
-
-  @override
-  Widget build(BuildContext context) {
-    // ترتيب الأبناء في Row تحت RTL: الأول يمين. فالثاني ← الأول ←
-    // الثالث يعطي 2 | 1 | 3 في القراءة، وهو شكل المنصّة المعروف.
-    final seats = [
-      _PodiumSeat(entry: _at(1), place: 2, myId: myId),
-      _PodiumSeat(entry: _at(0), place: 1, myId: myId),
-      _PodiumSeat(entry: _at(2), place: 3, myId: myId),
-    ];
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        for (var i = 0; i < seats.length; i++) ...[
-          // المقعد الأوسط أعرض قليلاً: اسم البطل يستحق سطرين لا
-          // قصّاً بثلاث نقاط.
-          Expanded(flex: i == 1 ? 5 : 4, child: seats[i]),
-          if (i < seats.length - 1) const SizedBox(width: 8),
-        ],
-      ],
-    );
-  }
-}
-
-class _PodiumSeat extends StatelessWidget {
-  final LeaderboardEntry? entry;
-  final int place;
-  final String? myId;
-  const _PodiumSeat({required this.entry, required this.place, this.myId});
-
-  @override
-  Widget build(BuildContext context) {
-    final e = entry;
-    final first = place == 1;
-    final isMe = e != null && e.userId == myId;
-    // الأول أطول قاعدةً وأكبر صورةً: العلوّ هو ما يميّز المنصّة عن
-    // ثلاث بطاقات متساوية.
-    final baseHeight = first ? 74.0 : 52.0;
-    final avatar = first ? 56.0 : 44.0;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (first)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 4),
-            child: Icon(Icons.emoji_events, size: 22, color: Brand.crown),
-          ),
-        _PodiumAvatar(
-          url: e?.avatarUrl,
-          name: e?.displayName ?? '',
-          size: avatar,
-          ring: first ? Brand.crown : (isMe ? Brand.crown : Brand.border),
-          empty: e == null,
-        ),
-        const SizedBox(height: 6),
-        Text(
-          e?.displayName ?? 'مقعد شاغر',
-          maxLines: first ? 2 : 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: e == null ? Brand.textFaint : Brand.text,
-            fontSize: first ? 12.5 : 12,
-            height: 1.25,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 2),
-        if (e != null)
-          BrandNumber('${e.totalPoints}',
-              size: first ? 20 : 16, color: Brand.crown)
-        else
-          const Text('—',
-              style: TextStyle(color: Brand.textFaint, fontSize: 14)),
-        const SizedBox(height: 8),
-        Container(
-          height: baseHeight,
-          decoration: BoxDecoration(
-            color: first ? Brand.crownWash(0.14) : Brand.fill,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            border: Border.all(
-              color: isMe
-                  ? Brand.crown
-                  : (first ? Brand.crownWash(0.35) : Brand.border),
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$place',
-                style: TextStyle(
-                  fontFamily: Brand.displayFont,
-                  fontSize: first ? 24 : 18,
-                  fontWeight: FontWeight.w700,
-                  color: first ? Brand.crown : Brand.textMuted,
-                  height: 1,
-                ),
-              ),
-              if (e != null && first) ...[
-                const SizedBox(height: 3),
-                Text(
-                  Rank.of(e.totalPoints).label,
-                  style: const TextStyle(color: Brand.crown, fontSize: 10.5),
-                ),
-              ],
-              if (isMe) ...[
-                const SizedBox(height: 2),
-                const Text('أنت',
-                    style: TextStyle(color: Brand.crown, fontSize: 10.5)),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PodiumAvatar extends StatelessWidget {
-  final String? url;
-  final String name;
-  final double size;
-  final Color ring;
-  final bool empty;
-  const _PodiumAvatar({
-    required this.url,
-    required this.name,
-    required this.size,
-    required this.ring,
-    required this.empty,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Brand.fill,
-        border: Border.all(color: ring, width: 2),
-        image: url != null
-            ? DecorationImage(
-                image: CachedNetworkImageProvider(AppConfig.absoluteUrl(url!)),
-                fit: BoxFit.cover,
-              )
-            : null,
-      ),
-      alignment: Alignment.center,
-      child: url == null
-          ? (empty
-              ? Icon(Icons.person_outline,
-                  size: size * 0.5, color: Brand.textFaint)
-              : Text(
-                  name.isEmpty ? '' : name.characters.first,
-                  style: TextStyle(
-                    color: Brand.textMuted,
-                    fontSize: size * 0.4,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ))
-          : null,
-    );
-  }
-}
-
 /// صف واحد في أي ترتيب — العرش العام أو ترتيب مجلس.
 ///
 /// مشترك عمداً: الرقم في المجلس والرقم في العرش يخرجان من نفس
@@ -575,14 +256,23 @@ class LeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rank = Rank.of(entry.totalPoints);
+    final acc = entry.accuracy;
 
     return BrandCard(
       royal: isMe,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      // الصف باب إلى ملف صاحبه: «من هذا الذي يتصدّرني؟» سؤال يُسأل
+      // من داخل الترتيب لا من مكان آخر.
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PlayerScreen(
+              userId: entry.userId, displayName: entry.displayName),
+        ),
+      ),
       child: Row(
         children: [
           _RankBadge(rank: entry.rank),
-          const SizedBox(width: 11),
+          const SizedBox(width: 10),
           _Avatar(url: entry.avatarUrl, name: entry.displayName),
           const SizedBox(width: 9),
           Expanded(
@@ -598,7 +288,7 @@ class LeaderRow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Brand.text,
-                          fontSize: 13.5,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -607,26 +297,31 @@ class LeaderRow extends StatelessWidget {
                       const SizedBox(width: 6),
                       const Text(
                         '· أنت',
-                        style: TextStyle(color: Brand.crown, fontSize: 11.5),
+                        style: TextStyle(color: Brand.crown, fontSize: 11),
                       ),
                     ],
                     if (entry.favoriteTeamLogo != null) ...[
                       const SizedBox(width: 6),
                       CachedNetworkImage(
                         imageUrl: entry.favoriteTeamLogo!,
-                        width: 16,
-                        height: 16,
+                        width: 14,
+                        height: 14,
                         errorWidget: (_, _, _) => const SizedBox.shrink(),
                       ),
                     ],
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
-                  '${rank.label} · ${entry.settledPredictions} توقّع محتسب',
+                  // الدقّة إلى جانب العدد حين تُعرف: النقاط تكافئ الكثرة،
+                  // والنسبة تقول إن كان الرقم إتقاناً أم مثابرة.
+                  '${rank.label} · ${entry.settledPredictions} توقّع'
+                  '${acc != null ? ' · دقّة $acc%' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Brand.textMuted,
-                    fontSize: 11,
+                    fontSize: 10.5,
                     fontFeatures: Brand.tabular,
                   ),
                 ),
@@ -634,9 +329,42 @@ class LeaderRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          BrandNumber('${entry.totalPoints}', size: 19, color: Brand.crown),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              BrandNumber('${entry.totalPoints}', size: 16, color: Brand.crown),
+              if (entry.movement != null) _Movement(delta: entry.movement!),
+            ],
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// حركة المركز منذ آخر جولة: ▲2 بالذهبي للصعود، ▼1 بالخافت للهبوط،
+/// وشرطة للثبات. لا أخضر ولا أحمر: الهوية تحصرهما في صواب التوقع
+/// وخطئه، والسهم في بطاقة فيها نقاط ذهبية لا يشاركها لوناً آخر.
+class _Movement extends StatelessWidget {
+  final int delta;
+  const _Movement({required this.delta});
+
+  @override
+  Widget build(BuildContext context) {
+    final (IconData icon, Color color, String text) = delta > 0
+        ? (Icons.arrow_drop_up, Brand.crown, '$delta')
+        : delta < 0
+            ? (Icons.arrow_drop_down, Brand.textMuted, '${-delta}')
+            : (Icons.remove, Brand.textFaint, '');
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: delta == 0 ? 12 : 18, color: color),
+        if (text.isNotEmpty)
+          Text(text,
+              style: TextStyle(
+                  color: color, fontSize: 10.5, fontFeatures: Brand.tabular)),
+      ],
     );
   }
 }
@@ -657,17 +385,17 @@ class _RankBadge extends StatelessWidget {
     };
 
     return Container(
-      width: 30,
-      height: 30,
+      width: 26,
+      height: 26,
       decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: rank == 1
-          ? const Icon(Icons.emoji_events, size: 16, color: Brand.onAccent)
+          ? const Icon(Icons.emoji_events, size: 14, color: Brand.onAccent)
           : Text(
               '$rank',
               style: TextStyle(
                 fontFamily: Brand.displayFont,
-                fontSize: 13,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: fg,
                 fontFeatures: Brand.tabular,
@@ -687,25 +415,25 @@ class _Avatar extends StatelessWidget {
     if (url == null) {
       // الحرف الأول بديلاً — أهدأ من أيقونة شخص عامة مكررة في كل صف
       return Container(
-        width: 30,
-        height: 30,
+        width: 26,
+        height: 26,
         decoration: const BoxDecoration(
           color: Brand.fill,
           shape: BoxShape.circle,
         ),
         alignment: Alignment.center,
         child: Text(
-          name.characters.first,
+          name.isEmpty ? '' : name.characters.first,
           style: const TextStyle(
             color: Brand.textMuted,
-            fontSize: 12.5,
+            fontSize: 11.5,
             fontWeight: FontWeight.w600,
           ),
         ),
       );
     }
     return CircleAvatar(
-      radius: 15,
+      radius: 13,
       backgroundColor: Brand.fill,
       backgroundImage: CachedNetworkImageProvider(AppConfig.absoluteUrl(url!)),
     );
@@ -750,6 +478,36 @@ class _CouncilsView extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          // باب ثالث لمن لا يعرف أحداً: الرمز يفترض صديقاً، والمجالس
+          // العامة لا تفترض شيئاً.
+          BrandCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const DiscoverCouncilsScreen()),
+              );
+              // قد يكون انضمّ إلى مجلس هناك — القائمة تُعاد.
+              await onChanged();
+            },
+            child: const Row(
+              children: [
+                Icon(Icons.public, size: 18, color: Brand.textMuted),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'استكشف المجالس العامة',
+                    style: TextStyle(
+                        color: Brand.text,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Icon(Icons.chevron_right, size: 18, color: Brand.textFaint),
+              ],
+            ),
           ),
           const SizedBox(height: 18),
           if (groups.isEmpty)
@@ -801,20 +559,26 @@ class _CouncilsView extends StatelessWidget {
     final api = context.read<ApiClient>();
     final messenger = ScaffoldMessenger.of(context);
 
-    final name = await _promptDialog(
+    final form = await GroupFormSheet.show(
       context,
       title: 'مجلس جديد',
-      label: 'اسم المجلس',
-      hint: 'مثلاً: شباب الحي',
-      action: 'أنشئ',
+      action: 'أنشئ المجلس',
     );
-    if (name == null) return;
+    if (form == null) return;
 
     try {
-      final group = await api.createGroup(name);
+      final group = await api.createGroup(
+        name: form.name,
+        joinPolicy: form.joinPolicy,
+        leagueId: form.leagueId,
+      );
       await onChanged();
       messenger.showSnackBar(
-        SnackBar(content: Text('أُنشئ ${group.name} — شارك رمز الدعوة')),
+        SnackBar(
+          content: Text(group.isPublic
+              ? 'أُنشئ ${group.name} — يظهر الآن في المجالس العامة'
+              : 'أُنشئ ${group.name} — شارك رمز الدعوة'),
+        ),
       );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
@@ -934,54 +698,59 @@ class _CouncilCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return BrandCard(
       onTap: () async {
-        final changed = await Navigator.of(context).push<bool>(
+        await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) =>
                 GroupScreen(groupId: group.id, groupName: group.name),
           ),
         );
-        // المجلس قد يكون حُذف أو غادره المستخدم — القائمة تُعاد بعده.
-        if (changed == true) await onChanged();
+        // القائمة تُعاد بعد العودة دائماً: المجلس قد يكون حُذف أو
+        // غادره المستخدم أو تغيّر اسمه أو دوريه — والطلب رخيص.
+        await onChanged();
       },
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: const BoxDecoration(
-              color: Brand.fill,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              group.isOwner ? Icons.workspace_premium : Icons.groups_outlined,
-              size: 20,
-              // التاج لصاحب المجلس: الذهبي هنا في محله — تمييز دور
-              // لا زينة زر.
-              color: group.isOwner ? Brand.crown : Brand.textMuted,
-            ),
-          ),
+          GroupAvatar(group: group, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  group.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: Brand.displayFont,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Brand.text,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        group.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: Brand.displayFont,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Brand.text,
+                        ),
+                      ),
+                    ),
+                    // التاج لصاحب المجلس، والدرع للمشرف: الذهبي هنا في
+                    // محله — تمييز دور لا زينة زر.
+                    if (group.role == GroupRole.owner) ...[
+                      const SizedBox(width: 6),
+                      const Icon(Icons.workspace_premium,
+                          size: 15, color: Brand.crown),
+                    ] else if (group.role == GroupRole.moderator) ...[
+                      const SizedBox(width: 6),
+                      const Icon(Icons.shield_outlined,
+                          size: 14, color: Brand.textMuted),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  group.isOwner
-                      ? '${group.membersCount} عضو · مجلسك'
-                      : '${group.membersCount} عضو',
+                  '${group.scopeLabel} · ${group.joinPolicy.label} · '
+                  '${group.membersCount} عضو'
+                  '${group.pendingRequests > 0 && group.role.canManageMembers ? ' · ${group.pendingRequests} طلب' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Brand.textFaint,
                     fontSize: 11.5,

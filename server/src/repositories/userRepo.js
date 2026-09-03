@@ -365,7 +365,9 @@ async function removeWithGroupHandover(id) {
     // بدعوته وزواله معه مفهوم. أما حذف إشرافي لمخالفة فيعاقب أبرياء:
     // عشرة أصدقاء يفقدون قروبهم وتاريخ منافستهم بسبب فعل شخص واحد.
     // والملكية ليست بيانات شخصية للمحذوف — إنها دور إداري ينتقل.
-    // أقدم عضو تحديداً لأنه الأقرب لأن يكون الشريك المؤسس.
+    // المشرف أولاً ثم أقدم عضو: المالك حين عيّن مشرفاً قال فعلياً
+    // «هذا من أثق به في الإدارة»، وذلك أقوى من الأقدمية. وبلا مشرف
+    // يبقى أقدم عضو لأنه الأقرب لأن يكون الشريك المؤسس.
     const { rows: transferred } = await client.query(
       `UPDATE groups g
           SET owner_id = nxt.user_id
@@ -374,11 +376,19 @@ async function removeWithGroupHandover(id) {
              FROM group_members gm
              JOIN groups g2 ON g2.id = gm.group_id
             WHERE g2.owner_id = $1 AND gm.user_id <> $1
-            ORDER BY gm.group_id, gm.joined_at ASC
+            ORDER BY gm.group_id, (gm.role = 'moderator') DESC, gm.joined_at ASC
          ) nxt
         WHERE g.id = nxt.group_id
         RETURNING g.id, g.name, nxt.user_id AS new_owner_id`,
       [id]
+    );
+    // المالك الجديد يعود عضواً عادياً في صفّ العضوية: الملكية في
+    // groups.owner_id، ودورُ «مشرف» باقٍ إلى جانبها يقول شيئين عن
+    // شخص واحد.
+    await client.query(
+      `UPDATE group_members gm SET role = 'member'
+         FROM groups g
+        WHERE g.id = gm.group_id AND g.owner_id = gm.user_id AND gm.role <> 'member'`
     );
 
     // ما بقي باسمه بعد النقل = قروبات هو عضوها الوحيد، وسيسحبها
@@ -412,8 +422,30 @@ async function removeWithGroupHandover(id) {
   }
 }
 
+// بحث مستخدم لإضافته إلى مجلس — الاسم جزئياً أو البريد كاملاً.
+//
+// البريد بمطابقة تامة لا جزئية عمداً: «a@» جزئياً يعدّد بريد كل
+// المستخدمين حرفاً حرفاً، والتام لا يؤكّد إلا ما يعرفه الباحث
+// أصلاً. والبريد نفسه لا يخرج في النتيجة — الاسم والصورة يكفيان
+// للتعرّف، وما لا يُرسل لا يتسرّب.
+//
+// الموقوف لا يظهر: إضافته إلى مجلس تُدخل حساباً لا يستطيع اللعب.
+async function searchPublic(query, limit = 10) {
+  const q = String(query || '').trim();
+  const { rows } = await db.query(
+    `SELECT id, COALESCE(display_name, 'مشجع') AS display_name, avatar_url
+       FROM users
+      WHERE suspended_at IS NULL
+        AND (display_name ILIKE $1 OR lower(email) = lower($2))
+      ORDER BY (lower(email) = lower($2)) DESC, display_name
+      LIMIT $3`,
+    [`%${q}%`, q, limit]
+  );
+  return rows;
+}
+
 module.exports = {
-  markOnboarded,
+  markOnboarded, searchPublic,
   create, findByEmailWithHash, findById, findByEmail, updatePassword, updateProfile,
   findByAppleSub, createWithApple, linkAppleSub, updateEmail,
   findByGoogleSub, createWithGoogle, linkGoogleSub,

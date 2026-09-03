@@ -21,6 +21,7 @@ import '../models/fixture.dart';
 import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
 import '../models/notification_prefs.dart';
+import '../models/player.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
 import '../models/rules.dart';
@@ -748,10 +749,169 @@ class ApiClient {
     }
   }
 
-  Future<Group> createGroup(String name) async {
+  /// إنشاء مجلس. [leagueId] فارغ = كل الدوريات.
+  Future<Group> createGroup({
+    required String name,
+    JoinPolicy joinPolicy = JoinPolicy.code,
+    int? leagueId,
+  }) async {
     try {
-      final res = await _dio.post('/api/groups', data: {'name': name});
+      final res = await _dio.post('/api/groups', data: {
+        'name': name,
+        'join_policy': joinPolicy.wire,
+        'league_id': leagueId,
+      });
       return Group.fromJson(res.data['group'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تعديل إعدادات المجلس (للمالك). الحقل غير المُمرَّر لا يُلمس —
+  /// وnull قيمة صالحة للدوري تعني «كل الدوريات»، ولهذا يُميَّز
+  /// «لم يتغير» بـ [_unset] كما في updateProfile.
+  Future<Group> updateGroup(
+    String id, {
+    String? name,
+    JoinPolicy? joinPolicy,
+    Object? leagueId = _unset,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name;
+      if (joinPolicy != null) body['join_policy'] = joinPolicy.wire;
+      if (!identical(leagueId, _unset)) body['league_id'] = leagueId;
+      final res = await _dio.patch('/api/groups/$id', data: body);
+      return Group.fromJson(res.data['group'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// المجالس العامة للاستكشاف — بالاسم اختيارياً.
+  Future<List<Group>> publicGroups({String search = ''}) async {
+    try {
+      final res = await _dio.get('/api/groups/public', queryParameters: {
+        if (search.trim().isNotEmpty) 'search': search.trim(),
+      });
+      return (res.data['groups'] as List)
+          .map((j) => Group.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// الانضمام إلى مجلس بمعرّفه — بلا رمز. المفتوح يُدخل فوراً،
+  /// وبالموافقة يرجع [JoinOutcome.requested] = true (طلب معلّق).
+  Future<JoinOutcome> joinPublicGroup(String id) async {
+    try {
+      final res = await _dio.post('/api/groups/$id/join');
+      return JoinOutcome(
+        group: Group.fromJson(res.data['group'] as Map<String, dynamic>),
+        requested: res.data['requested'] == true,
+      );
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// معاينة دعوة برمزها — تعمل للضيف أيضاً (الرابط قد يصل قبل الحساب).
+  Future<InvitePreview> invitePreview(String code) async {
+    try {
+      final res = await _dio.get('/api/groups/invite/${code.trim()}');
+      return InvitePreview.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// صورة المجلس (multipart) — للمالك. نفس حدود الصورة الشخصية.
+  Future<Group> uploadGroupImage(String groupId, String filePath) async {
+    try {
+      final form = FormData.fromMap({
+        'image': await MultipartFile.fromFile(filePath),
+      });
+      final res = await _dio.post('/api/groups/$groupId/image', data: form);
+      return Group.fromJson(res.data['group'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<Group> deleteGroupImage(String groupId) async {
+    try {
+      final res = await _dio.delete('/api/groups/$groupId/image');
+      return Group.fromJson(res.data['group'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<void> approveJoinRequest(String groupId, String userId) async {
+    try {
+      await _dio.post('/api/groups/$groupId/requests/$userId/approve');
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// رفض طلب (مدير) أو إلغاء طلبي (بمعرّفي أنا) — مسار واحد.
+  Future<void> withdrawJoinRequest(String groupId, String userId) async {
+    try {
+      await _dio.delete('/api/groups/$groupId/requests/$userId');
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<void> addGroupMember(String groupId, String userId) async {
+    try {
+      await _dio.post('/api/groups/$groupId/members', data: {'user_id': userId});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  Future<void> removeGroupMember(String groupId, String userId) async {
+    try {
+      await _dio.delete('/api/groups/$groupId/members/$userId');
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// [role] إما 'moderator' أو 'member' — سلّم السيرفر حرفياً.
+  Future<void> setGroupMemberRole(
+      String groupId, String userId, String role) async {
+    try {
+      await _dio.put('/api/groups/$groupId/members/$userId/role',
+          data: {'role': role});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  // ── اللاعبون ───────────────────────────────────────────────────
+
+  /// ملف لاعب عام — يعمل للضيف أيضاً.
+  Future<PlayerProfile> player(String id) async {
+    try {
+      final res = await _dio.get('/api/players/$id');
+      return PlayerProfile.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// بحث مستخدم لإضافته إلى مجلس: الاسم جزئياً أو البريد كاملاً.
+  Future<List<PlayerSummary>> searchPlayers(String query) async {
+    try {
+      final res = await _dio
+          .get('/api/players/search', queryParameters: {'q': query.trim()});
+      return (res.data['players'] as List)
+          .map((j) => PlayerSummary.fromJson(j as Map<String, dynamic>))
+          .toList();
     } on DioException catch (e) {
       _throwReadable(e);
     }
@@ -768,9 +928,11 @@ class ApiClient {
     }
   }
 
-  Future<GroupDetail> groupDetail(String id) async {
+  /// [round] = ترتيب الجولة الأخيرة بدل الموسم.
+  Future<GroupDetail> groupDetail(String id, {bool round = false}) async {
     try {
-      final res = await _dio.get('/api/groups/$id');
+      final res = await _dio.get('/api/groups/$id',
+          queryParameters: {if (round) 'scope': 'round'});
       return GroupDetail.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {
       _throwReadable(e);

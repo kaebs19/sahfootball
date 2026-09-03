@@ -51,6 +51,10 @@ class Push {
       // النتيجة خبر عن أدائه: "ملفي" حيث نقاطه وسلسلته وأوسمته.
       case 'result':
         tab.select(AppTab.profile);
+      // طلب انضمام أو قبول أو إضافة: المجلس نفسه.
+      case 'group':
+        final id = data['groupId']?.toString();
+        if (id != null && id.isNotEmpty) tab.openGroup(id);
     }
   }
 

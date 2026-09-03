@@ -992,11 +992,14 @@ router.get('/groups/:id', async (req, res) => {
 
   const settings = await pageContext(req);
   try {
-    const { group, members } = await groupService.view({
+    // الموقع يرسم الترتيب تحت اسم members منذ نسخته الأولى؛ الخدمة
+    // صارت تفرّق بين الترتيب (leaderboard) وقائمة الأعضاء بأدوارهم
+    // (members)، والصفحة هنا تريد الأول.
+    const { group, leaderboard } = await groupService.view({
       userId: session.userId, groupId: req.params.id,
     });
     res.type('html').send(renderer.renderGroup(settings, {
-      group, members, me: session.userId, csrf: session.csrf,
+      group, members: leaderboard, me: session.userId, csrf: session.csrf,
       siteUrl: (process.env.SITE_URL || '').replace(/\/+$/, ''),
       notice: req.query.ok ? String(req.query.ok).slice(0, 120) : null,
       error: req.query.err ? String(req.query.err).slice(0, 120) : null,
@@ -1074,10 +1077,20 @@ router.get('/join/:code', async (req, res) => {
   }
 
   // ضيف: نحفظ الرمز ونعرض الدعوة.
+  //
+  // الصفحة معاينة الرابط أيضاً: واتساب يقرأ og:image وog:title منها،
+  // فصورة المجلس واسمه هما ما يراه المدعوّ قبل أن يضغط.
   setInvite(res, code, isSecure(req));
-  const members = await groupRepo.memberCount(group.id).catch(() => 0);
+  const siteUrl = (process.env.SITE_URL || '').replace(/\/+$/, '');
   res.type('html').send(renderer.renderJoin(settings, {
-    group: { name: group.name, members_count: members },
+    group: {
+      name: group.name,
+      members_count: group.members_count,
+      league_name: group.league_name,
+      join_policy: group.join_policy,
+      image_url: group.image_url,
+    },
+    imageAbs: group.image_url && siteUrl ? `${siteUrl}${group.image_url}` : null,
   }));
 });
 

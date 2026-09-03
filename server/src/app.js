@@ -100,6 +100,7 @@ app.use('/api/predictions', require('./routes/predictions'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/groups', require('./routes/groups'));
 app.use('/api/profile', require('./routes/profile'));
+app.use('/api/players', require('./routes/players'));
 app.use('/api/notifications', require('./routes/notifications'));
 // محتوى الموقع التعريفي: عام بلا مصادقة عمداً — صفحة سياسة
 // الخصوصية يجب أن تُفتح برابط مباشر بلا حساب (مراجعة App Store
@@ -184,6 +185,41 @@ app.use(
 // كاش قصير لا 365 يوماً كالأصول: هذه الملفات تتغيّر حين تتغيّر
 // الإعدادات لا حين ننشر، وليس لها بصمة في اسمها تكسر الكاش. وملفٌ
 // قديم مخبّأ هنا يعني فشل تحقّق لا يُفسَّر.
+// ملفا ربط التطبيق بالنطاق — يُولَّدان من الإعدادات لا من ملف ثابت:
+// معرّف الفريق وبصمة شهادة أندرويد قيمتان في .env، وملف JSON يُنسخ
+// باليد يتخلّف عن أول تغيير فيهما بلا خطأ ظاهر (الرابط يفتح الموقع
+// بدل التطبيق وحسب).
+//
+// AASA: آبل تطلبه بلا امتداد وبنوع application/json، وتقرؤه مرة
+// عند التثبيت — فتغييره لا يصل للأجهزة قبل تحديث التطبيق.
+// المسارات المفتوحة في التطبيق: /join/* (دعوة مجلس) فقط؛ ما عداها
+// يبقى للموقع، فمن يضغط رابط سياسة الخصوصية لا يُخطف إلى التطبيق.
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  const appId = `${process.env.APPLE_TEAM_ID || 'ZN3Z5KRWM7'}.${process.env.APPLE_BUNDLE_ID || 'com.sahfootball.app'}`;
+  res.type('application/json').json({
+    applinks: {
+      apps: [],
+      details: [{ appID: appId, paths: ['/join/*'] }],
+    },
+  });
+});
+
+// assetlinks: أندرويد يتحقق من بصمة شهادة التوقيع (SHA-256 لمفتاح
+// النشر على Google Play). بلا البصمة نرجع قائمة فارغة — الرابط
+// يفتح الموقع، ولا يكسر شيئاً — ونسجّل تنبيهاً مرة عند الإقلاع.
+const androidCert = String(process.env.ANDROID_CERT_SHA256 || '').trim();
+if (!androidCert) logger.warn('[links] ANDROID_CERT_SHA256 غير مضبوطة — روابط أندرويد تفتح الموقع لا التطبيق');
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  res.type('application/json').json(androidCert ? [{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: process.env.ANDROID_PACKAGE || 'com.sahfootball.app',
+      sha256_cert_fingerprints: [androidCert],
+    },
+  }] : []);
+});
+
 app.use(
   '/.well-known',
   require('express').static(require('path').join(__dirname, '..', '..', 'web', '.well-known'), {

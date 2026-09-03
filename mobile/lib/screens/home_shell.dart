@@ -22,9 +22,46 @@ import '../widgets/brand_mark.dart';
 import '../widgets/guest_gate.dart';
 import 'leaderboard_screen.dart';
 import 'live_screen.dart';
+import 'group_screen.dart';
+import 'invite_screen.dart';
 import 'matches_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
+
+/// يلتقط طلب «افتح المجلس» الآتي من إشعار ويدفع شاشته.
+///
+/// ويدجت صغيرة داخل الشجرة لأن الدفع يحتاج Navigator، والإشعار خارج
+/// الشجرة لا يملكه؛ AppTab يحمل الطلب وهذه تنفّذه بعد أول إطار —
+/// الدفع أثناء البناء ممنوع في فلاتر.
+class _GroupOpener extends StatefulWidget {
+  final Widget child;
+  const _GroupOpener({required this.child});
+
+  @override
+  State<_GroupOpener> createState() => _GroupOpenerState();
+}
+
+class _GroupOpenerState extends State<_GroupOpener> {
+  @override
+  Widget build(BuildContext context) {
+    final tab = context.watch<AppTab>();
+    final pending = tab.takePendingGroup();
+    final invite = tab.takePendingInvite();
+    if (pending != null || invite != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => invite != null
+                ? InviteScreen(code: invite)
+                : GroupScreen(groupId: pending!, groupName: 'المجلس'),
+          ),
+        );
+      });
+    }
+    return widget.child;
+  }
+}
 
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key});
@@ -87,7 +124,8 @@ class HomeShell extends StatelessWidget {
             ),
         ],
       ),
-      body: IndexedStack(
+      body: _GroupOpener(
+          child: IndexedStack(
         index: index,
         children: guest
             ? const [
@@ -113,7 +151,7 @@ class HomeShell extends StatelessWidget {
                 LeaderboardScreen(),
                 ProfileScreen(),
               ],
-      ),
+      )),
       bottomNavigationBar: DecoratedBox(
         // خط فاصل رفيع فوق الشريط: الهوية تفصل الأسطح بالحدود لا
         // بالظلال.

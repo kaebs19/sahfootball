@@ -26,4 +26,41 @@ class AppTab extends ChangeNotifier {
     _index = value;
     notifyListeners();
   }
+
+  /// مجلس ينتظر أن يُفتح — طلب وصل من إشعار («فلان يطلب الانضمام»).
+  ///
+  /// نفس المبدأ: الإشعار لا يمسّ الشجرة، بل يضع طلباً هنا، وويدجت
+  /// داخل الشجرة (HomeShell) يلتقطه بـ [takePendingGroup] ويدفع
+  /// الشاشة. «يأخذ» لا «يقرأ»: الطلب يُستهلك مرة واحدة كي لا تُفتح
+  /// الشاشة مرتين مع كل إعادة بناء.
+  String? _pendingGroupId;
+
+  void openGroup(String groupId) {
+    _pendingGroupId = groupId;
+    _index = leaderboard;
+    notifyListeners();
+  }
+
+  String? takePendingGroup() {
+    final id = _pendingGroupId;
+    _pendingGroupId = null;
+    return id;
+  }
+
+  /// رمز دعوة وصل من رابط (sahfootball.com/join/XXXXXX) — نفس آلية
+  /// المجلس المعلّق: الرابط يضع الرمز هنا، وHomeShell يفتح شاشة
+  /// الدعوة. يعمل للضيف أيضاً لأن المعاينة عامة.
+  String? _pendingInviteCode;
+
+  void openInvite(String code) {
+    _pendingInviteCode = code;
+    _index = leaderboard;
+    notifyListeners();
+  }
+
+  String? takePendingInvite() {
+    final code = _pendingInviteCode;
+    _pendingInviteCode = null;
+    return code;
+  }
 }

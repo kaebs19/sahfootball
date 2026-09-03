@@ -36,6 +36,18 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- روابط الدعوة (App Links): sahfootball.com/join/… يفتح
+                 التطبيق. autoVerify يجعل أندرويد يتحقق من
+                 /.well-known/assetlinks.json على النطاق عند التثبيت،
+                 وذلك الملف يحتاج بصمة شهادة التوقيع (ANDROID_CERT_SHA256
+                 على السيرفر) — بدونها يفتح الرابط المتصفح ولا يكسر
+                 شيئاً. المسار /join فقط: بقية الموقع تبقى للمتصفح. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="sahfootball.com" android:pathPrefix="/join/"/>
+            </intent-filter>
         </activity>
         <!-- خدمة استقبال رسائل FCM. مطلوبة لعرض الإشعار والتطبيق
              في المقدمة — أندرويد لا يعرضه تلقائياً في تلك الحالة. -->

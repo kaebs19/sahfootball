@@ -1,15 +1,32 @@
-// routes/groups — المجالس (الدوريات الخاصة). كلها تتطلب تسجيل دخول.
+// routes/groups — المجالس (الدوريات الخاصة والعامة). كلها تتطلب
+// تسجيل دخول.
 //
 // القواعد كلها في groupService: للمجالس بابان الآن (التطبيق
 // والموقع)، ونسخُها هنا يعني أن أول تعديل عليها يُنسى في أحدهما.
 // هذا الملف واجهة JSON فوق تلك القواعد لا أكثر.
 const express = require('express');
 const requireAuth = require('../middleware/requireAuth');
+const optionalAuth = require('../middleware/optionalAuth');
+const { upload } = require('../middleware/imageUpload');
 const groupRepo = require('../repositories/groupRepo');
 const groupService = require('../services/groupService');
 
 const router = express.Router();
+
+// GET /api/groups/invite/:code — معاينة دعوة (عامة: من فتح الرابط
+// قد لا يملك حساباً بعد، والمعاينة هي ما يقنعه بإنشائه).
+// قبل requireAuth عمداً، وقبل /:id كي لا تُلتقط كلمة invite معرّفاً.
+router.get('/invite/:code', optionalAuth, async (req, res) => {
+  try {
+    res.json(await groupService.invitePreview({
+      code: req.params.code, userId: req.userId ?? null,
+    }));
+  } catch (err) { fail(res, err); }
+});
+
 router.use(requireAuth);
+
+const decorate = groupService.decorate;
 
 /** يحوّل خطأ الخدمة إلى رد JSON، أو يعيد رميه إن لم يكن متوقّعاً. */
 function fail(res, err) {
@@ -17,11 +34,19 @@ function fail(res, err) {
   throw err;
 }
 
-// POST /api/groups — { name } — إنشاء مجلس
+// POST /api/groups — { name, join_policy?, league_id? } — إنشاء مجلس
+// (is_public من النسخة السابقة ما زال مقبولاً: عام = مفتوح)
 router.post('/', async (req, res) => {
   try {
-    const group = await groupService.create({ ownerId: req.userId, name: req.body?.name });
-    res.status(201).json({ group });
+    const body = req.body || {};
+    const group = await groupService.create({
+      ownerId: req.userId,
+      name: body.name,
+      isPublic: body.is_public,
+      joinPolicy: body.join_policy,
+      leagueId: body.league_id ?? null,
+    });
+    res.status(201).json({ group: decorate(group) });
   } catch (err) { fail(res, err); }
 });
 
@@ -35,26 +60,150 @@ router.post('/join', async (req, res) => {
     // الخدمة ترجع already بدل الرمي كي يقرّر كل باب بنفسه، والويب
     // يقرأها ترحيباً لا خطأً.
     if (already) return res.status(409).json({ error: 'أنت عضو في هذا المجلس بالفعل' });
-    res.status(201).json({ group: { id: group.id, name: group.name } });
+    res.status(201).json({ group: decorate(group) });
   } catch (err) { fail(res, err); }
 });
 
 // GET /api/groups/mine — مجالسي
 router.get('/mine', async (req, res) => {
   const groups = await groupRepo.findMine(req.userId);
-  res.json({ groups });
+  res.json({ groups: groups.map(decorate) });
 });
 
-// GET /api/groups/:id — تفاصيل المجلس + ترتيب أعضائه (للأعضاء فقط)
+// GET /api/groups/public?search= — المجالس العامة للاستكشاف.
+// قبل /:id في الترتيب، وإلا التقط ذاك المسارُ كلمة public معرّفاً.
+router.get('/public', async (req, res) => {
+  const groups = await groupService.discover({
+    userId: req.userId, search: req.query.search,
+  });
+  res.json({ groups: groups.map(decorate) });
+});
+
+// GET /api/groups/:id — تفاصيل المجلس + ترتيبه + أعضاؤه
 router.get('/:id', async (req, res) => {
   try {
-    const { group, members } = await groupService.view({
+    // ?scope=round — ترتيب الجولة الأخيرة بدل الموسم.
+    const { group, leaderboard, members, requests, viewerRole, viewerRequested, scope, roundLabel, hasRound } =
+      await groupService.view({ userId: req.userId, groupId: req.params.id, scope: req.query.scope });
+    res.json({
+      group: decorate(group),
+      viewer_role: viewerRole, // null = يتصفّح مجلساً عاماً ولم ينضم
+      viewer_requested: viewerRequested, // طلبه معلّق
+      scope,
+      round_label: roundLabel, // null = جولات متعددة أو لا جولة بعد
+      has_round: hasRound,
+      leaderboard, // rank وmovement محسوبان في الخدمة
+      members,
+      requests, // فارغة لغير المالك والمشرفين
+    });
+  } catch (err) { fail(res, err); }
+});
+
+// PATCH /api/groups/:id — { name?, join_policy?, league_id? } — للمالك
+router.patch('/:id', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const group = await groupService.update({
+      userId: req.userId,
+      groupId: req.params.id,
+      name: body.name,
+      isPublic: body.is_public,
+      joinPolicy: body.join_policy,
+      leagueId: body.league_id,
+    });
+    res.json({ group: decorate(group) });
+  } catch (err) { fail(res, err); }
+});
+
+// POST /api/groups/:id/image — multipart بحقل image — للمالك
+router.post('/:id/image', upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'أرفق الصورة في حقل image' });
+  try {
+    const group = await groupService.setImage({
+      userId: req.userId, groupId: req.params.id, imageUrl: `/uploads/${req.file.filename}`,
+    });
+    res.json({ group: decorate(group) });
+  } catch (err) {
+    // الرفع سبق الفحص (multer يكتب قبل أن نصل)، فملف من غير المالك
+    // يُمحى هنا ولا يبقى يتيماً على القرص.
+    await require('../utils/avatarFile').deleteAvatarFile(`/uploads/${req.file.filename}`);
+    fail(res, err);
+  }
+});
+
+// DELETE /api/groups/:id/image — إزالة الصورة — للمالك
+router.delete('/:id/image', async (req, res) => {
+  try {
+    const group = await groupService.setImage({
+      userId: req.userId, groupId: req.params.id, imageUrl: null,
+    });
+    res.json({ group: decorate(group) });
+  } catch (err) { fail(res, err); }
+});
+
+// POST /api/groups/:id/join — الانضمام بمعرّف المجلس (بلا رمز).
+// المفتوح: 201 + عضوية. بالموافقة: 202 + requested=true (طلب معلّق).
+router.post('/:id/join', async (req, res) => {
+  try {
+    const { group, already, requested } = await groupService.joinPublic({
       userId: req.userId, groupId: req.params.id,
     });
-    res.json({
-      group,
-      leaderboard: members.map((row, i) => ({ rank: i + 1, ...row })),
+    if (already) return res.status(409).json({ error: 'أنت عضو في هذا المجلس بالفعل' });
+    res.status(requested ? 202 : 201).json({ group: decorate(group), requested });
+  } catch (err) { fail(res, err); }
+});
+
+// POST /api/groups/:id/requests/:userId/approve — قبول طلب (مالك/مشرف)
+router.post('/:id/requests/:userId/approve', async (req, res) => {
+  try {
+    await groupService.approveRequest({
+      actorId: req.userId, groupId: req.params.id, userId: req.params.userId,
     });
+    res.json({ ok: true });
+  } catch (err) { fail(res, err); }
+});
+
+// DELETE /api/groups/:id/requests/:userId — رفض (مالك/مشرف) أو إلغاء
+// (صاحب الطلب نفسه)
+router.delete('/:id/requests/:userId', async (req, res) => {
+  try {
+    await groupService.withdrawRequest({
+      actorId: req.userId, groupId: req.params.id, userId: req.params.userId,
+    });
+    res.status(204).end();
+  } catch (err) { fail(res, err); }
+});
+
+// POST /api/groups/:id/members — { user_id } — إضافة عضو (مالك/مشرف)
+router.post('/:id/members', async (req, res) => {
+  try {
+    await groupService.addMember({
+      actorId: req.userId, groupId: req.params.id, userId: req.body?.user_id,
+    });
+    res.status(201).json({ ok: true });
+  } catch (err) { fail(res, err); }
+});
+
+// DELETE /api/groups/:id/members/:userId — إزالة عضو (مالك/مشرف)
+router.delete('/:id/members/:userId', async (req, res) => {
+  try {
+    await groupService.removeMember({
+      actorId: req.userId, groupId: req.params.id, userId: req.params.userId,
+    });
+    res.status(204).end();
+  } catch (err) { fail(res, err); }
+});
+
+// PUT /api/groups/:id/members/:userId/role — { role } — للمالك
+router.put('/:id/members/:userId/role', async (req, res) => {
+  try {
+    await groupService.setRole({
+      actorId: req.userId,
+      groupId: req.params.id,
+      userId: req.params.userId,
+      role: req.body?.role,
+    });
+    res.json({ ok: true });
   } catch (err) { fail(res, err); }
 });
 
@@ -80,8 +229,10 @@ router.get('/:id/fixtures/:fixtureId/predictions', async (req, res) => {
     return res.status(400).json({ error: 'معرّف المباراة غير صالح' });
   }
 
-  if (!(await groupRepo.isMember(id, req.userId).catch(() => false))) {
-    return res.status(404).json({ error: 'القروب غير موجود' });
+  // للأعضاء وحدهم حتى في المجلس العام: التصفّح يعطي الترتيب
+  // والأعضاء، أما «ماذا توقّع أصحابي» فثمنها الانضمام والمشاركة.
+  if (!groupService.isUuid(id) || !(await groupRepo.isMember(id, req.userId))) {
+    return res.status(404).json({ error: 'المجلس غير موجود' });
   }
 
   const fixtureRepo = require('../repositories/fixtureRepo');

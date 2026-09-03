@@ -16,6 +16,7 @@ import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'state/app_tab.dart';
+import 'state/links.dart';
 import 'state/session.dart';
 import 'widgets/brand_mark.dart';
 import 'widgets/goal_splash.dart';
@@ -29,6 +30,9 @@ Future<void> main() async {
   final api = ApiClient();
   final tab = AppTab();
   final session = Session(api, tab);
+  // روابط الدعوة تبدأ الاستماع قبل runApp: رابطٌ شغّل التطبيق من
+  // الصفر يُقرأ هنا ويُحفظ في AppTab حتى تُبنى الشجرة وتلتقطه.
+  Links(tab).start();
   // نبدأ استعادة الجلسة قبل runApp حتى لا يرى المستخدم وميض شاشة
   // الدخول ثم قفزة للرئيسية. لا ننتظرها (بلا await) — الواجهة تعرض
   // شاشة الانتظار وتتحدث وحدها عند الانتهاء.

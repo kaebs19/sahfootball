@@ -16,5 +16,15 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- روابط الدعوة (Universal Links): sahfootball.com/join/XXXXXX
+	     يفتح التطبيق مباشرة بدل المتصفح. النظام يقرأ
+	     /.well-known/apple-app-site-association من النطاق عند
+	     التثبيت ليتحقق أن النطاق يسمح لهذا التطبيق (يولّده السيرفر
+	     من APPLE_TEAM_ID، راجع server/src/app.js). يتطلّب تفعيل
+	     Associated Domains على App ID في بوابة آبل. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:sahfootball.com</string>
+	</array>
 </dict>
 </plist>

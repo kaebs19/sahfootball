@@ -1,42 +1,19 @@
 // routes/profile — الملف الشخصي: الاسم، الفريق المفضل، الصورة.
 // كلها للمستخدم المسجل نفسه (لا يعدل أحد ملف غيره — المعرّف يؤخذ
 // من التوكن حصراً، لا من الطلب).
-const crypto = require('crypto');
 const express = require('express');
-const multer = require('multer');
 const requireAuth = require('../middleware/requireAuth');
 const userRepo = require('../repositories/userRepo');
 const predictionRepo = require('../repositories/predictionRepo');
 const badgeService = require('../services/badgeService');
-const { UPLOADS_DIR, deleteAvatarFile } = require('../utils/avatarFile');
+const { deleteAvatarFile } = require('../utils/avatarFile');
+// إعداد multer (الأنواع، الحدّ، الاسم العشوائي) مشترك مع صورة
+// المجلس — راجع middleware/imageUpload.
+const { upload } = require('../middleware/imageUpload');
 const db = require('../config/db');
 
 const router = express.Router();
 router.use(requireAuth);
-
-// إعداد multer (معالج الملفات المرفوعة في Express):
-// - الامتداد يُشتق من نوع الملف الفعلي (mimetype) لا من اسمه —
-//   اسم الملف يكتبه العميل ولا نثق به.
-// - اسم عشوائي بالكامل: لا معرّف مستخدم في الاسم (خصوصية: رابط
-//   الصورة عام، ولا يجب أن يدل على صاحبه) ولا اسم أصلي (حقن مسارات).
-const EXT_BY_MIME = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
-
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOADS_DIR,
-    filename: (req, file, cb) => {
-      cb(null, crypto.randomBytes(16).toString('hex') + EXT_BY_MIME[file.mimetype]);
-    },
-  }),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB — كافية لصورة شخصية
-  fileFilter: (req, file, cb) => {
-    if (EXT_BY_MIME[file.mimetype]) return cb(null, true);
-    const err = new Error('نوع الملف غير مدعوم — jpeg أو png أو webp فقط');
-    err.status = 400;
-    err.expose = true;
-    cb(err);
-  },
-});
 
 // PUT /api/profile — { displayName?, favoriteTeamId? }
 router.put('/', async (req, res) => {

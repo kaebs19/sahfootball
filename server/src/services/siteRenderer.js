@@ -143,7 +143,7 @@ const ASSET_V = (() => {
 })();
 
 /** التخطيط المشترك: ترويسة وتذييل حول أي محتوى. */
-function layout({ title, description, body, settings, active, canonicalPath }) {
+function layout({ title, description, body, settings, active, canonicalPath, image }) {
   const siteName = settings?.siteName || 'ملك التوقعات';
   const fullTitle = title && title !== siteName ? `${title} — ${siteName}` : siteName;
   const contact = safeMailto(settings?.contactEmail);
@@ -164,6 +164,8 @@ function layout({ title, description, body, settings, active, canonicalPath }) {
 <meta property="og:description" content="${esc(description || settings?.description || '')}">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="ar_SA">
+${image ? `<meta property="og:image" content="${esc(image)}">
+<meta name="twitter:card" content="summary">` : ''}
 ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1461,7 +1463,9 @@ function renderGroup(settings, { group, members, me, csrf, notice, error, siteUr
  * يقرأ "انضمّ إلى شلّة الاستراحة — 7 أعضاء" يعرف أنه في المكان
  * الصحيح. ولا تعرض أكثر: الأسماء والنقاط للأعضاء وحدهم.
  */
-function renderJoin(settings, { group, error }) {
+function renderJoin(settings, { group, error, imageAbs }) {
+  const appStore = safeUrl(settings?.appStoreUrl);
+  const play = safeUrl(settings?.googlePlayUrl);
   const body = `
 <div class="page">
   <div class="wrap auth-wrap" style="max-width:480px">
@@ -1472,14 +1476,21 @@ function renderJoin(settings, { group, error }) {
       <div style="margin-top:16px"><a class="btn btn-ghost" href="/">الرئيسية</a></div>
     </div>` : `
     <div class="card" style="text-align:center;padding:32px 22px">
-      <span class="gp-av gp-av-lg">${esc((group.name || '?').trim().charAt(0))}</span>
+      ${group.image_url
+        ? `<img class="gp-av gp-av-lg" src="${esc(group.image_url)}" alt="" style="object-fit:cover">`
+        : `<span class="gp-av gp-av-lg">${esc((group.name || '?').trim().charAt(0))}</span>`}
       <h1 style="font-size:21px;margin:12px 0 6px">${esc(group.name)}</h1>
       <p class="section-sub">
-        ${esc(counted(group.members_count, 'عضو واحد', 'عضوان', 'أعضاء', 'عضواً'))} · دعوة للانضمام
+        ${esc(counted(group.members_count, 'عضو واحد', 'عضوان', 'أعضاء', 'عضواً'))}${group.league_name ? ` · ${esc(group.league_name)}` : ' · كل الدوريات'} · دعوة للانضمام
       </p>
       <p class="pj-lede" style="margin:14px 0 18px">
         سجّل الدخول وستنضمّ فوراً. نقاطك في اللعبة هي نقاطك في المجلس.
       </p>
+      ${appStore || play ? `
+      <p class="section-sub" style="margin:0 0 14px">
+        عندك التطبيق؟ افتح الرابط من هاتفك وينفتح المجلس فيه مباشرة.
+        ${appStore ? `<a href="${esc(appStore)}">App Store</a>` : ''}${appStore && play ? ' · ' : ''}${play ? `<a href="${esc(play)}">Google Play</a>` : ''}
+      </p>` : ''}
       <div class="pj-cta">
         ${settings?.google ? '<a class="btn btn-google" href="/auth/google"><span class="g-mark" aria-hidden="true">G</span> بحساب جوجل</a>' : ''}
         ${settings?.apple ? `<a class="btn btn-apple" href="/auth/apple">${APPLE_MARK} باستخدام Apple</a>` : ''}
@@ -1489,7 +1500,11 @@ function renderJoin(settings, { group, error }) {
     </div>`}
   </div>
 </div>`;
-  return layout({ title: group ? `انضمّ إلى ${group.name}` : 'دعوة', body, settings, active: null });
+  return layout({
+    title: group ? `انضمّ إلى ${group.name}` : 'دعوة',
+    description: group ? `${group.name} — مجلس توقعات في ملك التوقعات. انضمّ ونافس أصحابك.` : undefined,
+    body, settings, active: null, image: imageAbs || undefined,
+  });
 }
 
 /**

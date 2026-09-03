@@ -7,6 +7,14 @@ class LeaderboardEntry {
   final int totalPoints;
   final int settledPredictions;
 
+  /// نسبة الإصابة من المحتسب. null = لا شيء محتسب بعد، لا صفر:
+  /// من لم يُحتسب له توقع ليس مخطئاً في كل شيء.
+  final int? accuracy;
+
+  /// حركة المركز منذ آخر جولة محتسبة (في المجلس): موجب صعود، سالب
+  /// هبوط، صفر ثبات، null = لا حركة تُقال (عضو جديد، أو ترتيب جولة).
+  final int? movement;
+
   const LeaderboardEntry({
     required this.rank,
     required this.userId,
@@ -15,6 +23,8 @@ class LeaderboardEntry {
     this.favoriteTeamLogo,
     required this.totalPoints,
     required this.settledPredictions,
+    this.accuracy,
+    this.movement,
   });
 
   factory LeaderboardEntry.fromJson(Map<String, dynamic> json) =>
@@ -26,5 +36,7 @@ class LeaderboardEntry {
         favoriteTeamLogo: json['favorite_team_logo'] as String?,
         totalPoints: json['total_points'] as int,
         settledPredictions: json['settled_predictions'] as int,
+        accuracy: (json['accuracy'] as num?)?.round(),
+        movement: (json['movement'] as num?)?.toInt(),
       );
 }
