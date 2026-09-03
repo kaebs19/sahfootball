@@ -20,6 +20,7 @@ import '../models/champion.dart';
 import '../models/fixture.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
+import '../widgets/premium_widgets.dart';
 import '../widgets/fixture_card.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/league_strip.dart';
@@ -209,7 +210,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
         children: [
-          for (final entry in byDay.entries) ...[
+          for (final (i, entry) in byDay.entries.indexed) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 12, 2, 8),
               child: BrandSectionLabel(entry.key),
@@ -221,6 +222,11 @@ class _MatchesScreenState extends State<MatchesScreen> {
                 onTap:
                     f.isOpenForPrediction ? () => _openPredictionSheet(f) : null,
               ),
+            // مكان إعلان واحد بعد يوم المباريات الأول، لا بين كل
+            // مباراتين: شاشة المباريات هي المنتج نفسه، وإغراقها
+            // بالإعلانات يجعل الاشتراك يبدو ابتزازاً لا خدمة.
+            // ويختفي كلياً عند المشتركين (راجع AdSlot).
+            if (i == 0) const AdSlot(reason: 'تصفّح المباريات بلا إعلانات.'),
           ],
         ],
       ),

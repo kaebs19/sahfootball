@@ -57,6 +57,21 @@ class GameRules {
 
 /// حالة المضاعِف أمام لاعب في مباراة — من
 /// GET /api/predictions/multiplier/:fixtureId.
+/// المضاعِف المشترى ×5 أمام هذه المباراة.
+class BoostState {
+  final int factor;
+  final int left;
+  final bool on;
+
+  const BoostState({this.factor = 5, this.left = 0, this.on = false});
+
+  factory BoostState.fromJson(Map<String, dynamic> j) => BoostState(
+        factor: (j['factor'] as num?)?.toInt() ?? 5,
+        left: (j['left'] as num?)?.toInt() ?? 0,
+        on: j['on'] == true,
+      );
+}
+
 class MultiplierState {
   final int factor;
   final int free;
@@ -66,12 +81,17 @@ class MultiplierState {
   /// هل هذا التوقّع مضاعَف بالفعل؟
   final bool on;
 
+  /// المضاعِف المشترى — أداة ثانية إلى جانب المجانية، ولا تُشغَّلان
+  /// معاً: التوقّع يحمل مضاعِفاً واحداً بحكم عمود القاعدة.
+  final BoostState boost;
+
   const MultiplierState({
     required this.factor,
     required this.free,
     required this.used,
     required this.left,
     required this.on,
+    this.boost = const BoostState(),
   });
 
   factory MultiplierState.fromJson(Map<String, dynamic> json) =>
@@ -81,5 +101,7 @@ class MultiplierState {
         used: (json['used'] as num?)?.toInt() ?? 0,
         left: (json['left'] as num?)?.toInt() ?? 0,
         on: json['on'] == true,
+        boost: BoostState.fromJson(
+            (json['boost'] as Map<String, dynamic>?) ?? const {}),
       );
 }

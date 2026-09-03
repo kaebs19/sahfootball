@@ -21,12 +21,30 @@ async function upsert({ userId, fixtureId, predHome, predAway, multiplier = null
        pred_home  = EXCLUDED.pred_home,
        pred_away  = EXCLUDED.pred_away,
        multiplier = COALESCE($5, predictions.multiplier),
+       -- عدّاد التعديلات يزيد حين يتغيّر الرقمان فعلاً وحدهما:
+       -- تشغيل المضاعِف أو إطفاؤه يمرّ بنفس المسار، ولو عُدّ
+       -- تعديلاً لأنفق اللاعب حقّه في التعديل على ضغطة لم تغيّر
+       -- توقّعه أصلاً.
+       edits = predictions.edits + CASE
+                 WHEN predictions.pred_home IS DISTINCT FROM EXCLUDED.pred_home
+                   OR predictions.pred_away IS DISTINCT FROM EXCLUDED.pred_away
+                 THEN 1 ELSE 0 END,
        updated_at = now()
      WHERE predictions.settled_at IS NULL
-     RETURNING id, fixture_id, pred_home, pred_away, multiplier, points, created_at, updated_at`,
+     RETURNING id, fixture_id, pred_home, pred_away, multiplier, edits, points, created_at, updated_at`,
     [userId, fixtureId, predHome, predAway, multiplier]
   );
   return rows[0] ?? null; // null = الصف محتسب فرفض التحديث
+}
+
+/** توقّع اللاعب على مباراة بعينها، أو null. */
+async function findOne(userId, fixtureId) {
+  const { rows } = await db.query(
+    `SELECT id, fixture_id, pred_home, pred_away, multiplier, edits, points, settled_at
+       FROM predictions WHERE user_id = $1 AND fixture_id = $2`,
+    [userId, fixtureId]
+  );
+  return rows[0] ?? null;
 }
 
 /**
@@ -37,7 +55,7 @@ async function upsert({ userId, fixtureId, predHome, predAway, multiplier = null
  * الحالي أولاً يجعل الإنشاء والتعديل سؤالاً واحداً — والحالتان
  * تسلكان نفس المسار في submit، فالتفريق بينهما هنا خطأ ينتظر.
  */
-async function countMultiplied(userId, leagueId, season, exceptFixture = 0) {
+async function countMultiplied(userId, leagueId, season, exceptFixture = 0, factor = 2) {
   // فحص صريح لأن الصمت هنا يمنح مضاعفات بلا حدّ.
   //
   // مرّ فعلاً: صفحة المباراة تقرأ المباراة من siteFixtureRepo لا من
@@ -58,11 +76,14 @@ async function countMultiplied(userId, leagueId, season, exceptFixture = 0) {
        FROM predictions p
        JOIN fixtures f ON f.id = p.fixture_id
       WHERE p.user_id = $1
-        AND p.multiplier > 1
+        -- المضاعِف المطلوب بعينه لا "أكبر من 1": صار في اللعبة
+        -- مضاعِفان (×2 مجاني بحصة، و×5 مشترى برصيد)، وعدّهما معاً
+        -- كان سيجعل مضاعِفاً دفع ثمنه اللاعب ينقص حصّته المجانية.
+        AND p.multiplier = $5
         AND f.league_id = $2
         AND f.season = $3
         AND p.fixture_id <> $4`,
-    [userId, leagueId, season, exceptFixture]
+    [userId, leagueId, season, exceptFixture, factor]
   );
   return rows[0].used;
 }
@@ -239,14 +260,65 @@ async function rankOf(userId, leagueId = null) {
   return rows[0] ?? null;
 }
 
-function computeStreaks(hits) {
+/**
+ * السلسلتان من قائمة إصابات مرتّبة زمنياً، مع درع السلسلة.
+ *
+ * الدرع: كل `every` إصابة متتالية تمنح درعاً (بحدّ `max`)، والدرع
+ * يمتصّ خطأً واحداً فلا يقطع السلسلة. المشترك يبدأ بـ`start` دروع
+ * جاهزة — وهي "الحماية مرة واحدة" التي يشتريها مع التاج.
+ *
+ * لماذا يُحسب الدرع هنا لا في جدول؟ لأنه مشتقّ بالكامل من نفس
+ * القائمة التي تُحسب منها السلسلة. عمودٌ يخزّن "عنده درع" كان
+ * سيصير رقماً ثانياً يجب أن يتفق مع السلسلة المعروضة بجانبه، وأول
+ * مرة يختلفان يرى اللاعب سلسلةً انكسرت ودرعاً لم يُستعمل.
+ *
+ * والخيارات تُمرَّر ولا تُقرأ هنا: هذه طبقة قاعدة بيانات لا تعرف
+ * من هو المشترك — والمستدعي (ملفي، الأوسمة) يمرّر نفس القيم من
+ * premiumService كي لا يفترق الرقمان بين شاشتين.
+ *
+ * الخيارات الافتراضية (بلا دروع) تعطي السلوك الأصلي حرفياً.
+ */
+function computeStreaks(hits, shield = { every: 0, max: 0, start: 0 }) {
+  const every = shield.every || 0;
+  const max = shield.max || 0;
+
   let longest = 0;
   let run = 0;
+  let stock = Math.min(shield.start || 0, max);
+  let sinceShield = 0;
+
   for (const hit of hits) {
-    run = hit ? run + 1 : 0; // أي توقع بلا نقاط يقطع السلسلة
-    if (run > longest) longest = run;
+    if (hit) {
+      run += 1;
+      if (run > longest) longest = run;
+      sinceShield += 1;
+      if (every > 0 && sinceShield >= every) {
+        sinceShield = 0;
+        if (stock < max) stock += 1;
+      }
+    } else if (stock > 0) {
+      // الدرع يمتصّ الخطأ: السلسلة تصمد ولا تزيد. والعدّاد نحو
+      // الدرع التالي يبدأ من جديد — الدرع يُنال بخمس إصابات
+      // متتالية، وخطأٌ بينها ليس تتابعاً.
+      stock -= 1;
+      sinceShield = 0;
+    } else {
+      run = 0;
+      sinceShield = 0;
+    }
   }
-  return { longest_streak: longest, current_streak: run };
+
+  return {
+    longest_streak: longest,
+    current_streak: run,
+    shield: {
+      stock,
+      max,
+      // كم إصابة تفصله عن الدرع التالي — الرقم الذي يجعل الشاشة
+      // تقول "إصابتان وتنال درعاً" بدل شارة صامتة.
+      next_in: every > 0 && stock < max ? every - sinceShield : null,
+    },
+  };
 }
 
 // إحصاءات شاشة "ملفي" كاملة في رد واحد.
@@ -256,7 +328,7 @@ function computeStreaks(hits) {
 // معاً بـ json_agg متداخلة يجعل الاستعلام غير قابل للقراءة بلا
 // مكسب — نفس القرار المشروح في userRepo.adminDetail. Promise.all
 // تشغّلها معاً فتصل كلها بزمن أبطأها لا بمجموعها.
-async function profileStats(userId) {
+async function profileStats(userId, shield = undefined) {
   const [standing, profile, distribution, form, streakRows, byLeague] = await Promise.all([
     // 1) المركز وعدد المتنافسين.
     //
@@ -463,7 +535,7 @@ async function profileStats(userId) {
     predictions_count: u.predictions_count,
     settled_predictions: s.settled_predictions ?? 0,
     accuracy: u.accuracy ?? null,
-    ...computeStreaks(streakRows.rows.map((r) => r.hit)),
+    ...computeStreaks(streakRows.rows.map((r) => r.hit), shield),
     points_distribution: distribution.rows,
     recent_form: form.rows,
     // شعار الدوري من مسارنا لا من العمود — نفس قرار routes/leagues.
@@ -480,6 +552,7 @@ module.exports = {
   upsert,
   countMultiplied,
   findMine,
+  findOne,
   findByUserAndFixtures,
   findUnsettled,
   settle,

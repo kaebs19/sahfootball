@@ -22,11 +22,14 @@ import '../brand.dart';
 import '../format.dart';
 import '../config.dart';
 import '../models/prediction.dart';
+import '../models/premium.dart';
 import '../models/profile_stats.dart';
 import '../state/session.dart';
 import '../widgets/badge_grid.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/league_stats_card.dart';
+import '../widgets/premium_widgets.dart';
+import '../state/premium.dart';
 import 'settings_screen.dart';
 
 /// سلّم الرتب من ملف الهوية.
@@ -59,6 +62,15 @@ class ProfileScreen extends StatefulWidget {
 enum _Log { predictions, points }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  /// الاشتراك يغيّر أرقاماً في هذه الشاشة (درع السلسلة)، وتبويب
+  /// "ملفي" يعيش داخل IndexedStack فلا يُبنى من جديد بعد الشراء.
+  /// بلا هذا المستمع يرى المشترك درعه القديم حتى يسحب للتحديث.
+  Premium? _premium;
+
+  void _onPremiumChanged() {
+    if (mounted) _load();
+  }
+
   ProfileStats? _stats;
   List<Prediction>? _predictions;
   String? _error;
@@ -68,6 +80,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final premium = context.read<Premium>();
+    if (identical(premium, _premium)) return;
+    _premium?.removeListener(_onPremiumChanged);
+    _premium = premium..addListener(_onPremiumChanged);
+  }
+
+  @override
+  void dispose() {
+    _premium?.removeListener(_onPremiumChanged);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -118,6 +145,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           _StatsGrid(stats: stats),
+
+          // الدرع تحت الأرقام مباشرة: هو جزء من قراءة السلسلة، ولو
+          // بَعُد عنها لظهرت سلسلة صمدت أمام خطأ بلا تفسير.
+          if (stats.shield.available) ...[
+            const SizedBox(height: 12),
+            _ShieldCard(shield: stats.shield),
+          ],
+
+          const SizedBox(height: 12),
+          const CrownUpsell(
+            reason: 'عدّل توقّعك، واحمِ سلسلتك، وتصفّح بلا إعلانات.',
+          ),
 
           // الحصيلة لكل دوري: الرقم الكلي فوق يخفي أن اللاعب ملكٌ في
           // السعودي ومتفرّج في الإنجليزي — وهنا يظهر ذلك دورياً دورياً.
@@ -459,6 +498,7 @@ class _IdentityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final rank = _rankName(stats.totalPoints);
     final next = _nextRank(stats.totalPoints);
+    final premium = context.watch<Premium>().isPremium;
 
     return BrandCard(
       royal: true,
@@ -473,16 +513,29 @@ class _IdentityCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: Brand.displayFont,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Brand.text,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: Brand.displayFont,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Brand.text,
+                            ),
+                          ),
+                        ),
+                        // تاجٌ صغير بجانب الاسم — الذهبي في موضعه:
+                        // رتبة ودور، لا زينة.
+                        if (premium) ...[
+                          const SizedBox(width: 7),
+                          const Icon(Icons.workspace_premium,
+                              size: 17, color: Brand.crown),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 5),
                     Row(
@@ -652,6 +705,70 @@ class _StatsGrid extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// درع السلسلة: هل يحميه الآن، وكم يفصله عن الدرع التالي.
+///
+/// يُعرض للجميع لا للمشتركين وحدهم: الدرع يُكتسب بالإصابات المتتالية،
+/// والتاج يعطي درعاً جاهزاً فوقه. وإخفاؤه عن غير المشترك كان سيجعل
+/// سلسلته تنكسر يوماً وتصمد يوماً بلا سبب يراه.
+class _ShieldCard extends StatelessWidget {
+  final ShieldState shield;
+  const _ShieldCard({required this.shield});
+
+  @override
+  Widget build(BuildContext context) {
+    final on = shield.active;
+    return BrandCard(
+      royal: on,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Icon(on ? Icons.shield : Icons.shield_outlined,
+              size: 22, color: on ? Brand.crown : Brand.textFaint),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  on ? 'درع السلسلة فعّال' : 'درع السلسلة',
+                  style: TextStyle(
+                    color: on ? Brand.crown : Brand.text,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  on
+                      ? 'توقّع خاطئ واحد لن يكسر سلسلتك.'
+                      : shield.nextIn != null
+                          // العدّ العربي من Fmt: "1 توقّعات" خطأ يظهر
+                          // في نصّ يُقرأ كل يوم.
+                          ? 'يبقى ${Fmt.counted(shield.nextIn!, 'توقّع صحيح واحد', 'توقّعان صحيحان', 'توقّعات صحيحة', 'توقّعاً صحيحاً')} لتنال درعاً.'
+                          : 'يُكتسب بالتوقّعات الصحيحة المتتالية.',
+                  style: const TextStyle(
+                      color: Brand.textMuted, fontSize: 11.5, height: 1.6),
+                ),
+              ],
+            ),
+          ),
+          if (shield.max > 1)
+            Text(
+              '${shield.stock}/${shield.max}',
+              style: const TextStyle(
+                fontFamily: Brand.displayFont,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Brand.crown,
+                fontFeatures: Brand.tabular,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../brand.dart';
+import '../state/premium.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
 import 'about_footer.dart';
@@ -18,6 +19,7 @@ import 'account_settings_screen.dart';
 import 'champion_screen.dart';
 import 'contact_screen.dart';
 import 'leagues_screen.dart';
+import 'premium_screen.dart';
 import 'round_screen.dart';
 import 'edit_profile_screen.dart';
 import 'notification_settings_screen.dart';
@@ -50,6 +52,20 @@ class SettingsScreen extends StatelessWidget {
                 title: 'إعدادات الحساب',
                 subtitle: 'البريد وكلمة السر وحذف الحساب',
                 onTap: () => _open(context, const AccountSettingsScreen()),
+              ),
+            ],
+          ),
+
+          const _GroupLabel('الاشتراك'),
+          _SettingsGroup(
+            children: [
+              _SettingsTile(
+                icon: Icons.workspace_premium,
+                title: 'التاج الذهبي',
+                subtitle: context.watch<Premium>().isPremium
+                    ? 'اشتراكك فعّال'
+                    : 'معزّزات شهرية · بلا إعلانات',
+                onTap: () => _open(context, const PremiumScreen()),
               ),
             ],
           ),

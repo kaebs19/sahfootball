@@ -14,6 +14,7 @@ import '../brand.dart';
 import '../format.dart';
 import '../models/fixture.dart';
 import '../models/rules.dart';
+import '../screens/premium_screen.dart';
 import 'brand_widgets.dart';
 
 Future<({int home, int away})?> showPredictionSheet(
@@ -57,12 +58,21 @@ class _PredictionSheetState extends State<_PredictionSheet> {
   bool _busy = false;
   String? _error;
 
+  /// آخر خطأ كان سببه غياب الاشتراك — فنعرض باب الاشتراك تحته.
+  bool _paywall = false;
+
   // القواعد وحالة الأداة تصلان بعد الفتح: الشيت يُفتح فوراً بجدول
   // احتياطي ثم يُصحّح نفسه. انتظارُ الشبكة قبل عرضه يجعل ضغطة
   // "توقّع" تبدو معطّلة لثوانٍ على شبكة بطيئة.
   GameRules _rules = GameRules.fallback;
   MultiplierState? _mult;
-  bool _x2 = false;
+
+  /// المضاعِف المختار: 1 أو 2 (المجاني) أو 5 (المشترى).
+  ///
+  /// رقمٌ واحد لا مربّعان منطقيان: التوقّع يحمل مضاعِفاً واحداً بحكم
+  /// عمود القاعدة، ومتغيّران منفصلان كانا سيسمحان بحالة "الاثنان
+  /// مشغّلان" التي لا وجود لها.
+  int _multiplier = 1;
 
   @override
   void initState() {
@@ -78,7 +88,13 @@ class _PredictionSheetState extends State<_PredictionSheet> {
     setState(() {
       _rules = rules;
       _mult = mult;
-      _x2 = mult?.on ?? false;
+      _multiplier = mult == null
+          ? 1
+          : mult.boost.on
+              ? mult.boost.factor
+              : mult.on
+                  ? mult.factor
+                  : 1;
     });
   }
 
@@ -94,7 +110,7 @@ class _PredictionSheetState extends State<_PredictionSheet> {
             away: _away,
             // نرسله صراحةً لأن الشيت يعرض حالته: إلغاء التأشير
             // هنا قرارٌ لا سهو، وإرسال null كان سيتجاهله.
-            multiplier: _mult == null ? null : (_x2 ? _mult!.factor : 1),
+            multiplier: _mult == null ? null : _multiplier,
           );
       if (!mounted) return;
       if (warning != null) {
@@ -108,12 +124,14 @@ class _PredictionSheetState extends State<_PredictionSheet> {
     } on ApiException catch (e) {
       // أهم حالة هنا: 409 = انطلقت المباراة بين فتح الشيت والحفظ.
       // رسالة السيرفر العربية تشرحها بالضبط، نعرضها كما هي.
-      if (mounted) {
-        setState(() {
-          _error = e.message;
-          _busy = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _busy = false;
+        // تعديلٌ يحتاج التاج: الرسالة وحدها طريق مسدود، فنعرض معها
+        // باباً — الرمز من السيرفر لا مطابقة نصّ (راجع ApiException.code).
+        _paywall = e.code == 'EDIT_REQUIRES_CROWN';
+      });
     }
   }
 
@@ -192,11 +210,30 @@ class _PredictionSheetState extends State<_PredictionSheet> {
           if (_mult != null) ...[
             const SizedBox(height: 16),
             _MultiplierTile(
-              state: _mult!,
-              on: _x2,
-              enabled: !_busy && (_x2 || _mult!.left > 0),
-              onChanged: (v) => setState(() => _x2 = v),
+              title: 'ضاعِف نقاط هذه المباراة ×${_mult!.factor}',
+              note: _multiplier != _mult!.factor && _mult!.left == 0
+                  ? 'استعملت مضاعفاتك ${_mult!.free} في هذا الدوري'
+                  : 'باقٍ لك ${_mult!.left} من ${_mult!.free} في هذا الدوري',
+              on: _multiplier == _mult!.factor,
+              enabled: !_busy &&
+                  (_multiplier == _mult!.factor || _mult!.left > 0),
+              onChanged: (v) =>
+                  setState(() => _multiplier = v ? _mult!.factor : 1),
             ),
+            // المضاعِف المشترى: يظهر لمن يملك رصيداً أو لمن شغّله
+            // هنا. من لا رصيد له يرى الدعوة في صفحة التاج لا فوق
+            // توقّعه — شيت التوقّع مكان لعب لا مكان بيع.
+            if (_mult!.boost.left > 0 || _mult!.boost.on) ...[
+              const SizedBox(height: 10),
+              _MultiplierTile(
+                title: 'مضاعِف ×${_mult!.boost.factor}',
+                note: 'رصيدك ${_mult!.boost.left} · يُنفق في أي دوري',
+                on: _multiplier == _mult!.boost.factor,
+                enabled: !_busy,
+                onChanged: (v) =>
+                    setState(() => _multiplier = v ? _mult!.boost.factor : 1),
+              ),
+            ],
           ],
           if (_error != null) ...[
             const SizedBox(height: 16),
@@ -205,6 +242,19 @@ class _PredictionSheetState extends State<_PredictionSheet> {
               textAlign: TextAlign.center,
               style: const TextStyle(color: Brand.wrong, fontSize: 13),
             ),
+            if (_paywall) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const PremiumScreen()));
+                },
+                icon: const Icon(Icons.workspace_premium,
+                    size: 18, color: Brand.crown),
+                label: const Text('التاج الذهبي'),
+              ),
+            ],
           ],
           const SizedBox(height: 22),
           SizedBox(
@@ -306,13 +356,15 @@ class _StepButton extends StatelessWidget {
 /// يبقى ظاهراً معطّلاً حين تنفد الحصة، ومعه سببه: من لا يرى الأداة
 /// لا يعرف أنها موجودة ولا متى تعود. (نفس قاعدة الموقع.)
 class _MultiplierTile extends StatelessWidget {
-  final MultiplierState state;
+  final String title;
+  final String note;
   final bool on;
   final bool enabled;
   final ValueChanged<bool> onChanged;
 
   const _MultiplierTile({
-    required this.state,
+    required this.title,
+    required this.note,
     required this.on,
     required this.enabled,
     required this.onChanged,
@@ -320,7 +372,7 @@ class _MultiplierTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spent = !on && state.left == 0;
+    final spent = !on && !enabled;
     return Opacity(
       opacity: spent ? 0.55 : 1,
       child: InkWell(
@@ -346,7 +398,7 @@ class _MultiplierTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'ضاعِف نقاط هذه المباراة ×${state.factor}',
+                      title,
                       style: const TextStyle(
                           color: Brand.text,
                           fontSize: 13.5,
@@ -354,9 +406,7 @@ class _MultiplierTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      spent
-                          ? 'استعملت مضاعفاتك ${state.free} في هذا الدوري'
-                          : 'باقٍ لك ${state.left} من ${state.free} في هذا الدوري',
+                      note,
                       style: const TextStyle(
                           color: Brand.textFaint, fontSize: 11.5),
                     ),

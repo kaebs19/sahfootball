@@ -101,6 +101,7 @@ app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/groups', require('./routes/groups'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/players', require('./routes/players'));
+app.use('/api/billing', require('./routes/billing'));
 app.use('/api/notifications', require('./routes/notifications'));
 // محتوى الموقع التعريفي: عام بلا مصادقة عمداً — صفحة سياسة
 // الخصوصية يجب أن تُفتح برابط مباشر بلا حساب (مراجعة App Store
@@ -282,7 +283,13 @@ app.use((err, req, res, next) => {
   // 2. أعطال حقيقية: نسجل التفاصيل في اللوق لكن نرد برسالة عامة —
   //    رسائل الأعطال الداخلية قد تكشف بنية النظام لمهاجم.
   if (err.expose && err.status) {
-    return res.status(err.status).json({ error: err.message });
+    // code يخرج مع الرسالة حين يوجد: الرسالة للإنسان والرمز
+    // للواجهة (EDIT_REQUIRES_CROWN تفتح صفحة الاشتراك). ومطابقة
+    // نصّ عربي في العميل لتقرير سلوكٍ تنكسر عند أول تحسين لغوي.
+    return res.status(err.status).json({
+      error: err.message,
+      ...(err.code ? { code: err.code } : {}),
+    });
   }
   logger.error('[app]', err.message);
   const status = err.code === 'RATE_LIMIT_EXCEEDED' ? 503 : 500;

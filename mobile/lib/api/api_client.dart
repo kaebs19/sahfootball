@@ -22,6 +22,7 @@ import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
 import '../models/notification_prefs.dart';
 import '../models/player.dart';
+import '../models/premium.dart';
 import '../models/live_fixture.dart';
 import '../models/prediction.dart';
 import '../models/rules.dart';
@@ -36,7 +37,13 @@ import '../models/user.dart';
 class ApiException implements Exception {
   final int? statusCode;
   final String message;
-  const ApiException(this.message, {this.statusCode});
+
+  /// رمز يقرؤه الكود لا الإنسان (مثل EDIT_REQUIRES_CROWN فتُفتح
+  /// صفحة الاشتراك). مطابقة نصّ عربي لتقرير سلوك تنكسر عند أول
+  /// تحسين لغوي، فالسيرفر يرسل الاثنين: رسالةً للعين ورمزاً للفرع.
+  final String? code;
+
+  const ApiException(this.message, {this.statusCode, this.code});
 
   @override
   String toString() => message;
@@ -196,7 +203,8 @@ class ApiClient {
     final data = e.response?.data;
     if (data is Map && data['error'] is String) {
       throw ApiException(data['error'] as String,
-          statusCode: e.response?.statusCode);
+          statusCode: e.response?.statusCode,
+          code: data['code'] as String?);
     }
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.connectionError) {
@@ -887,6 +895,66 @@ class ApiClient {
     try {
       await _dio.put('/api/groups/$groupId/members/$userId/role',
           data: {'role': role});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  // ── التاج الذهبي ───────────────────────────────────────────────
+
+  /// ما يُباع — عام: صفحة الشراء تُعرض للضيف أيضاً، وهي أقوى سبب
+  /// لإنشاء حساب.
+  Future<PremiumOffer> premiumOffer() async {
+    try {
+      final res = await _dio.get('/api/billing/products');
+      return PremiumOffer.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// امتيازاتي الآن.
+  Future<Entitlements> entitlements() async {
+    try {
+      final res = await _dio.get('/api/billing/me');
+      return Entitlements.fromJson(
+          res.data['entitlements'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تأكيد شراء: نرسل ما أعطاه المتجر، والسيرفر يتحقّق ثم يمنح.
+  ///
+  /// التحقّق في السيرفر لا هنا: إيصالٌ يقبله الهاتف وحده يستطيع أي
+  /// أحد تزويره. و[receipt] فارغ اليوم لأن المشتريات داخل التطبيق
+  /// لم تُوصَل بعد — يملؤه `in_app_purchase` حين تُنشأ المنتجات في
+  /// App Store Connect، ولا يتغيّر شيء آخر في هذا المسار.
+  Future<Entitlements> verifyPurchase({
+    required String platform,
+    required String productId,
+    String? receipt,
+  }) async {
+    try {
+      final res = await _dio.post('/api/billing/verify', data: {
+        'platform': platform,
+        'product_id': productId,
+        'receipt': receipt,
+      });
+      return Entitlements.fromJson(
+          res.data['entitlements'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// استعادة المشتريات — شرط من آبل لكل تطبيق يبيع اشتراكاً.
+  Future<Entitlements> restorePurchases({String? platform, String? receipt}) async {
+    try {
+      final res = await _dio.post('/api/billing/restore',
+          data: {'platform': platform, 'receipt': receipt});
+      return Entitlements.fromJson(
+          res.data['entitlements'] as Map<String, dynamic>);
     } on DioException catch (e) {
       _throwReadable(e);
     }

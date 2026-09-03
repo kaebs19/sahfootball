@@ -11,6 +11,7 @@
 // المطفأة المستحيلة.
 const badgeRepo = require('../repositories/badgeRepo');
 const { computeStreaks } = require('../repositories/predictionRepo');
+const premiumService = require('./premiumService');
 const logger = require('../utils/logger');
 
 // أزواج الديربي.
@@ -108,7 +109,7 @@ function isDerby(homeTeamId, awayTeamId) {
 // مرور واحد على التوقعات المحتسبة يعطي أربعاً منها: السلسلة، والنتيجة
 // المضبوطة، والديربي، ومجموع النقاط. القائمة عشرات أو مئات الصفوف
 // لمستخدم واحد، فالحلقة أوضح من أربعة استعلامات وأسرع منها.
-function deriveFacts(raw) {
+function deriveFacts(raw, shield = undefined) {
   // الاستيراد داخل الدالة لا في رأس الملف عمداً: scoringService
   // يستورد هذا الملف ليمنح الأوسمة بعد الاحتساب، ولو استوردناه في
   // الرأس لصارت الدورة مغلقة — CommonJS يعطي أحد الملفين كائناً
@@ -145,7 +146,7 @@ function deriveFacts(raw) {
   // واحد للسلسلة في النظام كله. نسخة ثانية هنا كانت ستتفق معها اليوم
   // وتخالفها أول مرة يتغير فيها أحدهما، فيرى المستخدم "أطول سلسلة: 5"
   // ووسام السلسلة مطفأ في نفس الشاشة.
-  const { longest_streak } = computeStreaks(raw.timeline.map((r) => r.points > 0));
+  const { longest_streak } = computeStreaks(raw.timeline.map((r) => r.points > 0), shield);
 
   return {
     predictions_count: raw.predictions_count,
@@ -161,7 +162,12 @@ function deriveFacts(raw) {
 // فحص كل الأوسمة لمستخدم، ومنح ما استحقه ولم ينله بعد.
 // يرجع مفاتيح ما نيل الآن لأول مرة (فارغة = لا جديد).
 async function evaluate(userId) {
-  const facts = deriveFacts(await badgeRepo.collectFacts(userId));
+  // الدرع يدخل في تعريف السلسلة، فوسام "سلسلة خمسة" يجب أن يقرأه
+  // بنفس خيارات شاشة "ملفي". قراءته هنا لا في المستدعي: للفحص
+  // مستدعيان (شاشة الملف، ومحرّك الاحتساب بعد كل جولة) ونسيانه في
+  // أحدهما يمنح وساماً لا يراه صاحبه أو يمنع وساماً استحقه.
+  const shield = await premiumService.shieldFor(userId);
+  const facts = deriveFacts(await badgeRepo.collectFacts(userId), shield);
   const deserved = BADGES.filter((b) => b.check(facts)).map((b) => b.key);
 
   // نرسل المستحق كله لا الجديد منه: تمييز الجديد يحتاج قراءة ما نيل

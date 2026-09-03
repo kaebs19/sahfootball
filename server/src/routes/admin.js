@@ -461,6 +461,49 @@ router.delete('/groups/:id', async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// التاج الذهبي — المشتريات والمنح
+// ---------------------------------------------------------------
+
+// GET /api/admin/purchases — آخر المشتريات
+router.get('/purchases', async (req, res) => {
+  const purchaseRepo = require('../repositories/purchaseRepo');
+  res.json({ purchases: await purchaseRepo.adminList() });
+});
+
+// POST /api/admin/users/:id/crown — { months? } منح التاج يدوياً.
+//
+// هذا هو الباب الوحيد للمنح بلا إيصال، وهو خلف requireAdmin عمداً:
+// دعمٌ فني (اشترى ولم يصله)، وتجربةٌ على جهاز حقيقي قبل تفعيل
+// المشتريات، وهدية لمن يستحقها. أي باب آخر بلا إيصال يعني تاجاً
+// مجانياً لمن يعرف كتابة curl.
+router.post('/users/:id/crown', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(400).json({ error: 'معرّف غير صالح' });
+  }
+  const premiumService = require('../services/premiumService');
+  const months = Number(req.body?.months ?? 1);
+  if (!Number.isInteger(months) || months < 1 || months > 24) {
+    return res.status(400).json({ error: 'عدد الأشهر بين 1 و24' });
+  }
+  const { entitlements } = await premiumService.grant({
+    userId: req.params.id, kind: 'crown', quantity: months, platform: 'manual',
+  });
+  res.json({ entitlements });
+});
+
+// DELETE /api/admin/users/:id/crown — إلغاء فوري.
+//
+// لا يمحو الدفتر: المشتريات سجلٌّ لما حدث، ومحوُها يفقدنا القدرة
+// على الإجابة عن "هل دفع؟" بعد شهر. الإلغاء يمسّ الصلاحية وحدها.
+router.delete('/users/:id/crown', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(400).json({ error: 'معرّف غير صالح' });
+  }
+  await userRepo.clearPremium(req.params.id);
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------
 // المستخدمون
 // ---------------------------------------------------------------
 

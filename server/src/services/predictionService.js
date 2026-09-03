@@ -11,13 +11,22 @@ const settingsRepo = require('../repositories/settingsRepo');
 const { DEFAULT_SCORING, DEFAULT_MULTIPLIERS } = require('./scoringService');
 const predictionRepo = require('../repositories/predictionRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
+const premiumService = require('./premiumService');
 
-/** خطأ متوقّع برمز HTTP ورسالة صالحة للعرض — نفس عقد AuthError. */
+/**
+ * خطأ متوقّع برمز HTTP ورسالة صالحة للعرض — نفس عقد AuthError.
+ *
+ * `code` يُضاف حين يكون للخطأ فعلٌ يفعله العميل: 'EDIT_REQUIRES_CROWN'
+ * تفتح صفحة الاشتراك، بينما "أُغلق التوقّع" لا فعل بعدها. الرسالة
+ * للإنسان والرمز للواجهة، ومطابقة نصّ عربي في العميل لتقرير سلوك
+ * تنكسر عند أول تحسين لغوي.
+ */
 class PredictionError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code = null) {
     super(message);
     this.status = status;
     this.expose = true;
+    this.code = code;
   }
 }
 
@@ -47,10 +56,16 @@ async function submit({ userId, fixtureId, home, away, multiplier = null }) {
     throw new PredictionError(409, 'أُغلق التوقّع — المباراة انطلقت أو انتهت');
   }
 
+  // الصف الحالي مرة واحدة: يخدم حارس التعديل وحساب المضاعِف معاً.
+  const mine = await predictionRepo.findOne(userId, fixtureId);
+  const ent = await premiumService.forUser(userId);
+
+  await assertMayEdit({ mine, home, away, ent });
+
   // المضاعِف بعد فحص الإقفال لا قبله: من تأخر عن الصافرة يُردّ
   // بـ"أُغلق التوقّع" لا بـ"نفدت مضاعفاتك" — الثانية تصفه بمشكلة
   // لا يملكها وتخفي عنه المشكلة التي يملكها.
-  const mult = await resolveMultiplier(userId, fixture, multiplier);
+  const mult = await resolveMultiplier(userId, fixture, multiplier, { mine, ent });
 
   const row = await predictionRepo.upsert({
     userId, fixtureId, predHome: home, predAway: away, multiplier: mult.value,
@@ -61,6 +76,37 @@ async function submit({ userId, fixtureId, home, away, multiplier = null }) {
 }
 
 /**
+ * حارس تعديل التوقّع.
+ *
+ * التعديل قبل الصافرة كان مجانياً للجميع، وصار من امتيازات التاج
+ * الذهبي (`free_edits` في الإعدادات = 0 افتراضياً، ورفعه إلى 1
+ * يعيد تعديلاً واحداً مجانياً للجميع بلا نشر جديد).
+ *
+ * ثلاثة أشياء لا يمسّها هذا الحارس مهما كانت الإعدادات:
+ *   • التوقّع الأول مجاني دائماً — الحارس للتعديل لا للمشاركة.
+ *   • لا تعديل بعد الصافرة لأحد، مشتركاً كان أو لا. النزاهة ليست
+ *     ميزة تُباع، وأول مرة تُباع فيها تنتهي قيمة اللوحة كلها.
+ *   • ضغطةٌ لا تغيّر الرقمين ليست تعديلاً: من فتح توقّعه وأغلقه،
+ *     أو شغّل المضاعِف وحده، لا يُحاسب. (نفس شرط عدّاد edits في SQL —
+ *     ولو اختلف الاثنان لظهر عدّاد ينقص بلا سبب يراه اللاعب.)
+ */
+async function assertMayEdit({ mine, home, away, ent }) {
+  if (!mine) return; // توقّع جديد
+  if (mine.pred_home === home && mine.pred_away === away) return; // بلا تغيير
+  if (ent.edits.max === null) return; // مشترك: بلا حدّ
+
+  if (mine.edits >= ent.edits.max) {
+    throw new PredictionError(
+      402,
+      ent.edits.max === 0
+        ? 'تعديل التوقّع من مزايا التاج الذهبي — اشترك لتغيّر توقّعك قبل الصافرة'
+        : `استعملت تعديلاتك المجانية على هذا التوقّع — التاج الذهبي يعطيك تعديلاً بلا حدّ`,
+      'EDIT_REQUIRES_CROWN'
+    );
+  }
+}
+
+/**
  * يتحقق من المضاعِف المطلوب ويرجعه، أو null معناه "لا تغيّره".
  *
  * الحصة لكل (لاعب، دوري، موسم): خمسة في الدوري السعودي لا تُنقص
@@ -68,19 +114,36 @@ async function submit({ userId, fixtureId, home, away, multiplier = null }) {
  * كل دوري مستقلة، فأداة تُنفق في لوحة وتنقص في أخرى تربط منافستين
  * لا تربطهما نتيجة.
  */
-async function resolveMultiplier(userId, fixture, requested) {
+async function resolveMultiplier(userId, fixture, requested, ctx = {}) {
   if (requested === null || requested === undefined) return { value: null };
 
   const cfg = await multipliers();
   const value = Number(requested);
 
   if (value === 1) return { value: 1 }; // الإلغاء مسموح دائماً، ويردّ الأداة
+
+  // المضاعِف المشترى ×5: رصيد عام لا حصة لكل دوري — دفع ثمنه
+  // صاحبه فينفقه حيث يشاء. راجع purchaseRepo.multiplierBalance.
+  const ent = ctx.ent ?? (await premiumService.forUser(userId));
+  if (value === ent.multiplier5.factor) {
+    // من كان توقّعه هذا مضاعَفاً ×5 سلفاً لا ينفق ثانياً — نفس
+    // منطق exceptFixture في الحصة المجانية.
+    const owned = (ctx.mine?.multiplier ?? 1) === value;
+    if (!owned && ent.multiplier5.left <= 0) {
+      return {
+        value: 1,
+        denied: `حُفظ توقّعك بلا مضاعِف — لا رصيد لديك من مضاعِف ×${value}.`,
+      };
+    }
+    return { value };
+  }
+
   if (value !== cfg.factor) {
     throw new PredictionError(400, 'مضاعِف غير معروف');
   }
 
   const used = await predictionRepo.countMultiplied(
-    userId, fixture.league_id, fixture.season, fixture.id
+    userId, fixture.league_id, fixture.season, fixture.id, cfg.factor
   );
 
   // نفاد الحصة لا يُسقط التوقّع.
@@ -109,9 +172,9 @@ async function resolveMultiplier(userId, fixture, requested) {
  * غيرها — وإلغاؤه هنا يعيده إليه فوراً.
  */
 async function multiplierState(userId, fixture, mine) {
-  const cfg = await multipliers();
+  const [cfg, ent] = await Promise.all([multipliers(), premiumService.forUser(userId)]);
   const used = await predictionRepo.countMultiplied(
-    userId, fixture.league_id, fixture.season, fixture.id
+    userId, fixture.league_id, fixture.season, fixture.id, cfg.factor
   );
   // المعروض يعدّ هذه المباراة، والمفروض لا يعدّها — وهذا ليس
   // تناقضاً بل سؤالان مختلفان. الفحص يسأل "هل يملك أداة ينفقها
@@ -119,13 +182,25 @@ async function multiplierState(userId, fixture, mine) {
   // والعرض يجيب "كم بقي لي لمباريات أخرى؟" فيعدّ هذه واحدةً
   // منفَقة ما دامت مؤشَّرة — وإلا قرأ "باقٍ 5 من 5" فوق مربّع
   // مؤشَّر، فظنّ الأداة مجانية بلا حدّ حتى تنفد فجأة.
-  const on = (mine?.multiplier ?? 1) > 1;
+  const current = mine?.multiplier ?? 1;
+  const on = current === cfg.factor;
+  const boostOn = current === ent.multiplier5.factor;
   return {
     factor: cfg.factor,
     free: cfg.free_per_season,
     used,
     left: Math.max(0, cfg.free_per_season - used - (on ? 1 : 0)),
     on,
+    // المضاعِف المشترى إلى جانبه: مربّعان في ورقة واحدة، ولا
+    // يُشغَّلان معاً — التوقّع يحمل مضاعِفاً واحداً بحكم العمود.
+    boost: {
+      factor: ent.multiplier5.factor,
+      // كم بقي لمباريات أخرى — والمشغَّل هنا معدود منفَقاً أصلاً
+      // (العدّ عام ولا يستثني هذه المباراة). نفس اتفاق `left`
+      // أعلاه: رقمٌ فوق مربّع مؤشَّر يجب ألا يعدّ نفسه متاحاً.
+      left: ent.multiplier5.left,
+      on: boostOn,
+    },
   };
 }
 

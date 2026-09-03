@@ -5,6 +5,8 @@
 // لا يجد نفسه في القائمة أصلاً — ولا يستطيع التطبيق أن يعرف رقمه
 // مهما حسب. والباقي (الدقة، السلسلة) تبعها للسيرفر كي لا تتفرق
 // طريقة الحساب بين واجهتين.
+import 'premium.dart';
+
 class RoundForm {
   final String round;
   final int season;
@@ -159,6 +161,10 @@ class ProfileStats {
   /// الحصيلة لكل دوري يتابعه أو له فيه أثر — مرتبة بالنقاط.
   final List<LeagueStats> byLeague;
 
+  /// درع السلسلة — يأتي من نفس حساب السلسلة في السيرفر، فلا يمكن
+  /// أن يقول أحدهما شيئاً ويقول الآخر غيره.
+  final ShieldState shield;
+
   const ProfileStats({
     this.rank,
     required this.totalCompetitors,
@@ -173,6 +179,7 @@ class ProfileStats {
     this.favoriteTeam,
     this.badges = const [],
     this.byLeague = const [],
+    this.shield = const ShieldState(),
   });
 
   bool get hasPlayed => settledPredictions > 0;
@@ -201,5 +208,7 @@ class ProfileStats {
         byLeague: (j['by_league'] as List? ?? [])
             .map((e) => LeagueStats.fromJson(e as Map<String, dynamic>))
             .toList(),
+        shield: ShieldState.fromJson(
+            (j['shield'] as Map<String, dynamic>?) ?? const {}),
       );
 }

@@ -5,7 +5,7 @@ const db = require('../config/db');
 // password_hash غير مذكور عمداً في أي SELECT عام — لا يغادر
 // هذه الطبقة إلا عبر findByEmailWithHash المخصصة للتحقق فقط.
 const PUBLIC_COLUMNS =
-  'id, email, display_name, avatar_url, favorite_team_id, onboarded_at, created_at';
+  'id, email, display_name, avatar_url, favorite_team_id, onboarded_at, premium_until, created_at';
 
 async function create({ email, passwordHash, displayName }) {
   const { rows } = await db.query(
@@ -422,6 +422,31 @@ async function removeWithGroupHandover(id) {
   }
 }
 
+/**
+ * تمديد الاشتراك بعدد أيام.
+ *
+ * الحساب في SQL لا في JS، ومن الأبعد بين "الآن" و"نهاية اشتراكه":
+ * من جدّد قبل انتهاء شهره لا يخسر ما تبقّى له. وإجراؤه في تعبير
+ * واحد يجعل تجديدين متزامنين يتراكمان بلا أن يمحو أحدهما الآخر —
+ * القراءة في JS ثم الكتابة كانت ستُسقط أحدهما بصمت.
+ */
+async function extendPremium(id, days) {
+  const { rows } = await db.query(
+    `UPDATE users
+        SET premium_until = GREATEST(COALESCE(premium_until, now()), now())
+                            + ($2 || ' days')::interval
+      WHERE id = $1
+      RETURNING premium_until`,
+    [id, days]
+  );
+  return rows[0]?.premium_until ?? null;
+}
+
+/** إلغاء الاشتراك فوراً — للأدمن ولحذف الحساب. */
+async function clearPremium(id) {
+  await db.query('UPDATE users SET premium_until = NULL WHERE id = $1', [id]);
+}
+
 // بحث مستخدم لإضافته إلى مجلس — الاسم جزئياً أو البريد كاملاً.
 //
 // البريد بمطابقة تامة لا جزئية عمداً: «a@» جزئياً يعدّد بريد كل
@@ -445,7 +470,7 @@ async function searchPublic(query, limit = 10) {
 }
 
 module.exports = {
-  markOnboarded, searchPublic,
+  markOnboarded, searchPublic, extendPremium, clearPremium,
   create, findByEmailWithHash, findById, findByEmail, updatePassword, updateProfile,
   findByAppleSub, createWithApple, linkAppleSub, updateEmail,
   findByGoogleSub, createWithGoogle, linkGoogleSub,

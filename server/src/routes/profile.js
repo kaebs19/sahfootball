@@ -6,6 +6,7 @@ const requireAuth = require('../middleware/requireAuth');
 const userRepo = require('../repositories/userRepo');
 const predictionRepo = require('../repositories/predictionRepo');
 const badgeService = require('../services/badgeService');
+const premiumService = require('../services/premiumService');
 const { deleteAvatarFile } = require('../utils/avatarFile');
 // إعداد multer (الأنواع، الحدّ، الاسم العشوائي) مشترك مع صورة
 // المجلس — راجع middleware/imageUpload.
@@ -72,8 +73,12 @@ router.get('/stats', async (req, res) => {
   // خالصة. اليوم: مستخدم واحد، جولتان، ولا وظيفة إضافية تُصان.
   await badgeService.evaluateQuietly(req.userId);
 
+  // خيارات الدرع تُقرأ مرة وتُمرَّر: هي نفسها التي يستعملها
+  // badgeService، وقراءتها في مكانين تفتح باب اختلافهما — فيرى
+  // اللاعب "أطول سلسلة 6" ووسام "سلسلة خمسة" مطفأ بجانبه.
+  const shield = await premiumService.shieldFor(req.userId);
   const [stats, badges] = await Promise.all([
-    predictionRepo.profileStats(req.userId),
+    predictionRepo.profileStats(req.userId, shield),
     badgeService.forUser(req.userId),
   ]);
 
