@@ -240,37 +240,63 @@ class BrandCard extends StatelessWidget {
 /// هنا حين احتاجه الملف الشخصي ("التوقعات | النقاط"): نسخة ثانية
 /// كانت ستتفرق عن الأولى في أول تعديل على المقاسات، والمستخدم يرى
 /// عنصرين متشابهين بفروق لا يفسّرها شيء.
-class BrandModeTab extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+/// مبدّل مقطعي: مسار واحد مستدير فيه مقطعان أو ثلاثة، والمختار
+/// إبهامٌ مرفوع ينزلق.
+///
+/// يختلف قصداً عن شرائح التصفية (LeagueStrip): هذا يبدّل «أي عرض؟»
+/// (العام أم مجالسي، التوقعات أم النقاط) وتلك تصفّي «أي بيانات؟».
+/// حين كانا شكلاً واحداً — شرائح ذهبية هنا وهناك — بدا صفّا العرش
+/// كتلةً واحدة يبدأ كلاهما بـ«العام». والمبدّل محايد اللون عمداً
+/// كي يبقى الذهبي للشريحة الدلالية وحدها.
+class BrandSegmented extends StatelessWidget {
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onChanged;
 
-  const BrandModeTab({
+  const BrandSegmented({
     super.key,
-    required this.label,
+    required this.labels,
     required this.selected,
-    required this.onTap,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected ? Brand.crown : Brand.fill,
-      borderRadius: BorderRadius.circular(Brand.radiusChip),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: selected ? Brand.onAccent : Brand.textMuted,
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Brand.fill,
+        borderRadius: BorderRadius.circular(Brand.radiusChip),
+        border: Border.all(color: Brand.border),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  decoration: BoxDecoration(
+                    color: i == selected ? Brand.fillStrong : Colors.transparent,
+                    borderRadius: BorderRadius.circular(Brand.radiusChip),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    labels[i],
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: i == selected ? Brand.text : Brand.textMuted,
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
+        ],
       ),
     );
   }

@@ -128,21 +128,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         // حتماً، وعرض تبويب فارغ وعدٌ كاذب.
         if (!_isGuest)
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-            child: Row(
-              children: [
-                BrandModeTab(
-                  label: 'العام',
-                  selected: _board == _Board.global,
-                  onTap: () => setState(() => _board = _Board.global),
-                ),
-                const SizedBox(width: 8),
-                BrandModeTab(
-                  label: 'مجالسي',
-                  selected: _board == _Board.councils,
-                  onTap: () => setState(() => _board = _Board.councils),
-                ),
-              ],
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: BrandSegmented(
+              labels: const ['العرش', 'مجالسي'],
+              selected: _board == _Board.global ? 0 : 1,
+              onChanged: (i) => setState(
+                  () => _board = i == 0 ? _Board.global : _Board.councils),
             ),
           )
         else
@@ -153,7 +144,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           LeagueStrip(
             leagues: _leagues!,
             active: _leagueId,
-            allLabel: 'العام',
+            allLabel: 'كل الدوريات',
             onPick: (id) {
               if (_leagueId == id) return;
               setState(() {
@@ -190,10 +181,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       );
     }
 
-    final myId = context.watch<Session>().user?.id;
+    final session = context.watch<Session>();
+    final myId = session.user?.id;
+    final guest = session.status == SessionStatus.guest;
     final league = _leagueId == null
         ? null
         : _leagues?.where((l) => l.id == _leagueId).firstOrNull;
+    final myIndex =
+        myId == null ? -1 : entries.indexWhere((e) => e.userId == myId);
+    final rest = entries.skip(3).toList();
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -201,37 +197,191 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       backgroundColor: Brand.surface,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
         children: [
-          Text(
-            league == null ? 'من يجلس على العرش؟' : 'ملوك ${league.name}',
-            style: const TextStyle(
-              fontFamily: Brand.displayFont,
-              fontSize: 19,
-              fontWeight: FontWeight.w700,
-              color: Brand.text,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            league == null
-                ? 'المجموع من كل الدوريات · ${Fmt.counted(entries.length, 'متنافس واحد', 'متنافسان', 'متنافسين', 'متنافساً')}'
+          // المسرح: العنوان والمنصّة وصفّ «أنت» في بطاقة واحدة.
+          // كانت المنصّة معلّقة فوق فراغ أسود بلا إطار، فبدت الشاشة
+          // ناقصة كلما قلّ المتنافسون — والبطاقة تعطيها حدّاً
+          // وسياقاً مهما كان عددهم.
+          _StageCard(
+            title: league == null ? 'ملوك كل الدوريات' : 'ملوك ${league.name}',
+            hint: league == null
+                ? 'المجموع من كل الدوريات التي تلعب فيها'
                 : 'بنقاط هذا الدوري وحده — مبارياته ورهان بطله',
-            style: const TextStyle(color: Brand.textMuted, fontSize: 12.5),
+            meta: Fmt.counted(entries.length, 'متنافس واحد', 'متنافسان',
+                'متنافسين', 'متنافساً'),
+            // منصّة التتويج: الأول في الوسط وأعلى، والثاني عن يمينه
+            // (أول القراءة) والثالث عن يساره. والمقعد الشاغر يُعرض
+            // شاغراً لا يُخفى: مقعد فارغ في العرش أقوى دعوة للعب.
+            podium: _Podium(entries: entries, myId: myId),
+            // صفّ «أنت»: أول سؤال عند كل مستخدم في أي ترتيب هو «وين
+            // أنا؟» — يُجاب هنا دائماً، على المنصّة أو تحتها أو خارجها.
+            footer: guest
+                ? _StageFooter(
+                    icon: Icons.person_outline,
+                    text: 'سجّل الدخول لتظهر في الترتيب',
+                    onTap: () => session.leaveGuest(),
+                  )
+                : myIndex < 0
+                    ? const _StageFooter(
+                        icon: Icons.sports_soccer_outlined,
+                        text: 'لم تدخل الترتيب بعد — توقّع مباراة واحدة وستظهر هنا',
+                      )
+                    : myIndex < 3
+                        ? _StageFooter(
+                            icon: Icons.emoji_events_outlined,
+                            text: 'أنت على المنصّة — المركز ${entries[myIndex].rank}',
+                            gold: true,
+                          )
+                        : _StageFooter(
+                            icon: Icons.person,
+                            text:
+                                'أنت · المركز ${entries[myIndex].rank} · ${entries[myIndex].totalPoints} نقطة',
+                            gold: true,
+                          ),
           ),
-          const SizedBox(height: 16),
-          // منصّة التتويج: الأول في الوسط وأعلى، والثاني عن يمينه
-          // (أول القراءة) والثالث عن يساره. الثلاثة الكبار يستحقون
-          // مشهداً لا ثلاثة صفوف — والمقعد الشاغر يُعرض شاغراً لا
-          // يُخفى: مقعد فارغ في العرش أقوى دعوة للعب من أي نص.
-          _Podium(entries: entries, myId: myId),
-          const SizedBox(height: 14),
-          for (final e in entries.skip(3))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: LeaderRow(entry: e, isMe: e.userId == myId),
-            ),
+          if (rest.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const BrandSectionLabel('بقية الترتيب'),
+            const SizedBox(height: 10),
+            for (final e in rest)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: LeaderRow(entry: e, isMe: e.userId == myId),
+              ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// بطاقة المسرح — إطار المنصّة وسياقها.
+class _StageCard extends StatelessWidget {
+  final String title;
+  final String hint;
+  final String meta;
+  final Widget podium;
+  final Widget footer;
+
+  const _StageCard({
+    required this.title,
+    required this.hint,
+    required this.meta,
+    required this.podium,
+    required this.footer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontFamily: Brand.displayFont,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Brand.text,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        hint,
+                        style: const TextStyle(
+                            color: Brand.textMuted, fontSize: 12, height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                BrandChip(label: meta),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          // وهج ذهبي خلف المقعد الأول — ضوء المسرح على البطل.
+          Stack(
+            alignment: Alignment.bottomCenter,
+            children: [
+              Positioned(
+                bottom: 30,
+                child: Container(
+                  width: 230,
+                  height: 170,
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      colors: [Brand.crownWash(0.20), Brand.crownWash(0.0)],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: podium,
+              ),
+            ],
+          ),
+          const Divider(color: Brand.border, height: 1),
+          footer,
+        ],
+      ),
+    );
+  }
+}
+
+/// صفّ أسفل المسرح — «أنت» أو دعوة.
+class _StageFooter extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final bool gold;
+  final VoidCallback? onTap;
+
+  const _StageFooter({
+    required this.icon,
+    required this.text,
+    this.gold = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = gold ? Brand.crown : Brand.textMuted;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12.5,
+                  fontWeight: gold ? FontWeight.w600 : FontWeight.w400,
+                  fontFeatures: Brand.tabular,
+                ),
+              ),
+            ),
+            if (onTap != null)
+              const Icon(Icons.chevron_right, size: 18, color: Brand.textFaint),
+          ],
+        ),
       ),
     );
   }
@@ -258,7 +408,9 @@ class _Podium extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         for (var i = 0; i < seats.length; i++) ...[
-          Expanded(child: seats[i]),
+          // المقعد الأوسط أعرض قليلاً: اسم البطل يستحق سطرين لا
+          // قصّاً بثلاث نقاط.
+          Expanded(flex: i == 1 ? 5 : 4, child: seats[i]),
           if (i < seats.length - 1) const SizedBox(width: 8),
         ],
       ],
@@ -300,12 +452,13 @@ class _PodiumSeat extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           e?.displayName ?? 'مقعد شاغر',
-          maxLines: 1,
+          maxLines: first ? 2 : 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
           style: TextStyle(
             color: e == null ? Brand.textFaint : Brand.text,
-            fontSize: first ? 13 : 12,
+            fontSize: first ? 12.5 : 12,
+            height: 1.25,
             fontWeight: FontWeight.w600,
           ),
         ),

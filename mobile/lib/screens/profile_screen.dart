@@ -138,20 +138,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
 
           const SizedBox(height: 20),
-          Row(
-            children: [
-              BrandModeTab(
-                label: 'التوقعات',
-                selected: _log == _Log.predictions,
-                onTap: () => setState(() => _log = _Log.predictions),
-              ),
-              const SizedBox(width: 8),
-              BrandModeTab(
-                label: 'النقاط',
-                selected: _log == _Log.points,
-                onTap: () => setState(() => _log = _Log.points),
-              ),
-            ],
+          BrandSegmented(
+            labels: const ['التوقعات', 'النقاط'],
+            selected: _log == _Log.predictions ? 0 : 1,
+            onChanged: (i) => setState(
+                () => _log = i == 0 ? _Log.predictions : _Log.points),
           ),
           const SizedBox(height: 12),
 
