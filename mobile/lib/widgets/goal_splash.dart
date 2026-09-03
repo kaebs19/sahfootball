@@ -308,7 +308,7 @@ class _GoalBackdropState extends State<GoalBackdrop>
     vsync: this,
     // بطيء عمداً: الزحف الذي يُلاحَظ يزعج، والذي يُحسّ ولا يُلاحَظ
     // هو ما يجعل الشاشة تبدو حيّة.
-    duration: const Duration(seconds: 28),
+    duration: const Duration(seconds: 22),
   );
 
   bool _started = false;
@@ -338,14 +338,14 @@ class _GoalBackdropState extends State<GoalBackdrop>
     // ولا فرق في الكلفة: AnimatedBuilder يستلمه عبر child فلا
     // يُعاد بناؤه مع كل إطار من الزحف.
     final scene = ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+      imageFilter: ImageFilter.blur(sigmaX: 9, sigmaY: 9),
       child: const RepaintBoundary(
         child: CustomPaint(
           painter: _ScenePainter(
             t: _tEnd,
             confetti: [],
             actors: false,
-            camera: (scale: 1.05, focus: Offset(430, 1180)),
+            camera: (scale: 1.05, focus: Offset(430, 900)),
             vignetteExtra: 0.05,
           ),
           isComplex: true,
@@ -365,12 +365,38 @@ class _GoalBackdropState extends State<GoalBackdrop>
               return Transform(
                 alignment: Alignment.center,
                 transform: Matrix4.identity()
-                  ..scaleByDouble(1.04 + 0.07 * p, 1.04 + 0.07 * p, 1, 1)
-                  ..translateByDouble(-10.0 * p, 16.0 * p, 0, 1),
+                  ..scaleByDouble(1.06 + 0.12 * p, 1.06 + 0.12 * p, 1, 1)
+                  ..translateByDouble(-16.0 * p, 26.0 * p, 0, 1),
                 child: child,
               );
             },
             child: scene,
+          ),
+          // هالة كشّاف خلف العلامة — تنبض ببطء مع نفس المؤقّت.
+          // ذهبية رغم قاعدة "الذهبي للتاج والنقاط فقط": هي تضيء
+          // التاج نفسه لا تزيّن عنصراً آخر، وشدّتها بين 6٪ و11٪ —
+          // إحساس عمق لا لون. وطبقة تدرّج واحدة في الإطار، فلا
+          // يُعاد رسم المشهد من أجلها.
+          AnimatedBuilder(
+            animation: _drift,
+            builder: (context, _) {
+              final glow =
+                  0.06 + 0.05 * Curves.easeInOut.transform(_drift.value);
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0, -0.58),
+                    radius: 0.9,
+                    colors: [
+                      Brand.crown.withValues(alpha: glow),
+                      Brand.crown.withValues(alpha: glow * 0.3),
+                      const Color(0x00000000),
+                    ],
+                    stops: const [0.0, 0.45, 1.0],
+                  ),
+                ),
+              );
+            },
           ),
           // تدرّج القراءة: الحقول والأزرار مصمتة أصلاً، لكن العنوان
           // والشعار و«تذكرني» والروابط نصوص عارية — وهذا ما يضمن
@@ -381,8 +407,8 @@ class _GoalBackdropState extends State<GoalBackdrop>
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Color(0x5E0A0A0A),
-                  Color(0x990A0A0A),
+                  Color(0x4A0A0A0A),
+                  Color(0x8F0A0A0A),
                   Color(0xD60A0A0A),
                 ],
                 stops: [0.0, 0.55, 1.0],
