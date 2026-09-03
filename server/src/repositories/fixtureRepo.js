@@ -112,13 +112,15 @@ async function findByDate(date) {
 }
 
 // المباريات القادمة: المجدولة التي لم يحن موعدها بعد.
-async function findUpcoming(limit = 20) {
+// leagueIds اختيارية — null = كل دوريات اللعبة.
+async function findUpcoming(limit = 20, leagueIds = null) {
   const { rows } = await db.query(
     `${FIXTURE_SELECT}
      WHERE f.status = 'scheduled' AND f.kickoff_at >= now()
+       AND ($2::int[] IS NULL OR f.league_id = ANY($2))
      ORDER BY f.kickoff_at
      LIMIT $1`,
-    [limit]
+    [limit, leagueIds]
   );
   return rows;
 }

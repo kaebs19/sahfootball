@@ -34,8 +34,16 @@ router.get('/', async (req, res) => {
 // GET /api/fixtures/upcoming — المباريات القادمة
 // مهم: هذا المسار قبل '/:id' — لو جاء بعده لالتقط Express كلمة
 // "upcoming" على أنها id. ترتيب تعريف المسارات في Express له معنى.
+//
+// ?leagues=307,39 اختياري: شاشة المباريات تعرض دوريات المستخدم لا
+// كل الدوريات، والتصفية هنا لا في التطبيق — أقرب عشرين مباراة
+// عالمياً قد لا تحوي مباراة واحدة من الدوري المطلوب.
 router.get('/upcoming', async (req, res) => {
-  const fixtures = await fixtureRepo.findUpcoming();
+  const asked = String(req.query.leagues || '')
+    .split(',')
+    .filter((s) => /^\d+$/.test(s))
+    .map(Number);
+  const fixtures = await fixtureRepo.findUpcoming(20, asked.length ? asked : null);
   res.json({ fixtures });
 });
 

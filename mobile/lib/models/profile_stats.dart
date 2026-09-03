@@ -90,6 +90,51 @@ class Badge {
       );
 }
 
+/// حصيلة اللاعب في دوري واحد — نقاطه ومركزه ودقّته وتوقعاته فيه.
+///
+/// [rank] و[accuracy] بنفس عقد ProfileStats: null = لا شيء محتسب
+/// في هذا الدوري بعد، لا صفر.
+class LeagueStats {
+  final int leagueId;
+  final String name;
+  final String? logoUrl;
+  final int points;
+  final int predictionsCount;
+  final int settledPredictions;
+  final int? accuracy;
+  final int? rank;
+  final int? competitors;
+  final bool followed;
+
+  const LeagueStats({
+    required this.leagueId,
+    required this.name,
+    this.logoUrl,
+    required this.points,
+    required this.predictionsCount,
+    required this.settledPredictions,
+    this.accuracy,
+    this.rank,
+    this.competitors,
+    required this.followed,
+  });
+
+  bool get hasPlayed => settledPredictions > 0;
+
+  factory LeagueStats.fromJson(Map<String, dynamic> j) => LeagueStats(
+        leagueId: (j['league_id'] as num).toInt(),
+        name: (j['name'] ?? '') as String,
+        logoUrl: j['logo_url'] as String?,
+        points: (j['points'] as num?)?.toInt() ?? 0,
+        predictionsCount: (j['predictions_count'] as num?)?.toInt() ?? 0,
+        settledPredictions: (j['settled_predictions'] as num?)?.toInt() ?? 0,
+        accuracy: (j['accuracy'] as num?)?.round(),
+        rank: (j['rank'] as num?)?.toInt(),
+        competitors: (j['competitors'] as num?)?.toInt(),
+        followed: j['followed'] == true,
+      );
+}
+
 class ProfileStats {
   /// null = لم يشارك بعد. ليست صفراً ولا آخر مركز: من لم يلعب ليس
   /// خاسراً، والفرق بينهما يجب أن يظهر في الشاشة لا أن يُطمس.
@@ -111,6 +156,9 @@ class ProfileStats {
   final FavoriteTeam? favoriteTeam;
   final List<Badge> badges;
 
+  /// الحصيلة لكل دوري يتابعه أو له فيه أثر — مرتبة بالنقاط.
+  final List<LeagueStats> byLeague;
+
   const ProfileStats({
     this.rank,
     required this.totalCompetitors,
@@ -124,6 +172,7 @@ class ProfileStats {
     required this.recentForm,
     this.favoriteTeam,
     this.badges = const [],
+    this.byLeague = const [],
   });
 
   bool get hasPlayed => settledPredictions > 0;
@@ -148,6 +197,9 @@ class ProfileStats {
             : null,
         badges: (j['badges'] as List? ?? [])
             .map((e) => Badge.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        byLeague: (j['by_league'] as List? ?? [])
+            .map((e) => LeagueStats.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 }

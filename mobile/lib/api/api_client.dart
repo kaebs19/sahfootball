@@ -348,9 +348,17 @@ class ApiClient {
 
   // ---------------------------- البيانات ----------------------------
 
-  Future<List<Fixture>> upcomingFixtures() async {
+  /// المباريات القادمة، وبدوريات بعينها إن مُرّرت.
+  ///
+  /// التصفية في السيرفر لا هنا: أقرب عشرين مباراة في كل الدوريات
+  /// قد لا تحوي مباراة واحدة من الدوري المطلوب، فتصفيتها محلياً
+  /// تُخرج قائمة فارغة كاذبة.
+  Future<List<Fixture>> upcomingFixtures({List<int>? leagueIds}) async {
     try {
-      final res = await _dio.get('/api/fixtures/upcoming');
+      final res = await _dio.get('/api/fixtures/upcoming', queryParameters: {
+        if (leagueIds != null && leagueIds.isNotEmpty)
+          'leagues': leagueIds.join(','),
+      });
       return (res.data['fixtures'] as List)
           .map((j) => Fixture.fromJson(j as Map<String, dynamic>))
           .toList();

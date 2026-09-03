@@ -25,6 +25,7 @@ import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
+import '../widgets/league_strip.dart';
 import 'group_screen.dart';
 
 /// سلّم الرتب الموسمية كما في ملف الهوية.
@@ -78,8 +79,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       context.read<Session>().status == SessionStatus.guest;
 
   Future<void> _load() async {
-    // العرش العام مسار عام في الخادم؛ المجالس وقائمة الدوريات
-    // محميان. الضيف يرى الترتيب العام وحده — وهو وعد التبويب أصلاً.
+    // العرش العام وقائمة الدوريات مساران عامّان؛ المجالس وحدها
+    // محمية. الضيف يرى العرش بدورياته كلها — وهو وعد التبويب أصلاً.
     final guest = _isGuest;
     setState(() => _error = null);
     try {
@@ -89,16 +90,23 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       final api = context.read<ApiClient>();
       // الدوريات مرة واحدة: شرائحها لا تتغيّر بتغيّر الشريحة
       // المختارة، وإعادة جلبها مع كل ضغطة رحلةٌ بلا جديد.
+      final needLeagues = _leagues == null;
       final results = await Future.wait([
         api.leaderboard(leagueId: _leagueId),
         if (!guest) api.myGroups(),
-        if (!guest && _leagues == null) api.leagues(),
+        if (needLeagues) api.leagues(),
       ]);
       if (!mounted) return;
       setState(() {
         _entries = results[0] as List<LeaderboardEntry>;
         _groups = guest ? const [] : results[1] as List<Group>;
-        if (results.length > 2) _leagues = results[2] as List<LeagueFollow>;
+        if (needLeagues) {
+          final all = results.last as List<LeagueFollow>;
+          // دوريات المستخدم في الشريط؛ ومن لا يتابع شيئاً (الضيف
+          // مثلاً) يرى دوريات اللعبة كلها — شريط فارغ لا يقول شيئاً.
+          final followed = all.where((l) => l.followed).toList();
+          _leagues = followed.isNotEmpty ? followed : all;
+        }
       });
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -142,10 +150,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         // الشرائح في وضع "العام" وحده: ترتيب المجلس محسوب على
         // أعضائه لا على دوري، فشريحةٌ فوقه تَعِد بتصفية لا تقع.
         if (_board == _Board.global && (_leagues?.isNotEmpty ?? false))
-          _LeagueStrip(
+          LeagueStrip(
             leagues: _leagues!,
             active: _leagueId,
+            allLabel: 'العام',
             onPick: (id) {
+              if (_leagueId == id) return;
               setState(() {
                 _leagueId = id;
                 _entries = null;
@@ -210,13 +220,192 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             style: const TextStyle(color: Brand.textMuted, fontSize: 12.5),
           ),
           const SizedBox(height: 16),
-          for (final e in entries)
+          // منصّة التتويج: الأول في الوسط وأعلى، والثاني عن يمينه
+          // (أول القراءة) والثالث عن يساره. الثلاثة الكبار يستحقون
+          // مشهداً لا ثلاثة صفوف — والمقعد الشاغر يُعرض شاغراً لا
+          // يُخفى: مقعد فارغ في العرش أقوى دعوة للعب من أي نص.
+          _Podium(entries: entries, myId: myId),
+          const SizedBox(height: 14),
+          for (final e in entries.skip(3))
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: LeaderRow(entry: e, isMe: e.userId == myId),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// منصّة التتويج — المقاعد الثلاثة الأولى.
+class _Podium extends StatelessWidget {
+  final List<LeaderboardEntry> entries;
+  final String? myId;
+  const _Podium({required this.entries, required this.myId});
+
+  LeaderboardEntry? _at(int i) => i < entries.length ? entries[i] : null;
+
+  @override
+  Widget build(BuildContext context) {
+    // ترتيب الأبناء في Row تحت RTL: الأول يمين. فالثاني ← الأول ←
+    // الثالث يعطي 2 | 1 | 3 في القراءة، وهو شكل المنصّة المعروف.
+    final seats = [
+      _PodiumSeat(entry: _at(1), place: 2, myId: myId),
+      _PodiumSeat(entry: _at(0), place: 1, myId: myId),
+      _PodiumSeat(entry: _at(2), place: 3, myId: myId),
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (var i = 0; i < seats.length; i++) ...[
+          Expanded(child: seats[i]),
+          if (i < seats.length - 1) const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _PodiumSeat extends StatelessWidget {
+  final LeaderboardEntry? entry;
+  final int place;
+  final String? myId;
+  const _PodiumSeat({required this.entry, required this.place, this.myId});
+
+  @override
+  Widget build(BuildContext context) {
+    final e = entry;
+    final first = place == 1;
+    final isMe = e != null && e.userId == myId;
+    // الأول أطول قاعدةً وأكبر صورةً: العلوّ هو ما يميّز المنصّة عن
+    // ثلاث بطاقات متساوية.
+    final baseHeight = first ? 74.0 : 52.0;
+    final avatar = first ? 56.0 : 44.0;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (first)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Icon(Icons.emoji_events, size: 22, color: Brand.crown),
+          ),
+        _PodiumAvatar(
+          url: e?.avatarUrl,
+          name: e?.displayName ?? '',
+          size: avatar,
+          ring: first ? Brand.crown : (isMe ? Brand.crown : Brand.border),
+          empty: e == null,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          e?.displayName ?? 'مقعد شاغر',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: e == null ? Brand.textFaint : Brand.text,
+            fontSize: first ? 13 : 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        if (e != null)
+          BrandNumber('${e.totalPoints}',
+              size: first ? 20 : 16, color: Brand.crown)
+        else
+          const Text('—',
+              style: TextStyle(color: Brand.textFaint, fontSize: 14)),
+        const SizedBox(height: 8),
+        Container(
+          height: baseHeight,
+          decoration: BoxDecoration(
+            color: first ? Brand.crownWash(0.14) : Brand.fill,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            border: Border.all(
+              color: isMe
+                  ? Brand.crown
+                  : (first ? Brand.crownWash(0.35) : Brand.border),
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '$place',
+                style: TextStyle(
+                  fontFamily: Brand.displayFont,
+                  fontSize: first ? 24 : 18,
+                  fontWeight: FontWeight.w700,
+                  color: first ? Brand.crown : Brand.textMuted,
+                  height: 1,
+                ),
+              ),
+              if (e != null && first) ...[
+                const SizedBox(height: 3),
+                Text(
+                  Rank.of(e.totalPoints).label,
+                  style: const TextStyle(color: Brand.crown, fontSize: 10.5),
+                ),
+              ],
+              if (isMe) ...[
+                const SizedBox(height: 2),
+                const Text('أنت',
+                    style: TextStyle(color: Brand.crown, fontSize: 10.5)),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PodiumAvatar extends StatelessWidget {
+  final String? url;
+  final String name;
+  final double size;
+  final Color ring;
+  final bool empty;
+  const _PodiumAvatar({
+    required this.url,
+    required this.name,
+    required this.size,
+    required this.ring,
+    required this.empty,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Brand.fill,
+        border: Border.all(color: ring, width: 2),
+        image: url != null
+            ? DecorationImage(
+                image: CachedNetworkImageProvider(AppConfig.absoluteUrl(url!)),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      alignment: Alignment.center,
+      child: url == null
+          ? (empty
+              ? Icon(Icons.person_outline,
+                  size: size * 0.5, color: Brand.textFaint)
+              : Text(
+                  name.isEmpty ? '' : name.characters.first,
+                  style: TextStyle(
+                    color: Brand.textMuted,
+                    fontSize: size * 0.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ))
+          : null,
     );
   }
 }
@@ -654,66 +843,4 @@ class _CouncilCard extends StatelessWidget {
       ),
     );
   }
-}
-
-
-/// شرائح الدوريات فوق العرش العام.
-///
-/// "الكل" أولاً لأنها الحالة الافتراضية، ولأن مجموع اللاعب عبر
-/// الدوريات رقمٌ له معنى — بخلاف جدول الأندية الذي لا يُوحَّد.
-class _LeagueStrip extends StatelessWidget {
-  final List<LeagueFollow> leagues;
-  final int? active;
-  final ValueChanged<int?> onPick;
-
-  const _LeagueStrip(
-      {required this.leagues, required this.active, required this.onPick});
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 42,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          itemCount: leagues.length + 1,
-          separatorBuilder: (_, _) => const SizedBox(width: 7),
-          itemBuilder: (_, i) {
-            final l = i == 0 ? null : leagues[i - 1];
-            final on = l?.id == active;
-            return InkWell(
-              onTap: () => onPick(l?.id),
-              borderRadius: BorderRadius.circular(999),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: on ? Brand.crown : Brand.fill,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: on ? Brand.crown : Brand.border),
-                ),
-                child: Row(
-                  children: [
-                    if (l?.logoUrl != null)
-                      CachedNetworkImage(
-                        imageUrl: AppConfig.absoluteUrl(l!.logoUrl!),
-                        width: 17,
-                        height: 17,
-                        errorWidget: (_, _, _) => const SizedBox.shrink(),
-                      ),
-                    if (l != null) const SizedBox(width: 6),
-                    Text(
-                      l?.name ?? 'الكل',
-                      style: TextStyle(
-                        color: on ? Brand.onAccent : Brand.textMuted,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      );
 }

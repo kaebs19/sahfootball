@@ -257,7 +257,7 @@ function computeStreaks(hits) {
 // مكسب — نفس القرار المشروح في userRepo.adminDetail. Promise.all
 // تشغّلها معاً فتصل كلها بزمن أبطأها لا بمجموعها.
 async function profileStats(userId) {
-  const [standing, profile, distribution, form, streakRows] = await Promise.all([
+  const [standing, profile, distribution, form, streakRows, byLeague] = await Promise.all([
     // 1) المركز وعدد المتنافسين.
     //
     // RANK() OVER يحسب المركز داخل القاعدة فوق كل المستخدمين. لا
@@ -395,6 +395,58 @@ async function profileStats(userId) {
         ORDER BY f.kickoff_at ASC, p.fixture_id ASC`,
       [userId]
     ),
+
+    // 6) الحصيلة لكل دوري: نقاطه ومركزه ودقّته وعدد توقعاته فيه.
+    //
+    // الدوريات المعروضة: ما يتابعه أو ما له فيه أثر (توقّع أو
+    // نقطة) — لا كل دوريات اللعبة، فدوري لم يلمسه صفٌّ من أصفار.
+    //
+    // ORDER BY داخل RANK() نسخة حرفية من ORDER BY في leaderboard()
+    // — نفس الشرط المشروح في الاستعلام (1): المركز هنا ومركزه في
+    // عرش الدوري يجب أن يتطابقا حرفاً. والتقسيم PARTITION BY
+    // league_id يجعل الترتيب داخل كل دوري على حدة، وهو ما يميّز
+    // "ملك السعودي" عن "ملك الإنجليزي".
+    //
+    // COUNT(*) OVER (PARTITION BY league_id) بعد GROUP BY يعدّ
+    // المستخدمين لا الصفوف الخام: النوافذ تُقيَّم بعد التجميع.
+    db.query(
+      `WITH per_league AS (
+         SELECT p.user_id, p.league_id,
+                COALESCE(SUM(p.points), 0)::int AS points,
+                COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled,
+                COUNT(*) FILTER (WHERE p.kind = 'match' AND p.points > 0)::int AS hits,
+                RANK() OVER (PARTITION BY p.league_id
+                             ORDER BY COALESCE(SUM(p.points), 0) DESC,
+                                      COUNT(*) FILTER (WHERE p.kind = 'match') ASC)::int AS rank,
+                COUNT(*) OVER (PARTITION BY p.league_id)::int AS competitors
+           FROM user_settled_points p
+          GROUP BY p.user_id, p.league_id
+       ),
+       mine AS (SELECT * FROM per_league WHERE user_id = $1),
+       pending AS (
+         SELECT f.league_id, COUNT(*)::int AS predictions_count
+           FROM predictions p
+           JOIN fixtures f ON f.id = p.fixture_id
+          WHERE p.user_id = $1
+          GROUP BY f.league_id
+       )
+       SELECT l.id AS league_id,
+              COALESCE(l.name_ar, l.name_en)        AS name,
+              COALESCE(m.points, 0)                 AS points,
+              COALESCE(m.settled, 0)                AS settled_predictions,
+              COALESCE(pd.predictions_count, 0)     AS predictions_count,
+              ROUND(100.0 * m.hits / NULLIF(m.settled, 0))::int AS accuracy,
+              m.rank, m.competitors,
+              (ul.league_id IS NOT NULL)            AS followed
+         FROM leagues l
+         LEFT JOIN mine m      ON m.league_id = l.id
+         LEFT JOIN pending pd  ON pd.league_id = l.id
+         LEFT JOIN user_leagues ul ON ul.user_id = $1 AND ul.league_id = l.id
+        WHERE l.in_app
+          AND (ul.league_id IS NOT NULL OR m.league_id IS NOT NULL OR pd.league_id IS NOT NULL)
+        ORDER BY COALESCE(m.points, 0) DESC, l.sort_order, l.name_en`,
+      [userId]
+    ),
   ]);
 
   const s = standing.rows[0];
@@ -414,6 +466,10 @@ async function profileStats(userId) {
     ...computeStreaks(streakRows.rows.map((r) => r.hit)),
     points_distribution: distribution.rows,
     recent_form: form.rows,
+    // شعار الدوري من مسارنا لا من العمود — نفس قرار routes/leagues.
+    by_league: byLeague.rows.map((r) => ({
+      ...r, logo_url: `/logos/league-${r.league_id}.png`,
+    })),
     favorite_team: u.favorite_team_id
       ? { id: u.favorite_team_id, name: u.favorite_team_name, logo_url: u.favorite_team_logo }
       : null,

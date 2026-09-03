@@ -1,14 +1,14 @@
 // شاشة المباريات — قلب التطبيق: هنا يضع المستخدم توقعه.
 //
-// وضعان: "القادمة" (المباريات التي يمكن توقعها الآن) و"بالتاريخ"
-// (تصفح أي يوم، ماضياً أو قادماً، لمشاهدة النتائج). سبب الوضع
-// الثاني عملي: خطة API المجانية تسمح بمواسم 2022–2024 فقط، فالموسم
-// المخزّن عندنا منتهٍ بالكامل و"القادمة" ستكون فارغة حتى نشترك في
-// خطة مدفوعة — وبدون تصفح التاريخ لن يرى المستخدم أي مباراة إطلاقاً.
+// الدوري هو المحور: شريط في الأعلى بدوريات المستخدم («الكل» ثم كل
+// دوري يتابعه ثم «+ دوري»)، والقائمة تحته مبارياتها القادمة.
+// كان في مكانه مبدّل «القادمة | بالتاريخ» من أيام الخطة المجانية
+// التي لم تكن تعطي مواسم حيّة؛ اليوم الموسم جارٍ والقادمة لا
+// تفرغ، والسؤال الحقيقي صار "أي دوري؟" لا "أي يوم؟".
 //
-// في الحالتين نجلب شيئين بالتوازي: المباريات + توقعاتي، ثم نبني
-// خريطة fixtureId → توقعي كي تعرف كل بطاقة توقع صاحبها بلا طلب
-// لكل بطاقة. طلبان اثنان مهما كان عدد المباريات.
+// نجلب شيئين بالتوازي: المباريات + توقعاتي، ثم نبني خريطة
+// fixtureId → توقعي كي تعرف كل بطاقة توقع صاحبها بلا طلب لكل
+// بطاقة. طلبان اثنان مهما كان عدد المباريات.
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:provider/provider.dart';
@@ -16,14 +16,15 @@ import 'package:provider/provider.dart';
 import '../api/api_client.dart';
 import '../brand.dart';
 import '../format.dart';
+import '../models/champion.dart';
 import '../models/fixture.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/fixture_card.dart';
 import '../widgets/guest_gate.dart';
+import '../widgets/league_strip.dart';
 import '../widgets/prediction_sheet.dart';
-
-enum _Mode { upcoming, byDate }
+import 'leagues_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
   const MatchesScreen({super.key});
@@ -33,8 +34,12 @@ class MatchesScreen extends StatefulWidget {
 }
 
 class _MatchesScreenState extends State<MatchesScreen> {
-  _Mode _mode = _Mode.upcoming;
-  DateTime _day = DateTime.now();
+  /// دوريات الشريط: ما يتابعه المستخدم، وإن لم يتابع شيئاً فكل
+  /// دوريات اللعبة — شاشة بلا شريط شاشة بلا مباريات.
+  List<LeagueFollow>? _leagues;
+
+  /// المختار؛ null = «الكل» (كل دوريات الشريط).
+  int? _leagueId;
 
   List<Fixture>? _fixtures;
   Map<int, ({int home, int away})> _myPicks = {};
@@ -43,11 +48,39 @@ class _MatchesScreenState extends State<MatchesScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _init();
   }
 
   bool get _isGuest =>
       context.read<Session>().status == SessionStatus.guest;
+
+  /// الدوريات أولاً ثم المباريات: «الكل» تعني دوريات المستخدم لا
+  /// كل الدوريات، فلا يمكن طلب المباريات قبل معرفة أيّها له.
+  Future<void> _init() async {
+    setState(() => _error = null);
+    try {
+      final all = await context.read<ApiClient>().leagues();
+      final followed = all.where((l) => l.followed).toList();
+      if (!mounted) return;
+      setState(() {
+        _leagues = followed.isNotEmpty ? followed : all;
+        // من يتابع دورياً واحداً لا يحتاج «الكل» ليصل إليه.
+        _leagueId = followed.length == 1 ? followed.first.id : null;
+      });
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  /// معرّفات الدوريات المطلوبة من السيرفر: المختار وحده، أو كل
+  /// دوريات الشريط. null = لا تصفية (الشريط يعرض اللعبة كلها أصلاً).
+  List<int>? get _askedLeagueIds {
+    if (_leagueId != null) return [_leagueId!];
+    final strip = _leagues;
+    if (strip == null || strip.every((l) => !l.followed)) return null;
+    return strip.map((l) => l.id).toList();
+  }
 
   Future<void> _load() async {
     final api = context.read<ApiClient>();
@@ -56,14 +89,12 @@ class _MatchesScreenState extends State<MatchesScreen> {
     final guest = _isGuest;
     setState(() {
       _error = null;
-      _fixtures = null; // يعيد مؤشر التحميل عند تبديل اليوم أو الوضع
+      _fixtures = null; // يعيد مؤشر التحميل عند تبديل الدوري
     });
     try {
       // Future.wait = انطلاق الطلبين معاً وانتظارهما — نصف زمن التتابع
       final results = await Future.wait([
-        _mode == _Mode.upcoming
-            ? api.upcomingFixtures()
-            : api.fixturesByDate(_day),
+        api.upcomingFixtures(leagueIds: _askedLeagueIds),
         if (!guest) api.myPredictions(),
       ]);
       final fixtures = results[0] as List<Fixture>;
@@ -102,58 +133,42 @@ class _MatchesScreenState extends State<MatchesScreen> {
     }
   }
 
-  void _shiftDay(int days) {
-    setState(() => _day = _day.add(Duration(days: days)));
+  void _pickLeague(int? id) {
+    if (_leagueId == id) return;
+    setState(() => _leagueId = id);
     _load();
   }
 
-  Future<void> _pickDay() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _day,
-      // نطاق يغطي المواسم المتاحة في الخطة الحالية وسنة قادمة
-      firstDate: DateTime(2022, 1, 1),
-      lastDate: DateTime(DateTime.now().year + 1, 12, 31),
+  /// «+ دوري»: شاشة المتابعة نفسها، ثم إعادة بناء الشريط بما اختار.
+  Future<void> _addLeague() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const LeaguesScreen()),
     );
-    if (picked != null) {
-      setState(() => _day = picked);
-      _load();
+    if (changed == true && mounted) {
+      setState(() => _leagueId = null);
+      await _init();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final leagues = _leagues;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-          child: Row(
-            children: [
-              BrandModeTab(
-                label: 'القادمة',
-                selected: _mode == _Mode.upcoming,
-                onTap: () => _setMode(_Mode.upcoming),
-              ),
-              const SizedBox(width: 8),
-              BrandModeTab(
-                label: 'بالتاريخ',
-                selected: _mode == _Mode.byDate,
-                onTap: () => _setMode(_Mode.byDate),
-              ),
-            ],
+        if (leagues != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 2),
+            child: LeagueStrip(
+              leagues: leagues,
+              active: _leagueId,
+              onPick: _pickLeague,
+              // الضيف لا يتابع شيئاً فلا يُعرض عليه ما لا يستطيعه.
+              onAdd: _isGuest ? null : _addLeague,
+            ),
           ),
-        ),
-        if (_mode == _Mode.byDate)
-          _DayBar(day: _day, onShift: _shiftDay, onPick: _pickDay),
         Expanded(child: _buildList()),
       ],
     );
-  }
-
-  void _setMode(_Mode m) {
-    if (_mode == m) return;
-    setState(() => _mode = m);
-    _load();
   }
 
   Widget _buildList() {
@@ -172,9 +187,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
     if (fixtures.isEmpty) {
       return BrandEmpty(
         icon: Icons.event_busy,
-        message: _mode == _Mode.upcoming
-            ? 'لا مباريات قادمة حالياً — جرّب تصفح "بالتاريخ"'
-            : 'لا مباريات في هذا اليوم',
+        message: _leagueId == null
+            ? 'لا مباريات قادمة في دورياتك حالياً'
+            : 'لا مباريات قادمة في هذا الدوري حالياً',
         onRefresh: _load,
       );
     }
@@ -207,63 +222,6 @@ class _MatchesScreenState extends State<MatchesScreen> {
                     f.isOpenForPrediction ? () => _openPredictionSheet(f) : null,
               ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-/// شريحة تبديل الوضع.
-///
-/// كُتبت يدوياً بدل SegmentedButton لأن الأخير يفرض تخطيط Material
-/// (علامة صح داخل الشريحة، حدود مصمتة) يخالف شرائح الهوية
-/// البيضاوية. الشريحة المختارة ذهبية مصمتة كما في مرشّحات البطولات
-/// في ملف الهوية — وهذا استعمال مسموح للذهبي لأنه تمييز حالة لا زر.
-/// شريط اليوم: سهمان للتنقل يوماً بيوم (الأكثر استعمالاً) وضغطة على
-/// التاريخ نفسه لفتح التقويم للقفزات البعيدة.
-class _DayBar extends StatelessWidget {
-  final DateTime day;
-  final void Function(int days) onShift;
-  final VoidCallback onPick;
-
-  const _DayBar(
-      {required this.day, required this.onShift, required this.onPick});
-
-  @override
-  Widget build(BuildContext context) {
-    final fmt = intl.DateFormat('EEEE d MMMM yyyy', 'ar');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // في واجهة عربية (RTL) يعكس Flutter اتجاه أيقونات
-          // chevron_right/left تلقائياً، فالسهم "للأمام" يشير يساراً
-          // كما يتوقع القارئ العربي.
-          IconButton(
-            onPressed: () => onShift(-1),
-            icon: const Icon(Icons.chevron_right,
-                color: Brand.textMuted, size: 22),
-          ),
-          TextButton.icon(
-            onPressed: onPick,
-            icon: const Icon(Icons.calendar_today,
-                size: 14, color: Brand.textMuted),
-            label: Text(
-              Fmt.date(fmt, day),
-              style: const TextStyle(
-                color: Brand.text,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                fontFeatures: Brand.tabular,
-              ),
-            ),
-          ),
-          IconButton(
-            onPressed: () => onShift(1),
-            icon: const Icon(Icons.chevron_left,
-                color: Brand.textMuted, size: 22),
-          ),
         ],
       ),
     );

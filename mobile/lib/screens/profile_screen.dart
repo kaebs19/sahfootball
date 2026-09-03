@@ -13,6 +13,7 @@
 // على "ماذا توقعت؟" و"النقاط" على "من أين جاءت نقاطي؟" — سؤالان
 // لا يُقرآن معاً، وعرضهما معاً يعني تمريرة طويلة يتوه فيها الاثنان.
 // المبدّل يجعل الشاشة بطول واحد مهما كثر التاريخ.
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:provider/provider.dart';
@@ -117,6 +118,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           _StatsGrid(stats: stats),
+
+          // الحصيلة لكل دوري: الرقم الكلي فوق يخفي أن اللاعب ملكٌ في
+          // السعودي ومتفرّج في الإنجليزي — وهنا يظهر ذلك دورياً دورياً.
+          if (stats.byLeague.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const BrandSectionLabel('حسب الدوري'),
+            const SizedBox(height: 10),
+            for (final l in stats.byLeague)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _LeagueCard(league: l),
+              ),
+          ],
 
           if (stats.badges.isNotEmpty) ...[
             const SizedBox(height: 18),
@@ -1029,6 +1043,116 @@ class _ScoreBox extends StatelessWidget {
             value,
             size: 15,
             color: highlight ? Brand.correct : Brand.text,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// بطاقة دوري واحد في «حسب الدوري»: شعاره واسمه، ثم أربعة أرقام.
+///
+/// المركز والدقة يتبعان عقد الملف كله: null = لا شيء محتسب في هذا
+/// الدوري بعد، فتُعرض شرطة لا صفراً ولا آخر مركز.
+class _LeagueCard extends StatelessWidget {
+  final LeagueStats league;
+  const _LeagueCard({required this.league});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = league;
+    return BrandCard(
+      royal: l.rank == 1,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (l.logoUrl != null)
+                CachedNetworkImage(
+                  imageUrl: AppConfig.absoluteUrl(l.logoUrl!),
+                  width: 22,
+                  height: 22,
+                  errorWidget: (_, _, _) =>
+                      const Icon(Icons.emoji_events_outlined, size: 18),
+                ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  l.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Brand.text,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (l.rank == 1)
+                const BrandChip(label: 'الملك', tone: BrandTone.crown)
+              else if (!l.followed)
+                const BrandChip(label: 'غير متابَع'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _LeagueNumber(
+                value: '${l.points}',
+                label: 'نقطة',
+                color: Brand.crown,
+              ),
+              _LeagueNumber(
+                value: l.rank != null ? '${l.rank}' : '—',
+                label: l.competitors != null && l.rank != null
+                    ? 'من ${l.competitors}'
+                    : 'المركز',
+              ),
+              _LeagueNumber(
+                value: '${l.predictionsCount}',
+                label: '${l.settledPredictions} محتسب',
+              ),
+              _LeagueNumber(
+                value: l.accuracy != null ? '${l.accuracy}%' : '—',
+                label: 'الدقة',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LeagueNumber extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+  const _LeagueNumber({
+    required this.value,
+    required this.label,
+    this.color = Brand.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          BrandNumber(value, size: 17, color: color),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Brand.textFaint,
+              fontSize: 10.5,
+              fontFeatures: Brand.tabular,
+            ),
           ),
         ],
       ),

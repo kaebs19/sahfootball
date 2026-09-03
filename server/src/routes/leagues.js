@@ -1,19 +1,22 @@
 // routes/leagues — متابعة الدوريات.
 //
-// كلها تتطلب تسجيل دخول: شاشة الاختيار في التطبيق لا تُبلغ إلا
-// بعده، والقائمة بلا "أتابعه؟" لا تفيد شيئاً.
+// القراءة عامة والكتابة محمية: القائمة نفسها بيانات عامة (على
+// الموقع للجميع)، والضيف يحتاجها ليختار دورياً يتصفّح مبارياته
+// وعرشه. مع توكن صالح تحمل علامة "أتابعه؟"؛ بدونه كلها false.
 const express = require('express');
 const requireAuth = require('../middleware/requireAuth');
+const optionalAuth = require('../middleware/optionalAuth');
 const leagueRepo = require('../repositories/leagueRepo');
 const championRepo = require('../repositories/championRepo');
 
 const router = express.Router();
-router.use(requireAuth);
 
-// GET /api/leagues — دوريات اللعبة، ومعها ما يتابعه صاحب الطلب
-router.get('/', async (req, res) => {
+// GET /api/leagues — دوريات اللعبة، ومعها ما يتابعه صاحب الطلب إن كان له هوية
+router.get('/', optionalAuth, async (req, res) => {
   const leagues = (await leagueRepo.findEnabled()).filter((l) => l.in_app);
-  const followed = await championRepo.followedIds(req.userId).catch(() => []);
+  const followed = req.userId
+    ? await championRepo.followedIds(req.userId).catch(() => [])
+    : [];
 
   res.json({
     leagues: leagues.map((l) => ({
@@ -35,7 +38,7 @@ router.get('/', async (req, res) => {
 // القائمة كاملةً لا إضافة/حذف: الحالة النهائية هي ما أرسله
 // المستخدم بالضبط، بلا منطقٍ يقرّر ما يُضاف وما يُحذف — وذلك
 // المنطق هو ما يخطئ.
-router.put('/followed', async (req, res) => {
+router.put('/followed', requireAuth, async (req, res) => {
   const asked = Array.isArray(req.body?.leagueIds) ? req.body.leagueIds : null;
   if (!asked) return res.status(400).json({ error: 'leagueIds مطلوبة كمصفوفة' });
 

@@ -1,5 +1,6 @@
 class Fixture {
   final int id;
+  final int leagueId;
   final String? round;
   final DateTime kickoffAt; // محلي — التحويل من UTC يحصل في fromJson
   final String status;
@@ -14,6 +15,7 @@ class Fixture {
 
   const Fixture({
     required this.id,
+    required this.leagueId,
     this.round,
     required this.kickoffAt,
     required this.status,
@@ -29,6 +31,7 @@ class Fixture {
 
   factory Fixture.fromJson(Map<String, dynamic> json) => Fixture(
         id: json['id'] as int,
+        leagueId: (json['league_id'] as num?)?.toInt() ?? 0,
         round: json['round'] as String?,
         // السيرفر يخزن kickoff_at بتوقيت UTC ويرسله بلاحقة Z؛
         // toLocal() تعرضه بتوقيت جهاز المستخدم أياً كان.
