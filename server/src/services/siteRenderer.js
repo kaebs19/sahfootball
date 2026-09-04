@@ -234,6 +234,10 @@ ${canonicalPath ? `<link rel="canonical" href="${esc(canonicalPath)}">` : ''}
           <h4>قانوني</h4>
           <a href="/privacy">سياسة الخصوصية</a>
           <a href="/terms">شروط الاستخدام</a>
+          <!-- رابط الحذف في التذييل لا في صفحة الخصوصية وحدها:
+               المتجران يشترطان أن يكون مكتشَفاً بلا بحث، ومن يريد
+               حذف حسابه أقلّ الناس صبراً على التنقيب. -->
+          <a href="/delete-account">حذف الحساب</a>
         </div>
         <div class="foot-col">
           <h4>تواصل</h4>

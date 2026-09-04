@@ -43,7 +43,7 @@ router.use(express.urlencoded({ extended: false }));
 // الصفحات التي لها مسار عام. أي slug آخر في القاعدة يبقى غير
 // منشور — قائمة بيضاء صريحة كي لا يصبح إدخال صف في الجدول نشراً
 // لصفحة على الموقع بلا قصد.
-const PUBLIC_SLUGS = new Set(['privacy', 'terms', 'about', 'contact']);
+const PUBLIC_SLUGS = new Set(['privacy', 'terms', 'about', 'contact', 'delete-account']);
 
 // siteSettings.get لا settingsRepo.get('site') مباشرة: الأولى تدمج
 // القيم الافتراضية فوق المخزَّن، فحقل يُضاف للإعدادات لاحقاً لا يصل
