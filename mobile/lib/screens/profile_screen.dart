@@ -32,6 +32,10 @@ import '../widgets/premium_widgets.dart';
 import '../state/premium.dart';
 import 'settings_screen.dart';
 
+/// بعد كم توقّعاً يُدرج الإعلان المدمج — نفس رقم شاشة المباريات
+/// كي يكون للإعلان موضعٌ واحد مفهوم في التطبيق كله.
+const _adAfterCard = 3;
+
 /// سلّم الرتب من ملف الهوية.
 const _ranks = [
   (5000, 'الملك'),
@@ -211,7 +215,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ];
     }
-    return [for (final p in preds) _PredictionTile(prediction: p)];
+    // إعلان واحد بين التوقعات، بنفس موضعه في شاشة المباريات: بعد
+    // ثلاثة، فيراه من يتصفّح سجلّه ولا يعترض من يفتحه لينظر أعلاه.
+    return [
+      for (final (i, p) in preds.indexed) ...[
+        _PredictionTile(prediction: p),
+        if (i == _adAfterCard - 1)
+          const AdSlot(reason: 'راجع توقعاتك بلا إعلانات.'),
+      ],
+    ];
   }
 
   /// سجلّ النقاط: من أين جاءت النقاط بالضبط.

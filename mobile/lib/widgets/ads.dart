@@ -131,12 +131,18 @@ class _BannerAdSlotState extends State<BannerAdSlot> {
   }
 }
 
-/// إعلان مدمج داخل قائمة — بقالب جوجل المنسَّق بألوان الهوية.
+/// إعلان مدمج داخل قائمة — بطاقةٌ بين البطاقات.
 ///
 /// القالب الجاهز (NativeTemplateStyle) لا تخطيط أصلي مكتوب بيدنا:
 /// الثاني يعني ملف Swift وملف Kotlin ومصنعاً مسجّلاً في كل منهما،
 /// وثلاث نسخ من نفس التصميم تتباعد. والقالب يقبل ألوان الهوية
 /// وخطوطها فيخرج مدمجاً في الشاشة لا لصيقاً بها.
+///
+/// والقالب **الصغير** بمقاس بطاقة المباراة تماماً، لا المتوسط ذو
+/// الصورة الكبيرة: القائمة لها إيقاع — بطاقة بعد بطاقة بنفس
+/// الارتفاع ونفس الهامش — وكتلةٌ بضعف الارتفاع تكسر ذلك الإيقاع
+/// فتُقرأ اقتحاماً لا عنصراً في القائمة. والمكسب مزدوج: إعلانٌ
+/// يشبه ما حوله يُنقر أكثر من إعلان يصرخ بغربته.
 class NativeAdSlot extends StatefulWidget {
   /// نصّ الدعوة الذي يحلّ محلّ الإعلان إن لم يصل.
   final String fallbackReason;
@@ -155,13 +161,18 @@ class _NativeAdSlotState extends State<NativeAdSlot> {
   bool _loaded = false;
   String? _unit;
 
-  /// ارتفاع القالب المتوسط. ثابتٌ لأن AdWidget يحتاج حدوداً معلومة
-  /// داخل قائمة تُمرَّر — لا ارتفاع ذاتياً يقيسه من محتواه.
+  /// ارتفاع الإعلان. ثابتٌ لأن AdWidget يحتاج حدوداً معلومة داخل
+  /// قائمة تُمرَّر — لا ارتفاعاً ذاتياً يقيسه من محتواه.
   ///
-  /// والرقم سخيّ عمداً: القالب يضغط عناصره حين تضيق المساحة فيختفي
-  /// عنوان الإعلان خلف صورته (رأيته يقع فعلاً عند 320). وفراغٌ أسفل
-  /// إعلان أهون من إعلان مبتور.
-  static const _height = 370.0;
+  /// والرقم هو ارتفاع بطاقة المباراة (FixtureCard) نفسه، فيجلس
+  /// الإعلان في القائمة بمقاس جيرانه لا أطول ولا أقصر.
+  ///
+  /// ولا يُنقَص عنه: القالب الصغير له حدّ أدنى يرسم تحته لا شيء —
+  /// جُرّب 116 فاختفى الإعلان كلياً بلا خطأ في السجل، لأن ويدجت
+  /// الخطأ في نسخة الإصدار ترسم فراغاً صامتاً. ولو تغيّر ارتفاع
+  /// البطاقة يوماً وجب تغيير هذا معه: الرقمان يصفان شيئاً واحداً هو
+  /// إيقاع القائمة.
+  static const _height = 176.0;
 
   @override
   void didChangeDependencies() {
@@ -186,7 +197,7 @@ class _NativeAdSlotState extends State<NativeAdSlot> {
       // والذهبي غائب عمداً — قاعدة الهوية تحصره في التاج والنقاط
       // والرتب، وإعلانٌ يلبسه يبدو جزءاً من اللعبة وهو ليس منها.
       nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.medium,
+        templateType: TemplateType.small,
         mainBackgroundColor: Brand.surface,
         cornerRadius: Brand.radiusCard,
         primaryTextStyle: NativeTemplateTextStyle(
@@ -254,8 +265,13 @@ class _NativeAdSlotState extends State<NativeAdSlot> {
         child: CrownUpsell(reason: widget.fallbackReason),
       );
     }
+    // بلا خلفية نرسمها نحن خلف الإعلان: العرض الأصلي (platform view)
+    // يُركَّب في طبقة خاصة، وأي لون مصمت نضعه في نفس الصندوق يحجبه
+    // فيختفي الإعلان كلياً — جُرّب ووقع. القالب نفسه يرسم سطحه
+    // ونصف قطره (mainBackgroundColor و cornerRadius أعلاه)، فيخرج
+    // بمظهر البطاقة بلا طبقة ثانية تنازعه.
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.only(bottom: 10),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(Brand.radiusCard),
         child: SizedBox(height: _height, child: AdWidget(ad: ad)),

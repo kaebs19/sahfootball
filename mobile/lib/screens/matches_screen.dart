@@ -34,6 +34,10 @@ class MatchesScreen extends StatefulWidget {
   State<MatchesScreen> createState() => _MatchesScreenState();
 }
 
+/// بعد كم بطاقة يُدرج الإعلان المدمج. الثالثة: بعد أن يرى المستخدم
+/// ما جاء لأجله، وقبل أن يمرّ الإعلان بلا أن يُرى.
+const _adAfterCard = 3;
+
 class _MatchesScreenState extends State<MatchesScreen> {
   /// دوريات الشريط: ما يتابعه المستخدم، وإن لم يتابع شيئاً فكل
   /// دوريات اللعبة — شاشة بلا شريط شاشة بلا مباريات.
@@ -203,6 +207,10 @@ class _MatchesScreenState extends State<MatchesScreen> {
       byDay.putIfAbsent(Fmt.date(dayFmt, f.kickoffAt), () => []).add(f);
     }
 
+    // عدّاد البطاقات المرسومة — يُقرأ داخل بناء القائمة أدناه ليُدرج
+    // الإعلان في موضعه من التسلسل لا من الأيام.
+    var shown = 0;
+
     return RefreshIndicator(
       onRefresh: _load,
       color: Brand.crown,
@@ -210,23 +218,28 @@ class _MatchesScreenState extends State<MatchesScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
         children: [
-          for (final (i, entry) in byDay.entries.indexed) ...[
+          // الإعلان يُدرج بين البطاقات بعدّ المباريات لا بعدّ الأيام:
+          // يومٌ فيه مباراة واحدة كان سيضع الإعلان ثانيَ ما تراه
+          // العين، ويومٌ فيه عشر يدفعه بعيداً حتى لا يُرى.
+          //
+          // وواحد فقط في الشاشة كلها: شاشة المباريات هي المنتج نفسه،
+          // وإغراقها بالإعلانات يجعل الاشتراك يبدو ابتزازاً لا خدمة.
+          // ويختفي كلياً عند المشتركين (راجع AdSlot).
+          for (final entry in byDay.entries) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 12, 2, 8),
               child: BrandSectionLabel(entry.key),
             ),
-            for (final f in entry.value)
+            for (final f in entry.value) ...[
               FixtureCard(
                 fixture: f,
                 myPick: _myPicks[f.id],
                 onTap:
                     f.isOpenForPrediction ? () => _openPredictionSheet(f) : null,
               ),
-            // مكان إعلان واحد بعد يوم المباريات الأول، لا بين كل
-            // مباراتين: شاشة المباريات هي المنتج نفسه، وإغراقها
-            // بالإعلانات يجعل الاشتراك يبدو ابتزازاً لا خدمة.
-            // ويختفي كلياً عند المشتركين (راجع AdSlot).
-            if (i == 0) const AdSlot(reason: 'تصفّح المباريات بلا إعلانات.'),
+              if (++shown == _adAfterCard)
+                const AdSlot(reason: 'تصفّح المباريات بلا إعلانات.'),
+            ],
           ],
         ],
       ),
