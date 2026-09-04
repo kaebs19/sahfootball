@@ -30,7 +30,7 @@ async function collectFacts(userId) {
     // القاعدة. الصفوف تخرج خاماً وتُصنَّف هناك.
     db.query(
       `SELECT p.points, p.pred_home, p.pred_away,
-              f.goals_home, f.goals_away,
+              f.goals_home, f.goals_away, f.kickoff_at AS at,
               f.home_team_id, f.away_team_id
          FROM predictions p
          JOIN fixtures f ON f.id = p.fixture_id

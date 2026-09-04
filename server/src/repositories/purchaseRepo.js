@@ -48,6 +48,24 @@ async function multiplierBalance(userId, factor) {
   return { bought, used, left: Math.max(0, bought - used) };
 }
 
+/**
+ * تواريخ شراء الدروع، الأقدم أولاً.
+ *
+ * التاريخ هو المعلومة كلها: الدرع يحمي ما بعده لا ما قبله، وحساب
+ * السلسلة يُدخله في رصيده حين يبلغ هذا التاريخ (راجع computeStreaks
+ * والهجرة 028). والصفّ ذو الكمية أكثر من واحد يُبسَط إلى تواريخ
+ * متكررة — الدرع وحدة تُنفق لا رقم.
+ */
+async function shieldDates(userId) {
+  const { rows } = await db.query(
+    `SELECT created_at, quantity FROM purchases
+      WHERE user_id = $1 AND kind = 'shield'
+      ORDER BY created_at ASC`,
+    [userId]
+  );
+  return rows.flatMap((r) => Array(r.quantity).fill(r.created_at));
+}
+
 /** سجلّ مشتريات المستخدم — لشاشة "مشترياتي" وللدعم. */
 async function findMine(userId, limit = 50) {
   const { rows } = await db.query(
@@ -75,4 +93,4 @@ async function adminList(limit = 200) {
   return rows;
 }
 
-module.exports = { record, multiplierBalance, findMine, adminList };
+module.exports = { record, multiplierBalance, shieldDates, findMine, adminList };

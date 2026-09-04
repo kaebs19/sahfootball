@@ -756,9 +756,11 @@ class _ShieldCard extends StatelessWidget {
               ],
             ),
           ),
-          if (shield.max > 1)
+          if (shield.stock > 0 || shield.max > 1)
             Text(
-              '${shield.stock}/${shield.max}',
+              // المشترى فوق الحدّ الأقصى للمكتسب، فالمقام يجمعهما —
+              // "2/1" كانت ستبدو خطأً.
+              '${shield.stock}/${shield.max > shield.stock ? shield.max : shield.stock}',
               style: const TextStyle(
                 fontFamily: Brand.displayFont,
                 fontSize: 15,

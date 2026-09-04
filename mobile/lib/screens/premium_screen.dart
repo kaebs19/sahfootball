@@ -160,16 +160,36 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       ),
                     ],
                     const SizedBox(height: 26),
-                    const BrandSectionLabel('أو اشترِ معزّزات وحدها'),
+                    // مشتريات لمرة واحدة، لمن لا يريد اشتراكاً شهرياً:
+                    // الأداة تُشترى وتُنفق وتنتهي، ولا تلتزم بشيء.
+                    const BrandSectionLabel('أو اشترِ أدوات لمرة واحدة'),
                     const SizedBox(height: 10),
                     _PackCard(
-                      pack: offer.pack,
-                      balance: ent.boost,
+                      icon: Icons.bolt,
+                      title: '${offer.pack.size} مضاعِفات ×${offer.pack.factor}',
+                      note: 'رصيدك الآن ${ent.boost.left} · تُنفق في أي دوري',
+                      price: offer.pack.label,
                       busy: _busyProduct == offer.pack.productId,
                       onBuy: signedIn && offer.enabled
                           ? () => _buy(offer.pack)
                           : null,
                     ),
+                    if (offer.shieldPack != null) ...[
+                      const SizedBox(height: 10),
+                      _PackCard(
+                        icon: Icons.shield_outlined,
+                        title: offer.shieldPack!.size == 1
+                            ? 'درع سلسلة واحد'
+                            : '${offer.shieldPack!.size} دروع سلسلة',
+                        note: 'يحمي أول خطأ بعد شرائه · اشتريت '
+                            '${ent.shield.purchased}',
+                        price: offer.shieldPack!.label,
+                        busy: _busyProduct == offer.shieldPack!.productId,
+                        onBuy: signedIn && offer.enabled
+                            ? () => _buy(offer.shieldPack!)
+                            : null,
+                      ),
+                    ],
                     if (signedIn) ...[
                       const SizedBox(height: 18),
                       Center(
@@ -327,15 +347,21 @@ class _ActiveCard extends StatelessWidget {
   }
 }
 
+/// بطاقة منتج يُشترى مرة واحدة — نصّها من المستدعي لأن المنتجات
+/// تختلف (مضاعِفات، درع) والشكل واحد.
 class _PackCard extends StatelessWidget {
-  final StoreProduct pack;
-  final BoostBalance balance;
+  final IconData icon;
+  final String title;
+  final String note;
+  final String price;
   final bool busy;
   final VoidCallback? onBuy;
 
   const _PackCard({
-    required this.pack,
-    required this.balance,
+    required this.icon,
+    required this.title,
+    required this.note,
+    required this.price,
     required this.busy,
     required this.onBuy,
   });
@@ -345,14 +371,14 @@ class _PackCard extends StatelessWidget {
     return BrandCard(
       child: Row(
         children: [
-          const Icon(Icons.bolt, size: 24, color: Brand.crown),
+          Icon(icon, size: 24, color: Brand.crown),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${pack.size} مضاعِفات ×${pack.factor}',
+                  title,
                   style: const TextStyle(
                     color: Brand.text,
                     fontSize: 14,
@@ -361,7 +387,7 @@ class _PackCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'رصيدك الآن ${balance.left} · تُنفق في أي دوري',
+                  note,
                   style: const TextStyle(
                     color: Brand.textFaint,
                     fontSize: 11.5,
@@ -386,7 +412,7 @@ class _PackCard extends StatelessWidget {
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(pack.label),
+                  : Text(price),
             ),
           ),
         ],

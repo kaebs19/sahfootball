@@ -13,15 +13,26 @@ class ShieldState {
   /// كم إصابة تفصله عن درع جديد. null = بلغ الحدّ الأقصى.
   final int? nextIn;
 
-  const ShieldState({this.stock = 0, this.max = 0, this.nextIn});
+  /// كم درعاً اشترى (من الدفتر). ما بقي منه فعلاً داخل [stock].
+  final int purchased;
+
+  const ShieldState({
+    this.stock = 0,
+    this.max = 0,
+    this.nextIn,
+    this.purchased = 0,
+  });
 
   bool get active => stock > 0;
-  bool get available => max > 0;
+
+  /// هل للدرع وجود في حياة هذا اللاعب أصلاً — مكتسباً أو مشترى؟
+  bool get available => max > 0 || purchased > 0 || stock > 0;
 
   factory ShieldState.fromJson(Map<String, dynamic> j) => ShieldState(
         stock: (j['stock'] as num?)?.toInt() ?? 0,
         max: (j['max'] as num?)?.toInt() ?? 0,
         nextIn: (j['next_in'] as num?)?.toInt(),
+        purchased: (j['purchased'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -147,12 +158,14 @@ class PremiumOffer {
   final bool enabled;
   final StoreProduct crown;
   final StoreProduct pack;
+  final StoreProduct? shieldPack;
   final List<Perk> perks;
 
   const PremiumOffer({
     required this.enabled,
     required this.crown,
     required this.pack,
+    required this.shieldPack,
     required this.perks,
   });
 
@@ -161,6 +174,9 @@ class PremiumOffer {
         crown: StoreProduct.fromJson(j['crown'] as Map<String, dynamic>),
         pack:
             StoreProduct.fromJson(j['multiplier_pack'] as Map<String, dynamic>),
+        shieldPack: j['shield_pack'] != null
+            ? StoreProduct.fromJson(j['shield_pack'] as Map<String, dynamic>)
+            : null,
         perks: (j['perks'] as List? ?? [])
             .map((e) => Perk.fromJson(e as Map<String, dynamic>))
             .toList(),

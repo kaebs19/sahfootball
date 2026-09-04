@@ -36,7 +36,13 @@ const DEFAULT_PREMIUM = {
     price: 15,
     currency: 'SAR',
     factor: 5,
-    size: 3,
+    size: 5,
+  },
+  shield_pack: {
+    product_id: 'com.sahfootball.app.shield.pack',
+    price: 9,
+    currency: 'SAR',
+    size: 1,
   },
   free_edits: 0,
   shield: { every: 5, max: 1, premium_start: 1 },
@@ -73,7 +79,10 @@ async function forUser(userId) {
   if (!user) throw new PremiumError(404, 'الحساب غير موجود');
 
   const premium = cfg.enabled && active(user.premium_until);
-  const packs = await purchaseRepo.multiplierBalance(userId, cfg.multiplier_pack.factor);
+  const [packs, shields] = await Promise.all([
+    purchaseRepo.multiplierBalance(userId, cfg.multiplier_pack.factor),
+    purchaseRepo.shieldDates(userId),
+  ]);
 
   return {
     premium,
@@ -90,9 +99,13 @@ async function forUser(userId) {
       factor: cfg.multiplier_pack.factor,
       ...packs,
     },
-    shield: shieldOptions(cfg, premium),
+    // إعدادات الدرع وعدد ما اشتُري منه. أما كم بقي فعلاً فيأتي من
+    // حساب السلسلة وحده (profileStats): الدرع يُنفق داخل ذلك المرور
+    // الزمني، ورقمٌ ثانٍ يُحسب هنا بطريقة أخرى كان سيخالفه يوماً.
+    shield: { ...shieldOptions(cfg, premium), purchased: shields.length },
     crown: cfg.crown,
     pack: cfg.multiplier_pack,
+    shield_pack: cfg.shield_pack,
   };
 }
 
@@ -114,10 +127,19 @@ function shieldOptions(cfg, premium) {
   };
 }
 
-/** خيارات الدرع بمعرّف اللاعب — للمستدعين الذين لا يملكون الإعدادات. */
+/**
+ * خيارات الدرع كاملةً بمعرّف اللاعب — لحساب السلسلة.
+ *
+ * تضمّ تواريخ الدروع المشتراة، وهي ما يميّزها عن الخيارات المختصرة
+ * في forUser: الحساب يحتاج "متى اشتُري" ليُدخله في وقته، والعرض لا
+ * يحتاج إلا عددها.
+ */
 async function shieldFor(userId) {
-  const [cfg, user] = await Promise.all([config(), userRepo.findById(userId)]);
-  return shieldOptions(cfg, Boolean(cfg.enabled && active(user?.premium_until)));
+  const [cfg, user, purchased] = await Promise.all([
+    config(), userRepo.findById(userId), purchaseRepo.shieldDates(userId),
+  ]);
+  const premium = Boolean(cfg.enabled && active(user?.premium_until));
+  return { ...shieldOptions(cfg, premium), purchased };
 }
 
 /**
@@ -133,7 +155,7 @@ async function shieldFor(userId) {
  * يصطدم بقيد UNIQUE ويُهمَل بصمت.
  */
 async function grant({ userId, kind, quantity = 1, platform = 'manual', externalId = null }) {
-  if (kind !== 'crown' && kind !== 'multiplier') {
+  if (!['crown', 'multiplier', 'shield'].includes(kind)) {
     throw new PremiumError(400, 'نوع الشراء غير معروف');
   }
   const cfg = await config();
@@ -168,6 +190,7 @@ async function products() {
     enabled: Boolean(cfg.enabled),
     crown: cfg.crown,
     multiplier_pack: cfg.multiplier_pack,
+    shield_pack: cfg.shield_pack,
     // ما يعطيه التاج، نصّاً واحداً يقرأه التطبيق والموقع معاً —
     // وقائمتان تتباعدان عند أول امتياز يُضاف.
     perks: [

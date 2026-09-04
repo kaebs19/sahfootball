@@ -146,7 +146,8 @@ function deriveFacts(raw, shield = undefined) {
   // واحد للسلسلة في النظام كله. نسخة ثانية هنا كانت ستتفق معها اليوم
   // وتخالفها أول مرة يتغير فيها أحدهما، فيرى المستخدم "أطول سلسلة: 5"
   // ووسام السلسلة مطفأ في نفس الشاشة.
-  const { longest_streak } = computeStreaks(raw.timeline.map((r) => r.points > 0), shield);
+  const { longest_streak } = computeStreaks(
+    raw.timeline.map((r) => ({ hit: r.points > 0, at: r.at })), shield);
 
   return {
     predictions_count: raw.predictions_count,

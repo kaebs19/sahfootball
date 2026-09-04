@@ -278,29 +278,49 @@ async function rankOf(userId, leagueId = null) {
  *
  * الخيارات الافتراضية (بلا دروع) تعطي السلوك الأصلي حرفياً.
  */
-function computeStreaks(hits, shield = { every: 0, max: 0, start: 0 }) {
+function computeStreaks(rows, shield = {}) {
   const every = shield.every || 0;
   const max = shield.max || 0;
 
+  // الدروع المشتراة بتواريخها، الأقدم أولاً. نسخة نستهلكها هنا كي
+  // لا نمسّ ما مرّره المستدعي.
+  const pending = [...(shield.purchased || [])]
+    .map((t) => new Date(t))
+    .sort((a, b) => a - b);
+
   let longest = 0;
   let run = 0;
-  let stock = Math.min(shield.start || 0, max);
+  // المكتسب والمشترى منفصلان لسببين: المكتسب محدود بـ max (وإلا
+  // اكتنز لاعبٌ عشرة دروع فأخطأ عشراً بلا عقاب)، والمشترى لا يُحدّ
+  // لأن صاحبه دفع ثمنه. والإنفاق يبدأ بالمكتسب: المجاني قبل
+  // المدفوع، وإلا أحرق اللاعب ما اشتراه بينما بين يديه درع مجاني.
+  let earned = Math.min(shield.start || 0, max);
+  let bought = 0;
   let sinceShield = 0;
 
-  for (const hit of hits) {
-    if (hit) {
+  for (const row of rows) {
+    // الدرع المشترى يدخل الرصيد حين يبلغ المرورُ تاريخَ شرائه، لا
+    // قبله: من اشترى اليوم لا يُصلَح له خطأٌ وقع الشهر الماضي.
+    // (راجع الهجرة 028 — هذا هو سبب وجود التاريخ أصلاً.)
+    while (pending.length && pending[0] <= row.at) {
+      pending.shift();
+      bought += 1;
+    }
+
+    if (row.hit) {
       run += 1;
       if (run > longest) longest = run;
       sinceShield += 1;
       if (every > 0 && sinceShield >= every) {
         sinceShield = 0;
-        if (stock < max) stock += 1;
+        if (earned < max) earned += 1;
       }
-    } else if (stock > 0) {
+    } else if (earned > 0 || bought > 0) {
       // الدرع يمتصّ الخطأ: السلسلة تصمد ولا تزيد. والعدّاد نحو
       // الدرع التالي يبدأ من جديد — الدرع يُنال بخمس إصابات
       // متتالية، وخطأٌ بينها ليس تتابعاً.
-      stock -= 1;
+      if (earned > 0) earned -= 1;
+      else bought -= 1;
       sinceShield = 0;
     } else {
       run = 0;
@@ -308,15 +328,21 @@ function computeStreaks(hits, shield = { every: 0, max: 0, start: 0 }) {
     }
   }
 
+  // ما اشتُري بعد آخر مباراة محتسبة لم يمرّ عليه الزمن بعد — وهو
+  // في يد صاحبه حاضرٌ لأول خطأ قادم.
+  bought += pending.length;
+
   return {
     longest_streak: longest,
     current_streak: run,
     shield: {
-      stock,
+      stock: earned + bought,
+      earned,
+      bought,
       max,
       // كم إصابة تفصله عن الدرع التالي — الرقم الذي يجعل الشاشة
       // تقول "إصابتان وتنال درعاً" بدل شارة صامتة.
-      next_in: every > 0 && stock < max ? every - sinceShield : null,
+      next_in: every > 0 && earned < max ? every - sinceShield : null,
     },
   };
 }
@@ -460,7 +486,9 @@ async function profileStats(userId, shield = undefined) {
     // مقدماً ليس له ترتيب آخر. fixture_id فاصل ثانوي حتى يكون
     // الترتيب قاطعاً لمباراتين تنطلقان في اللحظة نفسها.
     db.query(
-      `SELECT (p.points > 0) AS hit
+      // kickoff_at معه: الدرع المشترى يدخل الرصيد بتاريخه، فحساب
+      // السلسلة صار يحتاج "متى" لا "أصاب أم لا" وحدها.
+      `SELECT (p.points > 0) AS hit, f.kickoff_at AS at
          FROM predictions p
          JOIN fixtures f ON f.id = p.fixture_id
         WHERE p.user_id = $1 AND p.settled_at IS NOT NULL
@@ -535,7 +563,7 @@ async function profileStats(userId, shield = undefined) {
     predictions_count: u.predictions_count,
     settled_predictions: s.settled_predictions ?? 0,
     accuracy: u.accuracy ?? null,
-    ...computeStreaks(streakRows.rows.map((r) => r.hit), shield),
+    ...computeStreaks(streakRows.rows, shield),
     points_distribution: distribution.rows,
     recent_form: form.rows,
     // شعار الدوري من مسارنا لا من العمود — نفس قرار routes/leagues.

@@ -52,6 +52,9 @@ async function resolveProduct(productId) {
   if (productId === cfg.multiplier_pack.product_id) {
     return { kind: 'multiplier', quantity: cfg.multiplier_pack.size || 1 };
   }
+  if (cfg.shield_pack && productId === cfg.shield_pack.product_id) {
+    return { kind: 'shield', quantity: cfg.shield_pack.size || 1 };
+  }
   return null;
 }
 
