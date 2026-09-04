@@ -40,7 +40,14 @@ const FIXTURE_SELECT = `SELECT ${FIXTURE_COLUMNS} ${FIXTURE_FROM}`;
 // يعني قائمة المباريات في شيء (دقيقة اللعب معناها الوحيد أثناء
 // اللعب) تغيير عقد قائم بلا مقابل. والفصل هنا لا يكرر شيئاً:
 // الأعمدة والـ JOIN مصدرهما ثابت واحد، فلا يمكن أن ينحرف الشكلان.
-const FIXTURE_SELECT_LIVE = `SELECT ${FIXTURE_COLUMNS}, f.elapsed ${FIXTURE_FROM}`;
+const FIXTURE_SELECT_LIVE = `SELECT ${FIXTURE_COLUMNS}, f.elapsed, f.phase ${FIXTURE_FROM}`;
+
+// شكل شاشة المباراة: كل ما في «مباشر» زائد ما لا يُقرأ إلا بعد
+// الضغط على البطاقة — نتيجة الشوط الأول، الترجيح، الملعب، الحكم،
+// ولحظة آخر تحديث كي تعرف الواجهة عمر ما تعرضه.
+const FIXTURE_SELECT_DETAIL = `SELECT ${FIXTURE_COLUMNS}, f.elapsed, f.phase,
+  f.ht_home, f.ht_away, f.pen_home, f.pen_away,
+  f.venue_name, f.venue_city, f.referee, f.updated_at ${FIXTURE_FROM}`;
 
 async function upsertMany(fixtures) {
   const client = await db.pool.connect();
@@ -52,9 +59,9 @@ async function upsertMany(fixtures) {
            (id, league_id, season, home_team_id, away_team_id,
             kickoff_at, status, goals_home, goals_away, elapsed, round,
             venue_name, venue_city, referee, ht_home, ht_away,
-            pen_home, pen_away, updated_at)
+            pen_home, pen_away, phase, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                 $12, $13, $14, $15, $16, $17, $18, now())
+                 $12, $13, $14, $15, $16, $17, $18, $19, now())
          ON CONFLICT (id) DO UPDATE SET
            kickoff_at = EXCLUDED.kickoff_at,  -- قد تتأجل المباراة لموعد جديد
            status     = EXCLUDED.status,
@@ -77,12 +84,13 @@ async function upsertMany(fixtures) {
            ht_away    = EXCLUDED.ht_away,
            pen_home   = EXCLUDED.pen_home,
            pen_away   = EXCLUDED.pen_away,
+           phase      = EXCLUDED.phase,
            updated_at = now()`,
         [f.id, f.league_id, f.season, f.home_team_id, f.away_team_id,
          f.kickoff_at, f.status, f.goals_home, f.goals_away, f.elapsed ?? null, f.round,
          f.venue_name ?? null, f.venue_city ?? null, f.referee ?? null,
          f.ht_home ?? null, f.ht_away ?? null,
-         f.pen_home ?? null, f.pen_away ?? null]
+         f.pen_home ?? null, f.pen_away ?? null, f.phase ?? null]
       );
     }
     await client.query('COMMIT');
@@ -169,6 +177,15 @@ async function findFinishedToday() {
      ORDER BY f.kickoff_at`
   );
   return rows;
+}
+
+// مباراة واحدة بكل تفاصيلها — لشاشة المباراة في التطبيق.
+async function findByIdDetail(id) {
+  const { rows } = await db.query(
+    `${FIXTURE_SELECT_DETAIL} WHERE f.id = $1`,
+    [id]
+  );
+  return rows[0] ?? null;
 }
 
 async function findById(id) {
@@ -288,6 +305,7 @@ module.exports = {
   findByDate,
   findUpcoming,
   findLive,
+  findByIdDetail,
   findNextKickoff,
   findFinishedToday,
   findById,

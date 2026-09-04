@@ -26,6 +26,7 @@ import '../widgets/guest_gate.dart';
 import '../widgets/league_strip.dart';
 import '../widgets/prediction_sheet.dart';
 import 'leagues_screen.dart';
+import 'match_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
   const MatchesScreen({super.key});
@@ -234,8 +235,15 @@ class _MatchesScreenState extends State<MatchesScreen> {
               FixtureCard(
                 fixture: f,
                 myPick: _myPicks[f.id],
-                onTap:
-                    f.isOpenForPrediction ? () => _openPredictionSheet(f) : null,
+                // المفتوحة تفتح ورقة التوقّع، وما انطلق أو انتهى يفتح
+                // شاشة المباراة: البطاقة لا تموت بعد الإقفال — يتبدّل
+                // سؤالها من «ماذا أتوقّع؟» إلى «ماذا حدث؟».
+                onTap: f.isOpenForPrediction
+                    ? () => _openPredictionSheet(f)
+                    : f.hasMatchPage
+                        ? () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => MatchScreen(fixture: f)))
+                        : null,
               ),
               if (++shown == _adAfterCard)
                 const AdSlot(reason: 'تصفّح المباريات بلا إعلانات.'),

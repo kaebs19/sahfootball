@@ -22,7 +22,15 @@ class LiveMatchCard extends StatelessWidget {
   final LiveFixture match;
   final LiveCardMode mode;
 
-  const LiveMatchCard({super.key, required this.match, required this.mode});
+  /// الضغط يفتح شاشة المباراة — الأحداث والإحصاءات والتشكيلة.
+  final VoidCallback? onTap;
+
+  const LiveMatchCard({
+    super.key,
+    required this.match,
+    required this.mode,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +43,7 @@ class LiveMatchCard extends StatelessWidget {
         // الحدّ الذهبي حين يكون توقّعك مضبوطاً الآن: أعلى لحظة في
         // التجربة تستحق أن تُرى من طرف العين قبل قراءة أي نص.
         royal: match.myPrediction?.state == PredictionState.exact,
+        onTap: onTap,
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(
           children: [
@@ -75,7 +84,7 @@ class LiveMatchCard extends StatelessWidget {
             ),
 
             const SizedBox(height: 14),
-            _PredictionLine(prediction: match.myPrediction, live: isLive),
+            LivePredictionLine(prediction: match.myPrediction, live: isLive),
           ],
         ),
       ),
@@ -207,7 +216,10 @@ class _Team extends StatelessWidget {
 }
 
 /// السطر الذي يجعل هذه الشاشة شخصية: ماذا يعني ما يحدث لتوقّعك؟
-class _PredictionLine extends StatelessWidget {
+///
+/// عامّ لأن شاشة المباراة تعرضه أيضاً: الشارة التي تقول «مضبوط
+/// الآن» في القائمة يجب أن تكون هي نفسها بعد الضغط، لا نسخة تُقلّدها.
+class LivePredictionLine extends StatelessWidget {
   final LivePrediction? prediction;
   final bool live;
 
@@ -216,7 +228,7 @@ class _PredictionLine extends StatelessWidget {
   /// قبل الانطلاق لا معنى لحالة التوقّع (انظر
   /// [LiveFixture.predictionStateIsMeaningful])، وبطاقة "المباراة
   /// القادمة" تعرض التوقّع كنص مجرّد بلا حكم عليه.
-  const _PredictionLine({this.prediction, required this.live});
+  const LivePredictionLine({super.key, this.prediction, required this.live});
 
   @override
   Widget build(BuildContext context) {

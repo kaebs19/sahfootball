@@ -129,3 +129,41 @@ class _LeagueNumber extends StatelessWidget {
     );
   }
 }
+
+/// شريط الدوريات: بطاقات تُمرَّر أفقياً بدل أن تُكدَّس عمودياً.
+///
+/// من يتابع أربعة دوريات كانت شاشته تطول أربع بطاقات كاملة قبل أن
+/// يصل إلى سجلّه. أفقياً تشغل صفّاً واحداً، والبطاقة التالية تطلّ
+/// من الطرف فتقول «هناك المزيد» بلا عدّاد. ودوريٌ واحد يأخذ العرض
+/// كله — شريط ببطاقة واحدة مقصوصة يبدو خللاً.
+class LeagueCarousel extends StatelessWidget {
+  final List<LeagueStats> leagues;
+  final bool showFollowed;
+
+  const LeagueCarousel({
+    super.key,
+    required this.leagues,
+    this.showFollowed = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (leagues.length == 1) {
+      return LeagueStatsCard(league: leagues.first, showFollowed: showFollowed);
+    }
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
+        itemCount: leagues.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (_, i) => SizedBox(
+          width: 268,
+          child: LeagueStatsCard(league: leagues[i], showFollowed: showFollowed),
+        ),
+      ),
+    );
+  }
+}

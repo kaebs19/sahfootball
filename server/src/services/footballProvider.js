@@ -29,6 +29,9 @@ const TTL = {
   STATISTICS: 120,     // إحصاءات مباراة: تتغير أثناء اللعب كالأحداث
   SCORERS: 6 * 3600,   // الهدافون: ترتيب لا يتغير إلا بعد جولة
   H2H: 24 * 3600,      // المواجهات السابقة: تاريخ لا يتغير إلا بمباراة جديدة
+  // أحداث وإحصاءات مباراة **انتهت**: لن تتغيّر بعد الآن، وكاش
+  // الدقيقة كان يعيد شراءها من المزوّد لكل من فتح مباراة الأمس.
+  SETTLED: 6 * 3600,
 };
 
 // ---------------------------------------------------------------
@@ -170,11 +173,16 @@ function getLiveFixtures(options) {
   });
 }
 
-// أحداث مباراة واحدة (أهداف، بطاقات، تبديلات).
-function getFixtureEvents(fixtureId) {
+// أحداث مباراة واحدة (أهدف، بطاقات، تبديلات).
+//
+// `settled` من المستدعي لا من هنا: المزوّد لا يقول في ردّ الأحداث
+// إن كانت المباراة انتهت، والمستدعي يحمل صفّ المباراة ويعرف.
+// ومفتاح الكاش واحد في الحالتين عمداً — آخر جلب أثناء اللعب يصلح
+// أول جلب بعد النهاية، ولا نشتري القائمة مرتين.
+function getFixtureEvents(fixtureId, { settled = false } = {}) {
   return request('fixtures/events', { fixture: fixtureId }, {
     cacheKey: `football:events:${fixtureId}`,
-    ttl: TTL.EVENTS,
+    ttl: settled ? TTL.SETTLED : TTL.EVENTS,
     sampleFile: 'fixture_events.json',
   });
 }
@@ -185,6 +193,7 @@ function getFixtureLineups(fixtureId) {
   return request('fixtures/lineups', { fixture: fixtureId }, {
     cacheKey: `football:lineups:${fixtureId}`,
     ttl: TTL.LINEUPS,
+    sampleFile: 'fixture_lineups.json',
   });
 }
 
@@ -200,14 +209,16 @@ function getHeadToHead(a, b, last = 5) {
   return request('fixtures/headtohead', { h2h: `${a}-${b}`, last }, {
     cacheKey: `football:h2h:${x}:${y}:${last}`,
     ttl: TTL.H2H,
+    sampleFile: 'fixture_h2h.json',
   });
 }
 
 // إحصاءات المباراة: استحواذ، تسديدات، ركنيات، بطاقات.
-function getFixtureStatistics(fixtureId) {
+function getFixtureStatistics(fixtureId, { settled = false } = {}) {
   return request('fixtures/statistics', { fixture: fixtureId }, {
     cacheKey: `football:stats:${fixtureId}`,
-    ttl: TTL.STATISTICS,
+    ttl: settled ? TTL.SETTLED : TTL.STATISTICS,
+    sampleFile: 'fixture_statistics.json',
   });
 }
 

@@ -24,6 +24,7 @@ import '../models/notification_prefs.dart';
 import '../models/player.dart';
 import '../models/premium.dart';
 import '../models/live_fixture.dart';
+import '../models/match_detail.dart';
 import '../models/prediction.dart';
 import '../models/rules.dart';
 import '../models/champion.dart';
@@ -401,6 +402,18 @@ class ApiClient {
     try {
       final res = await _dio.get('/api/fixtures/live');
       return LiveState.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// شاشة المباراة: الترويسة الحيّة والأحداث والإحصاءات والتشكيلة
+  /// والمواجهات، مع توقّعي — طلب واحد لأنها تُحدَّث كل عشرين ثانية
+  /// أثناء اللعب.
+  Future<MatchDetail> matchDetail(int fixtureId) async {
+    try {
+      final res = await _dio.get('/api/fixtures/$fixtureId/match');
+      return MatchDetail.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {
       _throwReadable(e);
     }

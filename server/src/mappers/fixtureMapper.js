@@ -70,6 +70,10 @@ function mapFixture(apiItem) {
     // TIMESTAMPTZ في PostgreSQL يفهمه ويخزّنه بتوقيت UTC.
     kickoff_at: fixture.date,
     status: status || 'scheduled',
+    // رمز المزوّد الخام بجانب حالتنا المختزلة: الحالة تحكم اللعبة
+    // (مفتوح/مقفل/محتسب)، والطور يحكم ما تقوله شاشة المباراة
+    // («استراحة» لا «45'» متجمّدة). راجع migrations/032.
+    phase: shortStatus ?? null,
     // ?? وليس ||: قبل المباراة goals تكون null ويجب أن تبقى null،
     // لكن نتيجة 0-0 حقيقية يجب ألا تتحول إلى null. عملياً ?? يحمينا
     // لو أرسل المزود undefined.

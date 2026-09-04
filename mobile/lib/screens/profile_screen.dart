@@ -3,16 +3,23 @@
 // حلّت محل تبويب "توقعاتي" وابتلعته. السبب أن القائمة وحدها كانت
 // تجيب على نصف السؤال: تريك ماذا توقّعت، ولا تقول لك أين أنت.
 // الرتبة والدقة والسلسلة هي ما يجعل السجل ذا معنى — والسجل هو ما
-// يجعل الأرقام قابلة للتصديق. فصلهما في تبويبين كان يفرّق ما
-// يُقرأ معاً.
+// يجعل الأرقام قابلة للتصديق.
 //
-// الترتيب من الأعلى: من أنا (هوية ورتبة) ← كيف أؤدي (أرقام) ←
-// ماذا نلت (شريط الأوسمة) ← ماذا فعلت بالضبط (سجلّ).
+// الترتيب من الأعلى: من أنا (صورة واسم ورتبة، ثم نقاط ومركز ودقّة
+// في شريط واحد) ← كيف ألعب (سلسلة وتوقعات ودرع في شريط واحد) ←
+// أين ألعب (الدوريات، أفقياً) ← ماذا نلت (الأوسمة) ← ماذا فعلت
+// بالضبط (سجلّ).
+//
+// أعيد ترتيبها حين صارت تسع بطاقات متتالية بعرض الشاشة: بطاقة
+// للهوية، وثلاث للأرقام، وواحدة للدرع، وواحدة للتاج، وواحدة لكل
+// دوري… كلٌّ منها صحيحة وحدها، ومجموعها جدارٌ من البطاقات تتوه فيه
+// العين. القاعدة الآن: **ما يُقرأ معاً يجلس معاً** — الأرقام الثلاثة
+// شريط، والأداء شريط، والدوريات صفّ يُمرَّر — فتقصر الشاشة إلى
+// النصف ولا يسقط منها رقم.
 //
 // السجلّ سجلّان في مكان واحد لا قسمان متتاليان: "التوقعات" تجيب
 // على "ماذا توقعت؟" و"النقاط" على "من أين جاءت نقاطي؟" — سؤالان
-// لا يُقرآن معاً، وعرضهما معاً يعني تمريرة طويلة يتوه فيها الاثنان.
-// المبدّل يجعل الشاشة بطول واحد مهما كثر التاريخ.
+// لا يُقرآن معاً. المبدّل يجعل الشاشة بطول واحد مهما كثر التاريخ.
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:provider/provider.dart';
@@ -20,40 +27,20 @@ import 'package:provider/provider.dart';
 import '../api/api_client.dart';
 import '../brand.dart';
 import '../format.dart';
-import '../config.dart';
 import '../models/prediction.dart';
-import '../models/premium.dart';
 import '../models/profile_stats.dart';
+import '../state/premium.dart';
 import '../state/session.dart';
 import '../widgets/badge_grid.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/league_stats_card.dart';
 import '../widgets/premium_widgets.dart';
-import '../state/premium.dart';
+import '../widgets/profile_hero.dart';
 import 'settings_screen.dart';
 
 /// بعد كم توقّعاً يُدرج الإعلان المدمج — نفس رقم شاشة المباريات
 /// كي يكون للإعلان موضعٌ واحد مفهوم في التطبيق كله.
 const _adAfterCard = 3;
-
-/// سلّم الرتب من ملف الهوية.
-const _ranks = [
-  (5000, 'الملك'),
-  (3000, 'أمير'),
-  (1500, 'فارس'),
-  (500, 'لاعب'),
-  (0, 'مشجّع'),
-];
-
-String _rankName(int points) => _ranks.firstWhere((r) => points >= r.$1).$2;
-
-/// النقاط الناقصة للرتبة التالية، أو null عند القمة.
-(int, String)? _nextRank(int points) {
-  final higher = _ranks.where((r) => r.$1 > points).toList();
-  if (higher.isEmpty) return null;
-  final next = higher.last; // أقرب عتبة فوقه
-  return (next.$1 - points, next.$2);
-}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -133,6 +120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final user = context.watch<Session>().user;
+    final premium = context.watch<Premium>().isPremium;
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -140,24 +128,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Brand.surface,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
+        padding: const EdgeInsets.fromLTRB(14, 18, 14, 20),
         children: [
-          _IdentityCard(
+          ProfileHero(
             name: user?.nameOrFallback ?? 'مشجع',
             avatarUrl: user?.avatarUrl,
-            stats: stats,
+            premium: premium,
+            favoriteTeam: stats.favoriteTeam,
+            totalPoints: stats.totalPoints,
+            rank: stats.rank,
+            totalCompetitors: stats.totalCompetitors,
+            accuracy: stats.accuracy,
           ),
-          const SizedBox(height: 12),
-          _StatsGrid(stats: stats),
+          const SizedBox(height: 10),
+          PerformanceStrip(
+            longestStreak: stats.longestStreak,
+            currentStreak: stats.currentStreak,
+            predictionsCount: stats.predictionsCount,
+            settledPredictions: stats.settledPredictions,
+            shield: stats.shield,
+          ),
 
-          // الدرع تحت الأرقام مباشرة: هو جزء من قراءة السلسلة، ولو
-          // بَعُد عنها لظهرت سلسلة صمدت أمام خطأ بلا تفسير.
-          if (stats.shield.available) ...[
-            const SizedBox(height: 12),
-            _ShieldCard(shield: stats.shield),
-          ],
-
-          const SizedBox(height: 12),
+          // دعوة الاشتراك تختفي وحدها عند المشترك (راجع CrownUpsell).
+          const SizedBox(height: 10),
           const CrownUpsell(
             reason: 'عدّل توقّعك، واحمِ سلسلتك، وتصفّح بلا إعلانات.',
           ),
@@ -165,22 +158,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // الحصيلة لكل دوري: الرقم الكلي فوق يخفي أن اللاعب ملكٌ في
           // السعودي ومتفرّج في الإنجليزي — وهنا يظهر ذلك دورياً دورياً.
           if (stats.byLeague.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            const BrandSectionLabel('حسب الدوري'),
+            const SizedBox(height: 22),
+            const _SectionTitle('حسب الدوري'),
             const SizedBox(height: 10),
-            for (final l in stats.byLeague)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: LeagueStatsCard(league: l),
-              ),
+            LeagueCarousel(leagues: stats.byLeague),
           ],
 
           if (stats.badges.isNotEmpty) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 22),
             BadgeStrip(badges: stats.badges),
           ],
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
+          const _SectionTitle('السجلّ'),
+          const SizedBox(height: 10),
           BrandSegmented(
             labels: const ['التوقعات', 'النقاط'],
             selected: _log == _Log.predictions ? 0 : 1,
@@ -271,6 +262,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 10),
       ],
     ];
+  }
+}
+
+/// عنوان قسم: أكبر قليلاً من BrandSectionLabel وبلون النصّ لا الذهبي.
+///
+/// الذهبي هنا كان يجعل «حسب الدوري» يبدو رتبةً أو نقاطاً، والعنوان
+/// مجرّد لافتة. والأقسام صارت أقلّ وأوضح، فتستحق لافتة تُقرأ.
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: Brand.displayFont,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: Brand.text,
+        ),
+      ),
+    );
   }
 }
 
@@ -494,343 +510,6 @@ class _LedgerCell extends StatelessWidget {
   }
 }
 
-/// من أنا: الصورة والاسم والرتبة والمركز.
-class _IdentityCard extends StatelessWidget {
-  final String name;
-  final String? avatarUrl;
-  final ProfileStats stats;
-
-  const _IdentityCard({
-    required this.name,
-    this.avatarUrl,
-    required this.stats,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final rank = _rankName(stats.totalPoints);
-    final next = _nextRank(stats.totalPoints);
-    final premium = context.watch<Premium>().isPremium;
-
-    return BrandCard(
-      royal: true,
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _Avatar(url: avatarUrl, name: name),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: Brand.displayFont,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: Brand.text,
-                            ),
-                          ),
-                        ),
-                        // تاجٌ صغير بجانب الاسم — الذهبي في موضعه:
-                        // رتبة ودور، لا زينة.
-                        if (premium) ...[
-                          const SizedBox(width: 7),
-                          const Icon(Icons.workspace_premium,
-                              size: 17, color: Brand.crown),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        BrandChip(label: rank, tone: BrandTone.crown),
-                        const SizedBox(width: 6),
-                        // المركز فقط لمن شارك: عرض "المركز —" على من
-                        // لم يلعب يوحي بأنه خاسر، وهو لم يبدأ بعد.
-                        if (stats.rank != null)
-                          BrandChip(
-                            label:
-                                'المركز ${stats.rank} من ${stats.totalCompetitors}',
-                          )
-                        else
-                          const BrandChip(label: 'لم تنافس بعد'),
-                      ],
-                    ),
-                    if (stats.favoriteTeam != null) ...[
-                      const SizedBox(height: 7),
-                      Row(
-                        children: [
-                          if (stats.favoriteTeam!.logoUrl != null)
-                            Image.network(
-                              stats.favoriteTeam!.logoUrl!,
-                              width: 15,
-                              height: 15,
-                              errorBuilder: (_, _, _) =>
-                                  const SizedBox.shrink(),
-                            ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'يشجّع ${stats.favoriteTeam!.name}',
-                            style: const TextStyle(
-                              color: Brand.textFaint,
-                              fontSize: 11.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  BrandNumber(
-                    '${stats.totalPoints}',
-                    size: 30,
-                    color: Brand.crown,
-                  ),
-                  const Text(
-                    'نقطة تاج',
-                    style: TextStyle(color: Brand.textMuted, fontSize: 11),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          if (next != null) ...[
-            const SizedBox(height: 14),
-            _RankProgress(
-              points: stats.totalPoints,
-              remaining: next.$1,
-              nextName: next.$2,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// شريط التقدّم نحو الرتبة التالية.
-///
-/// الرقم المجرّد ("2480 نقطة") لا يقول شيئاً عن القرب. الشريط يحوّل
-/// المجموع إلى مسافة باقية، وهي ما يدفع للعب جولة أخرى.
-class _RankProgress extends StatelessWidget {
-  final int points;
-  final int remaining;
-  final String nextName;
-
-  const _RankProgress({
-    required this.points,
-    required this.remaining,
-    required this.nextName,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final target = points + remaining;
-    final floor = _ranks.firstWhere((r) => points >= r.$1).$1;
-    final span = (target - floor).clamp(1, 1 << 30);
-    final progress = ((points - floor) / span).clamp(0.0, 1.0);
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            Text(
-              '$remaining نقطة إلى $nextName',
-              style: const TextStyle(
-                color: Brand.crown,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                fontFeatures: Brand.tabular,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '${(progress * 100).round()}%',
-              style: const TextStyle(
-                color: Brand.textFaint,
-                fontSize: 11.5,
-                fontFeatures: Brand.tabular,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 7),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: LinearProgressIndicator(
-            value: progress,
-            minHeight: 6,
-            backgroundColor: Brand.fill,
-            valueColor: const AlwaysStoppedAnimation(Brand.crown),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _StatsGrid extends StatelessWidget {
-  final ProfileStats stats;
-  const _StatsGrid({required this.stats});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _StatBox(
-            value: stats.accuracy != null ? '${stats.accuracy}%' : '—',
-            label: 'دقة التوقّع',
-            hint: stats.accuracy == null ? 'لا شيء محتسب' : null,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatBox(
-            value: '×${stats.longestStreak}',
-            label: 'أطول سلسلة',
-            hint: stats.currentStreak > 0
-                ? 'الحالية ×${stats.currentStreak}'
-                : null,
-            tone: stats.currentStreak > 0 ? Brand.correct : null,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatBox(
-            value: '${stats.predictionsCount}',
-            label: 'توقّع كلي',
-            hint: '${stats.settledPredictions} محتسب',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// درع السلسلة: هل يحميه الآن، وكم يفصله عن الدرع التالي.
-///
-/// يُعرض للجميع لا للمشتركين وحدهم: الدرع يُكتسب بالإصابات المتتالية،
-/// والتاج يعطي درعاً جاهزاً فوقه. وإخفاؤه عن غير المشترك كان سيجعل
-/// سلسلته تنكسر يوماً وتصمد يوماً بلا سبب يراه.
-class _ShieldCard extends StatelessWidget {
-  final ShieldState shield;
-  const _ShieldCard({required this.shield});
-
-  @override
-  Widget build(BuildContext context) {
-    final on = shield.active;
-    return BrandCard(
-      royal: on,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          Icon(on ? Icons.shield : Icons.shield_outlined,
-              size: 22, color: on ? Brand.crown : Brand.textFaint),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  on ? 'درع السلسلة فعّال' : 'درع السلسلة',
-                  style: TextStyle(
-                    color: on ? Brand.crown : Brand.text,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  on
-                      ? 'توقّع خاطئ واحد لن يكسر سلسلتك.'
-                      : shield.nextIn != null
-                          // العدّ العربي من Fmt: "1 توقّعات" خطأ يظهر
-                          // في نصّ يُقرأ كل يوم.
-                          ? 'يبقى ${Fmt.counted(shield.nextIn!, 'توقّع صحيح واحد', 'توقّعان صحيحان', 'توقّعات صحيحة', 'توقّعاً صحيحاً')} لتنال درعاً.'
-                          : 'يُكتسب بالتوقّعات الصحيحة المتتالية.',
-                  style: const TextStyle(
-                      color: Brand.textMuted, fontSize: 11.5, height: 1.6),
-                ),
-              ],
-            ),
-          ),
-          if (shield.stock > 0 || shield.max > 1)
-            Text(
-              // المشترى فوق الحدّ الأقصى للمكتسب، فالمقام يجمعهما —
-              // "2/1" كانت ستبدو خطأً.
-              '${shield.stock}/${shield.max > shield.stock ? shield.max : shield.stock}',
-              style: const TextStyle(
-                fontFamily: Brand.displayFont,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: Brand.crown,
-                fontFeatures: Brand.tabular,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatBox extends StatelessWidget {
-  final String value;
-  final String label;
-  final String? hint;
-  final Color? tone;
-
-  const _StatBox({
-    required this.value,
-    required this.label,
-    this.hint,
-    this.tone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return BrandCard(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-      child: Column(
-        children: [
-          BrandNumber(value, size: 21, color: tone ?? Brand.text),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Brand.textMuted, fontSize: 11.5),
-          ),
-          if (hint != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              hint!,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: tone ?? Brand.textFaint,
-                fontSize: 10.5,
-                fontFeatures: Brand.tabular,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 /// شكل الأداء عبر الجولات الأخيرة.
 class _FormCard extends StatelessWidget {
   final List<RoundForm> form;
@@ -1014,117 +693,70 @@ class _DistributionCard extends StatelessWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
-  final String? url;
-  final String name;
-  const _Avatar({this.url, required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    const size = 54.0;
-    if (url == null) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: const BoxDecoration(
-          color: Brand.fill,
-          shape: BoxShape.circle,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          name.characters.first,
-          style: const TextStyle(
-            fontFamily: Brand.displayFont,
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Brand.textMuted,
-          ),
-        ),
-      );
-    }
-    return ClipOval(
-      child: Image.network(
-        AppConfig.absoluteUrl(url!),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => Container(
-          width: size,
-          height: size,
-          color: Brand.fill,
-          alignment: Alignment.center,
-          child: const Icon(Icons.person, color: Brand.textFaint),
-        ),
-      ),
-    );
-  }
-}
-
+/// صفّ توقّع واحد — دفتر لا بطاقة.
+///
+/// كان صندوقين («توقعك» و«النتيجة») تحت سطر أسماء الفرق. الشكل
+/// الجديد سطران، سطر لكل فريق، وعمودان ثابتان للأرقام: توقّعك ثم
+/// ما حدث. هكذا يقع رقم المضيف تحت اسم المضيف ورقم الضيف تحت اسمه،
+/// وتُقرأ المقارنة عمودياً بنظرة — والأعمدة تصطفّ من صفّ إلى صفّ
+/// فيُمسح السجلّ كله كجدول.
 class _PredictionTile extends StatelessWidget {
   final Prediction prediction;
   const _PredictionTile({required this.prediction});
 
+  static const _col = 42.0;
+
   @override
   Widget build(BuildContext context) {
     final p = prediction;
-    final dateFmt = intl.DateFormat('d MMM • h:mm a', 'ar');
+    final dateFmt = intl.DateFormat('d MMM', 'ar');
     final hasResult = p.goalsHome != null && p.goalsAway != null;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: BrandCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.fromLTRB(14, 10, 12, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${p.homeTeamName} — ${p.awayTeamName}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Brand.text,
-                      fontFamily: Brand.displayFont,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                    ),
+            Expanded(
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${Fmt.date(dateFmt, p.kickoffAt)} · ${Fmt.round(p.round)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Brand.textFaint,
+                            fontSize: 10.5,
+                            fontFeatures: Brand.tabular,
+                          ),
+                        ),
+                      ),
+                      const _ColHead('توقعك'),
+                      const _ColHead('النتيجة'),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  Fmt.date(dateFmt, p.kickoffAt),
-                  style: const TextStyle(
-                    color: Brand.textFaint,
-                    fontSize: 11,
-                    fontFeatures: Brand.tabular,
+                  const SizedBox(height: 6),
+                  _TeamLine(
+                    name: p.homeTeamName,
+                    pick: p.predHome,
+                    goals: hasResult ? p.goalsHome : null,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  _TeamLine(
+                    name: p.awayTeamName,
+                    pick: p.predAway,
+                    goals: hasResult ? p.goalsAway : null,
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                // محايد لا أخضر. كان "توقعك" أخضر دائماً — والأخضر
-                // في الهوية يعني "صحيح"، فكان يهنّئ صاحب التوقع
-                // الخاطئ بلون النجاح. والقاعدة الثانية تمنع الأخضر
-                // أن يتقاسم بطاقة مع الذهبي، والنقاط ذهبية. الحكم
-                // على التوقع تقوله شريحة النقاط وحدها.
-                _ScoreBox(
-                  title: 'توقعك',
-                  value: '${p.predHome} - ${p.predAway}',
-                  highlight: false,
-                ),
-                const SizedBox(width: 8),
-                _ScoreBox(
-                  title: 'النتيجة',
-                  value: hasResult ? '${p.goalsHome} - ${p.goalsAway}' : '—',
-                  highlight: false,
-                ),
-                const Spacer(),
-                _PointsChip(points: p.isSettled ? (p.points ?? 0) : null),
-              ],
-            ),
+            const SizedBox(width: 10),
+            _PointsChip(points: p.isSettled ? (p.points ?? 0) : null),
           ],
         ),
       ),
@@ -1132,63 +764,116 @@ class _PredictionTile extends StatelessWidget {
   }
 }
 
-class _ScoreBox extends StatelessWidget {
-  final String title;
-  final String value;
-  final bool highlight;
-
-  const _ScoreBox({
-    required this.title,
-    required this.value,
-    required this.highlight,
-  });
+class _ColHead extends StatelessWidget {
+  final String text;
+  const _ColHead(this.text);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-      decoration: BoxDecoration(
-        color: highlight ? Brand.correctWash(0.11) : Brand.fill,
-        borderRadius: BorderRadius.circular(Brand.radiusSmall),
-      ),
-      child: Column(
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: highlight ? Brand.correct : Brand.textMuted,
-              fontSize: 10,
-            ),
-          ),
-          const SizedBox(height: 1),
-          BrandNumber(
-            value,
-            size: 15,
-            color: highlight ? Brand.correct : Brand.text,
-          ),
-        ],
+    return SizedBox(
+      width: _PredictionTile._col,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Brand.textFaint, fontSize: 9.5),
       ),
     );
   }
 }
 
+class _TeamLine extends StatelessWidget {
+  final String name;
+  final int pick;
+  final int? goals;
+  const _TeamLine({required this.name, required this.pick, this.goals});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Brand.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        SizedBox(
+          width: _PredictionTile._col,
+          child: Text(
+            '$pick',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: Brand.displayFont,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Brand.textMuted,
+              fontFeatures: Brand.tabular,
+            ),
+          ),
+        ),
+        SizedBox(
+          width: _PredictionTile._col,
+          child: Text(
+            goals != null ? '$goals' : '—',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: Brand.displayFont,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: goals != null ? Brand.text : Brand.textFaint,
+              fontFeatures: Brand.tabular,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// حكم التوقّع في شريحة عمودية قصيرة: الرقم كبيراً وتحته كلمة —
+/// «+75 نقطة» في سطر واحد كانت تأكل ثلث عرض الصفّ.
 class _PointsChip extends StatelessWidget {
   final int? points;
   const _PointsChip({required this.points});
 
   @override
   Widget build(BuildContext context) {
-    if (points == null) {
-      return const BrandChip(label: 'بانتظار المباراة', icon: Icons.schedule);
-    }
-    if (points! > 0) {
-      return BrandChip(
-        label: '+$points نقطة',
-        icon: Icons.emoji_events,
-        tone: BrandTone.crown,
-      );
-    }
-    return const BrandChip(label: 'بدون نقاط', icon: Icons.close);
+    final (String value, String label, Color color, Color bg) = switch (points) {
+      null => ('⏳', 'بانتظار', Brand.textMuted, Brand.fill),
+      > 0 => ('+$points', 'نقطة', Brand.crown, Brand.crownWash(0.12)),
+      _ => ('0', 'نقاط', Brand.textFaint, Brand.fill),
+    };
+    return Container(
+      width: 62,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(Brand.radiusSmall),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontFamily: Brand.displayFont,
+              fontSize: points == null ? 13 : 16,
+              fontWeight: FontWeight.w700,
+              color: color,
+              fontFeatures: Brand.tabular,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(color: color, fontSize: 10)),
+        ],
+      ),
+    );
   }
 }
 

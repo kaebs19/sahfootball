@@ -23,9 +23,11 @@ import 'package:provider/provider.dart';
 import '../api/api_client.dart';
 import '../brand.dart';
 import '../format.dart';
+import '../models/fixture.dart';
 import '../models/live_fixture.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/live_match_card.dart';
+import 'match_screen.dart';
 
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
@@ -110,7 +112,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           if (state.live.isNotEmpty) ...[
             const _SectionHeader(label: 'تُلعب الآن', pulsing: true),
             for (final m in state.live)
-              LiveMatchCard(match: m, mode: LiveCardMode.live),
+              LiveMatchCard(
+                match: m,
+                mode: LiveCardMode.live,
+                onTap: () => _openMatch(context, m.fixture),
+              ),
           ] else
             _QuietState(next: state.nextKickoff),
 
@@ -118,12 +124,25 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
             const SizedBox(height: 18),
             const _SectionHeader(label: 'انتهت اليوم'),
             for (final m in state.finishedToday)
-              LiveMatchCard(match: m, mode: LiveCardMode.finished),
+              LiveMatchCard(
+                match: m,
+                mode: LiveCardMode.finished,
+                onTap: () => _openMatch(context, m.fixture),
+              ),
           ],
         ],
       ),
     );
   }
+}
+
+/// فتح شاشة المباراة. دالة واحدة لكل البطاقات في هذا التبويب —
+/// الجارية والمنتهية والقادمة — فالشاشة نفسها تعرف ماذا تعرض لكل
+/// حالة (التشكيلة لما لم يبدأ، والأحداث لما انطلق).
+void _openMatch(BuildContext context, Fixture fixture) {
+  Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => MatchScreen(fixture: fixture)),
+  );
 }
 
 /// عنوان قسم، مع نقطة نابضة للقسم الجاري.
@@ -279,6 +298,7 @@ class _NextUpCardState extends State<_NextUpCard> {
 
     return BrandCard(
       royal: true,
+      onTap: () => _openMatch(context, f),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       child: Column(
         children: [

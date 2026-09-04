@@ -13,6 +13,8 @@ const predictionRepo = require('../repositories/predictionRepo');
 const settingsRepo = require('../repositories/settingsRepo');
 const scoringService = require('../services/scoringService');
 const footballProvider = require('../services/footballProvider');
+const matchDetailService = require('../services/matchDetailService');
+const liveRefresh = require('../services/liveRefresh');
 const { mapEvent } = require('../mappers/fixtureMapper');
 
 const router = express.Router();
@@ -61,33 +63,27 @@ router.get('/upcoming', async (req, res) => {
 // وطلب واحد بثلاثة أقسام أفضل من ثلاثة طلبات من الجوال: التبويب
 // يُحدَّث كل بضع ثوانٍ، فضرب عدد الطلبات في ثلاثة يضرب استهلاك
 // البطارية والشبكة بلا مقابل.
-router.get('/live', requireAuth, async (req, res) => {
-  // الاستعلامات الثلاثة مستقلة تماماً، فلا معنى لانتظار كل واحد
-  // قبل بدء التالي — Promise.all يجعل زمن الرد زمن أبطأها لا مجموعها.
-  const [live, nextKickoff, finishedToday] = await Promise.all([
-    fixtureRepo.findLive(),
-    fixtureRepo.findNextKickoff(),
-    fixtureRepo.findFinishedToday(),
-  ]);
-
-  const fixtures = [...live, ...(nextKickoff ? [nextKickoff] : []), ...finishedToday];
-
+/**
+ * يلحق توقّع صاحب الطلب بكل مباراة: `my_prediction` موجودة دائماً
+ * في الرد (null لمن لم يتوقّع) فلا يحتاج العميل تمييز «غائب» عن
+ * «لا يوجد». مشتركة بين «مباشر» وشاشة المباراة كي يستحيل أن تقول
+ * القائمة «مضبوط» والشاشة «فارق الأهداف» عن نفس التوقّع.
+ */
+async function withMyPredictions(userId, fixtures) {
   // إعدادات النقاط من القاعدة وليست ثوابت: الأدمن يعدّلها من
   // اللوحة، والشارة المباشرة يجب أن تحسب بنفس الأسعار التي
   // ستُدفع فعلاً عند الصافرة.
   const cfg = (await settingsRepo.get('scoring')) ?? scoringService.DEFAULT_SCORING;
 
-  const myPredictions = await predictionRepo.findByUserAndFixtures(
-    req.userId,
+  const mine = await predictionRepo.findByUserAndFixtures(
+    userId,
     fixtures.map((f) => f.id)
   );
   // خريطة بدل البحث بـ find داخل الحلقة: بحث خطي في كل صف يعني
   // مسحاً متكرراً للقائمة كلها، والخريطة تجعلها قراءة واحدة.
-  const byFixture = new Map(myPredictions.map((p) => [p.fixture_id, p]));
+  const byFixture = new Map(mine.map((p) => [p.fixture_id, p]));
 
-  // نلحق التوقع بالمباراة. null صريحة لمن لم يتوقع — الحقل موجود
-  // دائماً في الرد، فلا يحتاج العميل تمييز "غائب" عن "لا يوجد".
-  const decorate = (fixture) => {
+  return fixtures.map((fixture) => {
     const pred = byFixture.get(fixture.id);
     if (!pred) return { ...fixture, my_prediction: null };
 
@@ -96,26 +92,76 @@ router.get('/live', requireAuth, async (req, res) => {
     // شيء بعد) ويبقي أنواع الحقول ثابتة لعميل Dart. على الواجهة
     // ألا ترسم الشارة قبل صافرة البداية: النتيجة لم تبدأ أصلاً.
     const actual = { home: fixture.goals_home ?? 0, away: fixture.goals_away ?? 0 };
-    const mine = { home: pred.pred_home, away: pred.pred_away };
+    const guess = { home: pred.pred_home, away: pred.pred_away };
 
     return {
       ...fixture,
       my_prediction: {
-        home: mine.home,
-        away: mine.away,
+        home: guess.home,
+        away: guess.away,
         // الاثنان من نفس المصدر (computePoints يستدعي computeState
         // داخلياً)، فلا يمكن أن تظهر شارة "مضبوطة" بنقاط الاتجاه.
-        points_if_now: scoringService.computePoints(mine, actual, cfg),
-        state: scoringService.computeState(mine, actual),
+        points_if_now: scoringService.computePoints(guess, actual, cfg),
+        state: scoringService.computeState(guess, actual),
       },
     };
-  };
+  });
+}
+
+router.get('/live', requireAuth, async (req, res) => {
+  // الاستعلامات الثلاثة مستقلة تماماً، فلا معنى لانتظار كل واحد
+  // قبل بدء التالي — Promise.all يجعل زمن الرد زمن أبطأها لا مجموعها.
+  const [liveStale, nextKickoff, finishedToday] = await Promise.all([
+    fixtureRepo.findLive(),
+    fixtureRepo.findNextKickoff(),
+    fixtureRepo.findFinishedToday(),
+  ]);
+
+  // الطلب نفسه يُنعش الجارية من المزوّد (راجع liveRefresh): من فتح
+  // الشاشة يرى نتيجة عمرها ثوانٍ لا دقائق، ومن لم يفتحها لا يكلّف
+  // شيئاً. ونعيد القراءة بعده لأن مباراة قد تكون انتهت للتو.
+  const live = await liveRefresh.refresh(liveStale, () => fixtureRepo.findLive());
+
+  const fixtures = [...live, ...(nextKickoff ? [nextKickoff] : []), ...finishedToday];
+  const decorated = await withMyPredictions(req.userId, fixtures);
+  const byId = new Map(decorated.map((f) => [f.id, f]));
 
   res.json({
-    live: live.map(decorate),
-    next_kickoff: nextKickoff ? decorate(nextKickoff) : null,
-    finished_today: finishedToday.map(decorate),
+    live: live.map((f) => byId.get(f.id)),
+    next_kickoff: nextKickoff ? byId.get(nextKickoff.id) : null,
+    finished_today: finishedToday.map((f) => byId.get(f.id)),
   });
+});
+
+// GET /api/fixtures/:id/match — شاشة المباراة: ترويسة حيّة وأحداث
+// وإحصاءات وتشكيلة ومواجهات، مع توقّع صاحب الطلب.
+//
+// محمي كـ /live ولنفس السبب: الرد شخصي. أما التفاصيل نفسها فعامة،
+// وصفحة /match/:id على الموقع تعرضها بلا حساب.
+//
+// قبل '/:id' لا لأن Express سيخلط بينهما (لن يفعل — المسار أطول)
+// بل كي يُقرأ الملف من العام إلى الخاص.
+router.get('/:id/match', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'fixture id must be an integer' });
+  }
+
+  const stale = await fixtureRepo.findByIdDetail(id);
+  if (!stale) return res.status(404).json({ error: 'fixture not found' });
+
+  // إنعاش عند الطلب كما في /live، ثم التفاصيل على الصفّ الطازج:
+  // شاشة تعرض هدفاً في الخط الزمني ونتيجة لا تحويه تناقضٌ يراه
+  // المستخدم قبل أن نراه نحن.
+  const fixture = await liveRefresh.refresh([stale], () => fixtureRepo.findByIdDetail(id))
+    .then((rows) => rows[0] ?? stale);
+
+  const [details, [decorated]] = await Promise.all([
+    matchDetailService.get(fixture),
+    withMyPredictions(req.userId, [fixture]),
+  ]);
+
+  res.json({ fixture: decorated, ...details });
 });
 
 // GET /api/fixtures/:id — مباراة واحدة

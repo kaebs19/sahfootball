@@ -146,9 +146,12 @@ async function get(fixture) {
   const homeId = fixture.home_team_id;
   const awayId = fixture.away_team_id;
 
+  // المنتهية تُخزَّن ساعات لا دقيقة: أحداثها لن تتغيّر (راجع TTL.SETTLED).
+  const settled = fixture.status === 'finished';
+
   const [events, stats, lineups, h2hRaw, teams] = await Promise.all([
-    provider.getFixtureEvents(id).catch((e) => { logger.warn('[match] events:', e.message); return []; }),
-    provider.getFixtureStatistics(id).catch((e) => { logger.warn('[match] stats:', e.message); return []; }),
+    provider.getFixtureEvents(id, { settled }).catch((e) => { logger.warn('[match] events:', e.message); return []; }),
+    provider.getFixtureStatistics(id, { settled }).catch((e) => { logger.warn('[match] stats:', e.message); return []; }),
     provider.getFixtureLineups(id).catch((e) => { logger.warn('[match] lineups:', e.message); return []; }),
     provider.getHeadToHead(homeId, awayId).catch((e) => { logger.warn('[match] h2h:', e.message); return []; }),
     teamRepo.findAll().catch(() => []),
