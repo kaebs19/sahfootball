@@ -54,24 +54,52 @@ const DEFAULT_PREMIUM = {
   // AndroidManifest لأن حزمة الإعلانات تقرؤه عند الإقلاع قبل أن
   // يصل أي ردّ من خادمنا.
   //
-  // والقيم أدناه هي **وحدات جوجل التجريبية** المعلنة للجميع: تعرض
-  // إعلاناً حقيقي الشكل بلا حساب ولا أرباح، فتُجرَّب الشاشات كاملةً
-  // قبل فتح حساب AdMob. واستبدالها بالوحدات الحقيقية تعديلُ إعداد
-  // واحد بلا نشر. والعكس صحيح وخطِر: نسيانها في الإنتاج يعني
-  // إعلانات لا تدرّ شيئاً — ولهذا تُطبع في السجل عند الإقلاع.
+  // والوحدات هنا هي وحدات الحساب الحقيقية. و`test` مفتاح أمان لا
+  // زينة: حين يكون true تُستبدل كلها بوحدات جوجل التجريبية مهما
+  // كُتب هنا (راجع adUnits أدناه) — لأن الضغط على إعلان حقيقي في
+  // تطبيقك أثناء التجربة مخالفةٌ يُغلق بها حساب AdMob، وهي أسهل
+  // غلطة تقع في التطوير. فالتجربة بمفتاح، والإنتاج بمفتاح.
   ads: {
     enabled: true,
-    test: true,
+    test: false,
     ios: {
-      banner: 'ca-app-pub-3940256099942544/2934735716',
-      native: 'ca-app-pub-3940256099942544/3986624511',
+      banner: 'ca-app-pub-8219247197168750/9677590138',
+      native: 'ca-app-pub-8219247197168750/7337482772',
     },
     android: {
-      banner: 'ca-app-pub-3940256099942544/6300978111',
-      native: 'ca-app-pub-3940256099942544/2247696110',
+      banner: 'ca-app-pub-8219247197168750/3398237769',
+      native: 'ca-app-pub-8219247197168750/3292145185',
     },
   },
 };
+
+/** وحدات جوجل التجريبية — معلنة للجميع، تعرض إعلاناً بلا أرباح. */
+const TEST_AD_UNITS = {
+  ios: {
+    banner: 'ca-app-pub-3940256099942544/2934735716',
+    native: 'ca-app-pub-3940256099942544/3986624511',
+  },
+  android: {
+    banner: 'ca-app-pub-3940256099942544/6300978111',
+    native: 'ca-app-pub-3940256099942544/2247696110',
+  },
+};
+
+/**
+ * الوحدات المعمول بها: التجريبية حين يكون `test` مرفوعاً، وإلا
+ * الحقيقية.
+ *
+ * التبديل في السيرفر لا في التطبيق: جهاز التجربة يصير آمناً بسطر
+ * SQL واحد، ولا يحتاج نسخة ثانية من التطبيق ولا متغيّر بناء يُنسى
+ * مرفوعاً في نسخة الإصدار.
+ */
+function adUnits(cfg) {
+  const src = cfg.ads?.test ? TEST_AD_UNITS : cfg.ads;
+  return {
+    ios: src?.ios ?? TEST_AD_UNITS.ios,
+    android: src?.android ?? TEST_AD_UNITS.android,
+  };
+}
 
 class PremiumError extends Error {
   constructor(status, message, code = null) {
@@ -119,8 +147,7 @@ async function forUser(userId) {
     ads: {
       show: Boolean(cfg.ads?.enabled) && !premium,
       test: Boolean(cfg.ads?.test),
-      ios: cfg.ads?.ios ?? DEFAULT_PREMIUM.ads.ios,
-      android: cfg.ads?.android ?? DEFAULT_PREMIUM.ads.android,
+      ...adUnits(cfg),
     },
     edits: {
       free: cfg.free_edits,
