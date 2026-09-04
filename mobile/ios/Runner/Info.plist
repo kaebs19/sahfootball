@@ -14,6 +14,25 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- معرّف تطبيق AdMob. تقرؤه حزمة الإعلانات عند الإقلاع قبل أن
+	     يصل أي ردّ من خادمنا، ولهذا هو الشيء الوحيد في منظومة
+	     الإعلانات الذي لا يمكن أن يأتي من الإعدادات — أما وحدات
+	     الإعلانات نفسها فمن السيرفر (راجع premiumService).
+	     القيمة الحالية معرّف جوجل التجريبي: يعرض إعلانات شكلاً بلا
+	     حساب ولا أرباح. استبدله بمعرّفك من AdMob قبل النشر —
+	     ونسيانه يعني تطبيقاً يعرض إعلانات لا تدرّ شيئاً. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<!-- شبكات الإسناد (SKAdNetwork): بدونها لا تُنسب التثبيتات
+	     القادمة من إعلاناتك فينخفض عائد الوحدة. القائمة الكاملة في
+	     وثائق AdMob وتطول؛ هذه شبكة جوجل نفسها وهي الأهم. -->
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
 	<key>CFBundleName</key>
 	<string>mobile</string>
 	<key>CFBundlePackageType</key>

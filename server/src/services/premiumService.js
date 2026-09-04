@@ -46,7 +46,31 @@ const DEFAULT_PREMIUM = {
   },
   free_edits: 0,
   shield: { every: 5, max: 1, premium_start: 1 },
-  ads: { enabled: true },
+  // الإعلانات: التفعيل ووحداتها.
+  //
+  // معرّفات الوحدات هنا لا في التطبيق لسببين: تغييرها لا يحتاج نشراً
+  // ومراجعة متجر، وإطفاء وحدة تعطّلت يصير قراراً لحظياً. أما معرّف
+  // التطبيق (GADApplicationIdentifier) فيبقى في Info.plist و
+  // AndroidManifest لأن حزمة الإعلانات تقرؤه عند الإقلاع قبل أن
+  // يصل أي ردّ من خادمنا.
+  //
+  // والقيم أدناه هي **وحدات جوجل التجريبية** المعلنة للجميع: تعرض
+  // إعلاناً حقيقي الشكل بلا حساب ولا أرباح، فتُجرَّب الشاشات كاملةً
+  // قبل فتح حساب AdMob. واستبدالها بالوحدات الحقيقية تعديلُ إعداد
+  // واحد بلا نشر. والعكس صحيح وخطِر: نسيانها في الإنتاج يعني
+  // إعلانات لا تدرّ شيئاً — ولهذا تُطبع في السجل عند الإقلاع.
+  ads: {
+    enabled: true,
+    test: true,
+    ios: {
+      banner: 'ca-app-pub-3940256099942544/2934735716',
+      native: 'ca-app-pub-3940256099942544/3986624511',
+    },
+    android: {
+      banner: 'ca-app-pub-3940256099942544/6300978111',
+      native: 'ca-app-pub-3940256099942544/2247696110',
+    },
+  },
 };
 
 class PremiumError extends Error {
@@ -87,9 +111,17 @@ async function forUser(userId) {
   return {
     premium,
     premium_until: premium ? user.premium_until : null,
-    // العرض يُخفى بلا إعلانات أصلاً: لا معنى لوعد "بلا إعلانات" في
-    // نسخة لا إعلانات فيها بعد.
-    ads: Boolean(cfg.ads?.enabled) && !premium,
+    // «هل تُعرض؟» و«أي وحدة؟» في كائن واحد: الشاشة تحتاجهما معاً،
+    // وطلبٌ ثانٍ لمعرّفات الوحدات كان سيؤخّر الإعلان عن أول إطار.
+    //
+    // والوحدات تُرسل للمشترك أيضاً بقيمة show=false لا تُحذف: لو
+    // انتهى اشتراكه أثناء الاستعمال لا نحتاج رحلة ثانية.
+    ads: {
+      show: Boolean(cfg.ads?.enabled) && !premium,
+      test: Boolean(cfg.ads?.test),
+      ios: cfg.ads?.ios ?? DEFAULT_PREMIUM.ads.ios,
+      android: cfg.ads?.android ?? DEFAULT_PREMIUM.ads.android,
+    },
     edits: {
       free: cfg.free_edits,
       // null = بلا حدّ. رقمٌ كبير كان سيُعرض في الواجهة يوماً.

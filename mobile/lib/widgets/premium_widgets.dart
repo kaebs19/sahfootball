@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../brand.dart';
 import '../screens/premium_screen.dart';
 import '../state/premium.dart';
+import 'ads.dart';
 import 'brand_widgets.dart';
 
 /// شارة صغيرة بجانب اسم المشترك. ذهبية — وهذا موضع الذهبي بالضبط
@@ -85,29 +86,18 @@ class CrownUpsell extends StatelessWidget {
   }
 }
 
-/// مكان إعلان.
+/// مكان إعلان داخل قائمة.
 ///
-/// لا شبكة إعلانات موصولة بعد (تحتاج حساب AdMob ومعرّفاته)، وهذه
-/// الويدجت هي الحدّ الذي ستدخل منه: اليوم تعرض إعلاننا نحن —
-/// دعوةً للاشتراك — وغداً تعرض `BannerAd` في نفس المكان بنفس
-/// الشرط. والشرط هو الغرض من وجودها أصلاً: **إعلان واحد لا يُعرض
-/// لمشترك أبداً**، وتركُ ذلك لكل شاشة يعني أن أول شاشة تُنسى
-/// تُظهر إعلاناً لمن دفع كي لا يراه.
-///
-/// والارتفاع ثابت حتى قبل وصول الامتيازات: مساحة تظهر فجأة وسط
-/// قائمة تقفز بالمحتوى تحت إصبع المستخدم.
+/// غلافٌ حول [NativeAdSlot] يبقي اسماً واحداً في الشاشات مهما تبدّلت
+/// شبكة الإعلانات تحته: الشاشة تقول "هنا إعلان" ولا تعرف من يملؤه.
+/// والشرط الذي لا يتغيّر: **لا إعلان لمشترك أبداً** — وهو مطبَّق في
+/// مكان واحد لا في كل شاشة.
 class AdSlot extends StatelessWidget {
-  /// نصّ الدعوة — يختلف باختلاف الشاشة كي لا يتكرر نفسه.
+  /// نصّ الدعوة الذي يحلّ محلّ الإعلان إن لم يصل.
   final String reason;
 
   const AdSlot({super.key, this.reason = 'بلا إعلانات، ومعزّزات كل شهر.'});
 
   @override
-  Widget build(BuildContext context) {
-    if (!context.watch<Premium>().showAds) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: CrownUpsell(reason: reason),
-    );
-  }
+  Widget build(BuildContext context) => NativeAdSlot(fallbackReason: reason);
 }

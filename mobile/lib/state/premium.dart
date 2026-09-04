@@ -29,7 +29,10 @@ class Premium extends ChangeNotifier {
   bool get isPremium => _entitlements.premium;
 
   /// هل تُعرض الإعلانات؟ الضيف يراها، والمشترك لا.
-  bool get showAds => _entitlements.ads;
+  bool get showAds => _entitlements.ads.show;
+
+  /// إعدادات الإعلانات كاملة — الوحدات ومنها تُبنى.
+  AdConfig get ads => _entitlements.ads;
 
   SessionStatus? _lastStatus;
 

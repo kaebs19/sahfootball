@@ -4,6 +4,40 @@
 // اشتريته": الشاشة تسأل `canEdit` لا `premium && !expired && …`.
 // أي منطق يُترك للعميل يُنسخ في نسختين (iOS وأندرويد) ويتباعد،
 // وامتيازٌ يُحسب في مكانين يُمنح في مكان ويُمنع في آخر.
+import 'dart:io' show Platform;
+
+/// إعدادات الإعلانات كما يرسلها السيرفر: هل تُعرض، وبأي وحدات.
+///
+/// الوحدات من السيرفر لا من التطبيق: تبديلها أو إطفاء وحدة تعطّلت
+/// يصير قراراً لحظياً بدل نشرٍ ومراجعة متجر تستغرق أياماً.
+class AdConfig {
+  final bool show;
+
+  /// وحدات جوجل التجريبية قيد التشغيل — أي أن الإعلانات بلا أرباح.
+  final bool test;
+  final String? banner;
+  final String? native;
+
+  const AdConfig({
+    this.show = false,
+    this.test = false,
+    this.banner,
+    this.native,
+  });
+
+  bool get ready => show && (banner != null || native != null);
+
+  /// الوحدات تصل مقسّمة بالمنصّة، ونختار منها هنا مرة واحدة.
+  factory AdConfig.fromJson(Map<String, dynamic> j, {required bool ios}) {
+    final units = (j[ios ? 'ios' : 'android'] as Map<String, dynamic>?) ?? const {};
+    return AdConfig(
+      show: j['show'] == true,
+      test: j['test'] == true,
+      banner: units['banner'] as String?,
+      native: units['native'] as String?,
+    );
+  }
+}
 
 /// درع السلسلة: كم درعاً بحوزته، وكم يفصله عن التالي.
 class ShieldState {
@@ -62,8 +96,8 @@ class Entitlements {
   final bool premium;
   final DateTime? premiumUntil;
 
-  /// هل تُعرض الإعلانات لهذا اللاعب؟ (المشترك: لا.)
-  final bool ads;
+  /// الإعلانات: هل تُعرض لهذا اللاعب (المشترك: لا)، وبأي وحدات.
+  final AdConfig ads;
 
   /// null = تعديل بلا حدّ. 0 = لا تعديل إلا بالتاج.
   final int? editsMax;
@@ -74,7 +108,7 @@ class Entitlements {
   const Entitlements({
     this.premium = false,
     this.premiumUntil,
-    this.ads = false,
+    this.ads = const AdConfig(),
     this.editsMax = 0,
     this.boost = const BoostBalance(),
     this.shield = const ShieldState(),
@@ -93,7 +127,9 @@ class Entitlements {
         premiumUntil: j['premium_until'] != null
             ? DateTime.tryParse(j['premium_until'] as String)?.toLocal()
             : null,
-        ads: j['ads'] == true,
+        ads: AdConfig.fromJson(
+            (j['ads'] as Map<String, dynamic>?) ?? const {},
+            ios: Platform.isIOS),
         editsMax: (j['edits']?['max'] as num?)?.toInt(),
         boost: BoostBalance.fromJson(
             (j['multiplier5'] as Map<String, dynamic>?) ?? const {}),

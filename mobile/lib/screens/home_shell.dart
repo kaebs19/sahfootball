@@ -21,6 +21,7 @@ import '../config.dart';
 import '../state/app_tab.dart';
 import '../state/session.dart';
 import '../widgets/brand_mark.dart';
+import '../widgets/ads.dart';
 import '../widgets/guest_gate.dart';
 import 'leaderboard_screen.dart';
 import 'live_screen.dart';
@@ -133,9 +134,9 @@ class HomeShell extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               tooltip: 'الإعدادات',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              ),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
             ),
           // الاسم في تبويب ملفي وحده. كان يظهر في كل شريط: تكرار
           // لا يضيف شيئاً — المستخدم يعرف من هو، وثلاث شاشات تعرض
@@ -148,74 +149,93 @@ class HomeShell extends StatelessWidget {
                 child: Text(
                   user.nameOrFallback,
                   style: const TextStyle(
-                      color: Brand.textMuted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600),
+                    color: Brand.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
         ],
       ),
       body: _GroupOpener(
-          child: IndexedStack(
-        index: index,
-        children: guest
-            ? const [
-                MatchesScreen(),
-                GuestGate(
-                  icon: Icons.sensors,
-                  title: 'مباشر يحتاج حساباً',
-                  message: 'تبويب مباشر يعرض ما يحدث لتوقّعك الآن — '
-                      'النتيجة لحظة بلحظة وماذا تعني لنقاطك. '
-                      'سجّل وتوقّع لتكون لك مباراة تتابعها.',
+        child: IndexedStack(
+          index: index,
+          children: guest
+              ? const [
+                  MatchesScreen(),
+                  GuestGate(
+                    icon: Icons.sensors,
+                    title: 'مباشر يحتاج حساباً',
+                    message:
+                        'تبويب مباشر يعرض ما يحدث لتوقّعك الآن — '
+                        'النتيجة لحظة بلحظة وماذا تعني لنقاطك. '
+                        'سجّل وتوقّع لتكون لك مباراة تتابعها.',
+                  ),
+                  LeaderboardScreen(),
+                  GuestGate(
+                    icon: Icons.person_outline,
+                    title: 'ملفك ينتظرك',
+                    message:
+                        'رتبتك ودقتك وسلسلتك وأوسمتك — كلها تُبنى '
+                        'من توقعاتك. أنشئ حساباً وابدأ من رتبة مشجّع.',
+                  ),
+                ]
+              : const [
+                  MatchesScreen(),
+                  LiveScreen(),
+                  LeaderboardScreen(),
+                  ProfileScreen(),
+                ],
+        ),
+      ),
+      // البانر فوق الشريط لا داخل الشاشات: مكانٌ واحد يظهر في كل
+      // التبويبات، ولا يُنسى في تبويب ولا يتكرر في آخر. ويختفي وحده
+      // عند المشتركين وحين لا يصل إعلان (راجع BannerAdSlot).
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const BannerAdSlot(),
+          DecoratedBox(
+            // خط فاصل رفيع فوق الشريط: الهوية تفصل الأسطح بالحدود لا
+            // بالظلال.
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Brand.borderSoft)),
+            ),
+            child: NavigationBar(
+              selectedIndex: index,
+              onDestinationSelected: (i) => context.read<AppTab>().select(i),
+              destinations: [
+                const NavigationDestination(
+                  icon: Icon(Icons.sports_soccer_outlined),
+                  selectedIcon: Icon(Icons.sports_soccer),
+                  label: 'المباريات',
                 ),
-                LeaderboardScreen(),
-                GuestGate(
-                  icon: Icons.person_outline,
-                  title: 'ملفك ينتظرك',
-                  message: 'رتبتك ودقتك وسلسلتك وأوسمتك — كلها تُبنى '
-                      'من توقعاتك. أنشئ حساباً وابدأ من رتبة مشجّع.',
+                const NavigationDestination(
+                  icon: Icon(Icons.sensors),
+                  selectedIcon: Icon(Icons.sensors),
+                  label: 'مباشر',
                 ),
-              ]
-            : const [
-                MatchesScreen(),
-                LiveScreen(),
-                LeaderboardScreen(),
-                ProfileScreen(),
+                const NavigationDestination(
+                  icon: Icon(Icons.workspace_premium_outlined),
+                  selectedIcon: Icon(Icons.workspace_premium),
+                  label: 'العرش',
+                ),
+                // صورة المستخدم مكان أيقونة «ملفي» حين يرفع واحدة: الوجه
+                // في الشريط هو ما تفعله التطبيقات المألوفة، ويجعل التبويب
+                // «أنا» لا «ملفاً». بلا صورة تبقى الأيقونة.
+                NavigationDestination(
+                  icon: _ProfileTabIcon(url: user?.avatarUrl, selected: false),
+                  selectedIcon: _ProfileTabIcon(
+                    url: user?.avatarUrl,
+                    selected: true,
+                  ),
+                  label: 'ملفي',
+                ),
               ],
-      )),
-      bottomNavigationBar: DecoratedBox(
-        // خط فاصل رفيع فوق الشريط: الهوية تفصل الأسطح بالحدود لا
-        // بالظلال.
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Brand.borderSoft)),
-        ),
-        child: NavigationBar(
-          selectedIndex: index,
-          onDestinationSelected: (i) => context.read<AppTab>().select(i),
-          destinations: [
-            const NavigationDestination(
-                icon: Icon(Icons.sports_soccer_outlined),
-                selectedIcon: Icon(Icons.sports_soccer),
-                label: 'المباريات'),
-            const NavigationDestination(
-                icon: Icon(Icons.sensors),
-                selectedIcon: Icon(Icons.sensors),
-                label: 'مباشر'),
-            const NavigationDestination(
-                icon: Icon(Icons.workspace_premium_outlined),
-                selectedIcon: Icon(Icons.workspace_premium),
-                label: 'العرش'),
-            // صورة المستخدم مكان أيقونة «ملفي» حين يرفع واحدة: الوجه
-            // في الشريط هو ما تفعله التطبيقات المألوفة، ويجعل التبويب
-            // «أنا» لا «ملفاً». بلا صورة تبقى الأيقونة.
-            NavigationDestination(
-                icon: _ProfileTabIcon(url: user?.avatarUrl, selected: false),
-                selectedIcon:
-                    _ProfileTabIcon(url: user?.avatarUrl, selected: true),
-                label: 'ملفي'),
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }

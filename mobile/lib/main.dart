@@ -17,6 +17,7 @@ import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'state/app_tab.dart';
 import 'state/links.dart';
+import 'widgets/ads.dart';
 import 'state/premium.dart';
 import 'state/session.dart';
 import 'widgets/brand_mark.dart';
@@ -34,6 +35,8 @@ Future<void> main() async {
   // روابط الدعوة تبدأ الاستماع قبل runApp: رابطٌ شغّل التطبيق من
   // الصفر يُقرأ هنا ويُحفظ في AppTab حتى تُبنى الشجرة وتلتقطه.
   Links(tab).start();
+  // بلا await: التهيئة تكلّم خوادم جوجل، وانتظارها يؤخّر أول إطار.
+  initAds();
   // الامتيازات تستمع إلى الجلسة بنفسها: الدخول والخروج وتبديل
   // الحساب كلها تغيّرها، ونداءٌ يدوي في كل مسار منها يُنسى في واحد.
   final premium = Premium(api, session);
