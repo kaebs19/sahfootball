@@ -11,17 +11,26 @@ class NotificationPrefs {
   /// نتيجة توقعاته بعد احتساب النقاط.
   final bool results;
 
-  const NotificationPrefs({required this.reminders, required this.results});
+  /// هدف بهدف أثناء مباراة توقّعها، ونتيجتها على شاشة القفل.
+  final bool live;
+
+  const NotificationPrefs({
+    required this.reminders,
+    required this.results,
+    this.live = true,
+  });
 
   factory NotificationPrefs.fromJson(Map<String, dynamic> j) =>
       NotificationPrefs(
         reminders: j['reminders'] as bool? ?? true,
         results: j['results'] as bool? ?? true,
+        live: j['live'] as bool? ?? true,
       );
 
-  NotificationPrefs copyWith({bool? reminders, bool? results}) =>
+  NotificationPrefs copyWith({bool? reminders, bool? results, bool? live}) =>
       NotificationPrefs(
         reminders: reminders ?? this.reminders,
         results: results ?? this.results,
+        live: live ?? this.live,
       );
 }

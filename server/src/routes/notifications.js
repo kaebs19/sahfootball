@@ -56,6 +56,7 @@ router.get('/prefs', async (req, res) => {
   res.json({
     reminders: prefs.notify_reminders,
     results: prefs.notify_results,
+    live: prefs.notify_live,
   });
 });
 
@@ -63,9 +64,9 @@ router.get('/prefs', async (req, res) => {
 // الحقل المحذوف يبقى على حاله (COALESCE في الاستعلام)، فتستطيع
 // الشاشة إرسال ما تغيّر وحده.
 router.put('/prefs', async (req, res) => {
-  const { reminders, results } = req.body || {};
+  const { reminders, results, live } = req.body || {};
 
-  for (const [name, value] of [['reminders', reminders], ['results', results]]) {
+  for (const [name, value] of [['reminders', reminders], ['results', results], ['live', live]]) {
     if (value !== undefined && typeof value !== 'boolean') {
       return res.status(400).json({ error: `${name} يجب أن تكون true أو false` });
     }
@@ -74,11 +75,48 @@ router.put('/prefs', async (req, res) => {
   const prefs = await notificationRepo.updatePrefs(req.userId, {
     reminders: reminders ?? undefined,
     results: results ?? undefined,
+    live: live ?? undefined,
   });
   res.json({
     reminders: prefs.notify_reminders,
     results: prefs.notify_results,
+    live: prefs.notify_live,
   });
+});
+
+// ── النشاط الحيّ (iOS Live Activity) ──────────────────────────────
+//
+// التطبيق يبدأ النشاط ويستلم توكنه من النظام ثم يسلّمه هنا، والسيرفر
+// يحدّثه مع كل هدف (راجع liveActivityService). fixtureId فارغ يعني
+// توكن «بدء بالدفع» يصلح لأي مباراة قادمة.
+
+// POST /api/notifications/live-activity — { token, fixtureId? }
+router.post('/live-activity', async (req, res) => {
+  const { token, fixtureId } = req.body || {};
+  if (typeof token !== 'string' || !token.trim() || token.length > MAX_TOKEN_LENGTH) {
+    return res.status(400).json({ error: 'توكن النشاط غير صالح' });
+  }
+  const id = fixtureId == null ? null : Number(fixtureId);
+  if (id !== null && !Number.isInteger(id)) {
+    return res.status(400).json({ error: 'fixtureId يجب أن يكون رقماً' });
+  }
+  await notificationRepo.registerActivityToken({
+    token: token.trim(),
+    userId: req.userId,
+    fixtureId: id,
+  });
+  res.status(204).end();
+});
+
+// DELETE /api/notifications/live-activity — { token } أو بلا جسم = كلها
+router.delete('/live-activity', async (req, res) => {
+  const { token } = req.body || {};
+  if (typeof token === 'string' && token.trim()) {
+    await notificationRepo.removeActivityToken(token.trim());
+  } else {
+    await notificationRepo.removeActivityTokensForUser(req.userId);
+  }
+  res.status(204).end();
 });
 
 module.exports = router;

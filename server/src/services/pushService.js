@@ -14,7 +14,7 @@ const logger = require('../utils/logger');
  * لا يرمي أبداً: نداؤه يأتي من وظيفة مجدولة تعالج عشرات
  * المستخدمين في حلقة، وجهاز واحد معطّل يجب ألا يوقف البقية.
  */
-async function sendToUser(userId, { title, body, data }) {
+async function sendToUser(userId, { title, body, data, collapseId }) {
   const devices = await notificationRepo.tokensForUser(userId);
   if (!devices.length) return 0;
 
@@ -25,7 +25,7 @@ async function sendToUser(userId, { title, body, data }) {
   // وكل إرسال نداء شبكة مستقل تماماً.
   await Promise.all(devices.map(async ({ token, platform }) => {
     try {
-      const result = await provider.send({ token, platform, title, body, data });
+      const result = await provider.send({ token, platform, title, body, data, collapseId });
       if (result === provider.GONE) dead.push(token);
       else delivered += 1;
     } catch (err) {

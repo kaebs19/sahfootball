@@ -26,6 +26,7 @@ import '../brand.dart';
 import '../format.dart';
 import '../models/fixture.dart';
 import '../models/match_detail.dart';
+import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/live_match_card.dart' show LivePredictionLine;
 
@@ -96,6 +97,9 @@ class _MatchScreenState extends State<MatchScreen> with WidgetsBindingObserver {
       final d = await context.read<ApiClient>().matchDetail(widget.fixture.id);
       if (!mounted) return;
       setState(() => _detail = d);
+      // شاشة القفل تتابع ما تتابعه هذه الشاشة: يبدأ النشاط الحيّ مع
+      // أول تحميل لمباراة جارية، ويُحدَّث بعدها، ويُنهى بالصافرة.
+      context.read<Session>().liveActivity.sync(d.match);
     } on ApiException catch (e) {
       // كما في «مباشر»: فشل صامت لا يمسح ما على الشاشة.
       if (mounted && !silent) setState(() => _error = e.message);

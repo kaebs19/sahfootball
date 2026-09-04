@@ -41,21 +41,22 @@ async function tokensForUser(userId) {
 
 async function getPrefs(userId) {
   const { rows } = await db.query(
-    'SELECT notify_reminders, notify_results FROM users WHERE id = $1',
+    'SELECT notify_reminders, notify_results, notify_live FROM users WHERE id = $1',
     [userId]
   );
   return rows[0] || null;
 }
 
-async function updatePrefs(userId, { reminders, results }) {
+async function updatePrefs(userId, { reminders, results, live }) {
   const { rows } = await db.query(
     `UPDATE users
         SET notify_reminders = COALESCE($2, notify_reminders),
             notify_results   = COALESCE($3, notify_results),
+            notify_live      = COALESCE($4, notify_live),
             updated_at = now()
       WHERE id = $1
-      RETURNING notify_reminders, notify_results`,
-    [userId, reminders ?? null, results ?? null]
+      RETURNING notify_reminders, notify_results, notify_live`,
+    [userId, reminders ?? null, results ?? null, live ?? null]
   );
   return rows[0] || null;
 }
@@ -157,6 +158,7 @@ async function usersNeedingReminder(leadMinutes) {
 async function unnotifiedResults() {
   const { rows } = await db.query(
     `SELECT u.id AS user_id, p.fixture_id, p.points,
+            p.pred_home, p.pred_away,
             f.goals_home, f.goals_away,
             COALESCE(ht.name_ar, ht.name_en) AS home_name,
             COALESCE(at.name_ar, at.name_en) AS away_name
@@ -178,6 +180,118 @@ async function unnotifiedResults() {
       ORDER BY p.settled_at ASC`
   );
   return rows;
+}
+
+/**
+ * تذكير الانطلاق: من توقّع مباراة تنطلق خلال دقائق.
+ *
+ * عكس usersNeedingReminder تماماً: ذاك لمن **لم** يتوقّع (افعل شيئاً)،
+ * وهذا لمن توقّع (تعال وتابع). ولذلك نافذته أقصر: قبل الإقفال
+ * بساعتين يلزم وقت للتفكير، أما «تنطلق بعد نصف ساعة» فخبرٌ قيمته
+ * في قربه.
+ */
+async function usersNeedingKickoff(leadMinutes) {
+  const { rows } = await db.query(
+    `SELECT u.id AS user_id, f.id AS fixture_id, f.kickoff_at,
+            p.pred_home, p.pred_away,
+            COALESCE(ht.name_ar, ht.name_en) AS home_name,
+            COALESCE(at.name_ar, at.name_en) AS away_name
+       FROM predictions p
+       JOIN users u ON u.id = p.user_id
+       JOIN fixtures f ON f.id = p.fixture_id
+                      AND f.status = 'scheduled'
+                      AND f.kickoff_at > now()
+                      AND f.kickoff_at <= now() + ($1 || ' minutes')::interval
+       JOIN teams ht ON ht.id = f.home_team_id
+       JOIN teams at ON at.id = f.away_team_id
+      WHERE u.notify_reminders
+        AND u.suspended_at IS NULL
+        AND EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id)
+        AND NOT EXISTS (
+              SELECT 1 FROM sent_notifications s
+               WHERE s.user_id = u.id AND s.kind = 'kickoff'
+                 AND s.ref = f.id::text)
+      ORDER BY f.kickoff_at ASC`,
+    [String(leadMinutes)]
+  );
+  return rows;
+}
+
+// ── الإشعارات الحيّة ─────────────────────────────────────────────
+
+/** من يُخبَر بهدف في هذه المباراة: توقّعها، ويريد الأهداف، وله جهاز. */
+async function goalAlertRecipients(fixtureId) {
+  const { rows } = await db.query(
+    `SELECT p.user_id, p.pred_home, p.pred_away
+       FROM predictions p
+       JOIN users u ON u.id = p.user_id
+      WHERE p.fixture_id = $1
+        AND u.notify_live
+        AND u.suspended_at IS NULL
+        AND EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id)`,
+    [fixtureId]
+  );
+  return rows;
+}
+
+/** توكن نشاط حيّ: لمباراة بعينها، أو توكن بدء بالدفع (fixture_id فارغ). */
+async function registerActivityToken({ token, userId, fixtureId = null }) {
+  await db.query(
+    `INSERT INTO live_activity_tokens (token, user_id, fixture_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (token) DO UPDATE
+        SET user_id = EXCLUDED.user_id,
+            fixture_id = EXCLUDED.fixture_id,
+            created_at = now()`,
+    [token, userId, fixtureId]
+  );
+}
+
+async function removeActivityToken(token) {
+  await db.query('DELETE FROM live_activity_tokens WHERE token = $1', [token]);
+}
+
+async function removeActivityTokens(tokens) {
+  if (!tokens.length) return;
+  await db.query('DELETE FROM live_activity_tokens WHERE token = ANY($1::text[])', [tokens]);
+}
+
+/** أنشطة قائمة لمباراة — كل واحد يُحدَّث بنفس الحالة. */
+async function activityTokensForFixture(fixtureId) {
+  const { rows } = await db.query(
+    'SELECT token, user_id FROM live_activity_tokens WHERE fixture_id = $1',
+    [fixtureId]
+  );
+  return rows;
+}
+
+/**
+ * توكنات البدء بالدفع لمن توقّع هذه المباراة ولا نشاط له عليها بعد.
+ *
+ * الشرط الأخير يمنع نشاطين لنفس المباراة على نفس الهاتف: من فتح
+ * التطبيق قبل الانطلاق بدأ نشاطه بنفسه وسجّل توكنه، فلا نبدأ له
+ * ثانياً بالدفع.
+ */
+async function startTokensForFixture(fixtureId) {
+  const { rows } = await db.query(
+    `SELECT t.token, t.user_id, p.pred_home, p.pred_away
+       FROM live_activity_tokens t
+       JOIN predictions p ON p.user_id = t.user_id AND p.fixture_id = $1
+       JOIN users u ON u.id = t.user_id
+      WHERE t.fixture_id IS NULL
+        AND u.notify_live
+        AND u.suspended_at IS NULL
+        AND NOT EXISTS (
+              SELECT 1 FROM live_activity_tokens x
+               WHERE x.user_id = t.user_id AND x.fixture_id = $1)`,
+    [fixtureId]
+  );
+  return rows;
+}
+
+/** عند الخروج من الحساب: أنشطة هذا الجهاز لا تخصّ من يدخل بعده. */
+async function removeActivityTokensForUser(userId) {
+  await db.query('DELETE FROM live_activity_tokens WHERE user_id = $1', [userId]);
 }
 
 /**
@@ -215,6 +329,14 @@ async function purgeOldSent(days = 30) {
 }
 
 module.exports = {
+  usersNeedingKickoff,
+  goalAlertRecipients,
+  registerActivityToken,
+  removeActivityToken,
+  removeActivityTokens,
+  removeActivityTokensForUser,
+  activityTokensForFixture,
+  startTokensForFixture,
   registerToken,
   removeToken,
   removeTokens,

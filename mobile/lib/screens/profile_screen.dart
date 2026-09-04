@@ -7,8 +7,8 @@
 //
 // الترتيب من الأعلى: من أنا (صورة واسم ورتبة، ثم نقاط ومركز ودقّة
 // في شريط واحد) ← كيف ألعب (سلسلة وتوقعات ودرع في شريط واحد) ←
-// أين ألعب (الدوريات، أفقياً) ← ماذا نلت (الأوسمة) ← ماذا فعلت
-// بالضبط (سجلّ).
+// ماذا فعلت بالضبط (سجلّ بثلاثة تبويبات: توقعات، نقاط، أوسمة) ←
+// أين ألعب (الدوريات، أفقياً).
 //
 // أعيد ترتيبها حين صارت تسع بطاقات متتالية بعرض الشاشة: بطاقة
 // للهوية، وثلاث للأرقام، وواحدة للدرع، وواحدة للتاج، وواحدة لكل
@@ -36,7 +36,6 @@ import '../widgets/brand_widgets.dart';
 import '../widgets/league_stats_card.dart';
 import '../widgets/premium_widgets.dart';
 import '../widgets/profile_hero.dart';
-import 'settings_screen.dart';
 
 /// بعد كم توقّعاً يُدرج الإعلان المدمج — نفس رقم شاشة المباريات
 /// كي يكون للإعلان موضعٌ واحد مفهوم في التطبيق كله.
@@ -50,7 +49,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 /// أي سجلّ يعرضه النصف السفلي من الشاشة.
-enum _Log { predictions, points }
+enum _Log { predictions, points, badges }
 
 class _ProfileScreenState extends State<ProfileScreen> {
   /// الاشتراك يغيّر أرقاماً في هذه الشاشة (درع السلسلة)، وتبويب
@@ -149,8 +148,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             shield: stats.shield,
           ),
 
-          // دعوة الاشتراك تختفي وحدها عند المشترك (راجع CrownUpsell).
+          // السجلّ مباشرة تحت الأرقام: هو ما يفتح المستخدم الشاشة
+          // لأجله يومياً («كم أخذت أمس؟»)، فلا يُدفن تحت الدوريات
+          // والأوسمة. والأوسمة تبويبٌ فيه لا قسمٌ مستقل: هي سجلّ
+          // أيضاً — سجلّ ما نلت — وثلاثة سجلّات خلف مبدّل واحد أقصر
+          // من ثلاثة أقسام متتالية.
+          const SizedBox(height: 22),
+          const _SectionTitle('السجلّ'),
           const SizedBox(height: 10),
+          BrandSegmented(
+            labels: const ['التوقعات', 'النقاط', 'الأوسمة'],
+            selected: _log.index,
+            onChanged: (i) => setState(() => _log = _Log.values[i]),
+          ),
+          const SizedBox(height: 12),
+
+          ...switch (_log) {
+            _Log.predictions => _predictionsLog(preds),
+            _Log.points => _pointsLog(stats, preds),
+            _Log.badges => [BadgeGrid(badges: stats.badges)],
+          },
+
+          // دعوة الاشتراك تختفي وحدها عند المشترك (راجع CrownUpsell).
+          const SizedBox(height: 22),
           const CrownUpsell(
             reason: 'عدّل توقّعك، واحمِ سلسلتك، وتصفّح بلا إعلانات.',
           ),
@@ -164,29 +184,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             LeagueCarousel(leagues: stats.byLeague),
           ],
 
-          if (stats.badges.isNotEmpty) ...[
-            const SizedBox(height: 22),
-            BadgeStrip(badges: stats.badges),
-          ],
-
-          const SizedBox(height: 22),
-          const _SectionTitle('السجلّ'),
-          const SizedBox(height: 10),
-          BrandSegmented(
-            labels: const ['التوقعات', 'النقاط'],
-            selected: _log == _Log.predictions ? 0 : 1,
-            onChanged: (i) => setState(
-                () => _log = i == 0 ? _Log.predictions : _Log.points),
-          ),
-          const SizedBox(height: 12),
-
-          if (_log == _Log.predictions)
-            ..._predictionsLog(preds)
-          else
-            ..._pointsLog(stats, preds),
-
-          const SizedBox(height: 22),
-          _AccountCard(email: user?.email),
+          // لا بطاقة إعدادات هنا: الترس في شريط التبويب يفتحها، وبطاقة
+          // ثانية بنفس الاسم أسفل الشاشة كانت تُقرأ خللاً لا اختصاراً.
         ],
       ),
     );
@@ -871,59 +870,6 @@ class _PointsChip extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(label, style: TextStyle(color: color, fontSize: 10)),
-        ],
-      ),
-    );
-  }
-}
-
-/// الحساب — وهنا مكان الخروج الطبيعي: تبويب "ملفي" هو شاشة الحساب.
-/// أسفل الملف: البريد ومدخل الإعدادات.
-///
-/// زر الخروج انتقل إلى الإعدادات مع بقية أفعال الحساب. إبقاؤه هنا
-/// كان يضع الفعل الوحيد الذي لا رجعة فيه في نهاية شاشة تُمرَّر
-/// يومياً — بينما كل ما يجاوره (تعديل الملف، البريد، الحذف) في
-/// مكان واحد آخر.
-class _AccountCard extends StatelessWidget {
-  final String? email;
-  const _AccountCard({this.email});
-
-  @override
-  Widget build(BuildContext context) {
-    return BrandCard(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SettingsScreen()),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.settings_outlined, size: 20, color: Brand.textMuted),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'الإعدادات',
-                  style: TextStyle(
-                    fontFamily: Brand.displayFont,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Brand.text,
-                  ),
-                ),
-                if (email != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    email!,
-                    textDirection: TextDirection.ltr,
-                    style:
-                        const TextStyle(color: Brand.textFaint, fontSize: 12),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, size: 20, color: Brand.textFaint),
         ],
       ),
     );

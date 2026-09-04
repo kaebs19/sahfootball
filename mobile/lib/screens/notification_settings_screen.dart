@@ -52,19 +52,18 @@ class _NotificationSettingsScreenState
   /// البديل (انتظار السيرفر ثم التحريك) يجعل المفتاح يتجمّد نصف
   /// ثانية عند كل لمسة على شبكة بطيئة، فيلمسه المستخدم مرة أخرى
   /// ظاناً أنها لم تُسجّل — ويعود لحيث بدأ.
-  Future<void> _set({bool? reminders, bool? results}) async {
+  Future<void> _set({bool? reminders, bool? results, bool? live}) async {
     final current = _prefs;
     if (current == null || _saving) return;
 
     setState(() {
       _saving = true;
-      _prefs = current.copyWith(reminders: reminders, results: results);
+      _prefs = current.copyWith(reminders: reminders, results: results, live: live);
     });
 
     try {
-      final saved = await context
-          .read<ApiClient>()
-          .updateNotificationPrefs(reminders: reminders, results: results);
+      final saved = await context.read<ApiClient>().updateNotificationPrefs(
+          reminders: reminders, results: results, live: live);
       if (!mounted) return;
       setState(() => _prefs = saved);
     } catch (e) {
@@ -102,17 +101,28 @@ class _NotificationSettingsScreenState
                     const SizedBox(height: 10),
                     _SwitchCard(
                       icon: Icons.alarm,
-                      title: 'تذكير قبل الإقفال',
+                      title: 'قبل المباراة',
                       subtitle:
-                          'قبل صافرة البداية بساعتين، لمباريات لم تتوقّع لها.',
+                          'قبل الإقفال بساعتين إن لم تتوقّع، وقبل الانطلاق '
+                          'بنصف ساعة بتوقّعك إن توقّعت.',
                       value: prefs.reminders,
                       onChanged: (v) => _set(reminders: v),
                     ),
                     const SizedBox(height: 10),
                     _SwitchCard(
+                      icon: Icons.sports_soccer,
+                      title: 'أثناء المباراة',
+                      subtitle:
+                          'هدفٌ بهدف في مباراة توقّعتها، والنتيجة الجارية '
+                          'على شاشة القفل.',
+                      value: prefs.live,
+                      onChanged: (v) => _set(live: v),
+                    ),
+                    const SizedBox(height: 10),
+                    _SwitchCard(
                       icon: Icons.emoji_events_outlined,
-                      title: 'نتيجة توقعاتك',
-                      subtitle: 'بعد انتهاء المباراة واحتساب نقاطك.',
+                      title: 'بعد المباراة',
+                      subtitle: 'النتيجة وتوقّعك ونقاطك — فور الصافرة.',
                       value: prefs.results,
                       onChanged: (v) => _set(results: v),
                     ),

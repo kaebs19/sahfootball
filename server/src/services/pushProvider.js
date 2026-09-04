@@ -70,7 +70,11 @@ const apnsHost = () => (process.env.APNS_PRODUCTION === 'true'
   ? 'https://api.push.apple.com'
   : 'https://api.sandbox.push.apple.com');
 
-function apnsSend({ token, title, body, data }) {
+/**
+ * طلب HTTP/2 واحد إلى APNs. الرؤوس والحمولة من المستدعي؛ هنا
+ * الاتصال والمهلة وترجمة الرد إلى ok / gone / خطأ.
+ */
+function apnsRequest(token, headers, payload) {
   return new Promise((resolve, reject) => {
     const client = http2.connect(apnsHost());
     // بدون هذا يبقى الاتصال معلقاً لو لم ترد آبل أبداً.
@@ -80,28 +84,12 @@ function apnsSend({ token, title, body, data }) {
     });
     client.on('error', reject);
 
-    const payload = JSON.stringify({
-      aps: {
-        alert: { title, body },
-        sound: 'default',
-        // الشارة الحمراء على أيقونة التطبيق. لا نحسب عدداً حقيقياً
-        // (يتطلب مزامنة "المقروء" مع كل جهاز)؛ 1 تكفي لتقول
-        // "يوجد جديد" وتختفي حين يفتح التطبيق.
-        badge: 1,
-      },
-      ...data,
-    });
-
     const req = client.request({
       ':method': 'POST',
       ':path': `/3/device/${token}`,
       authorization: `bearer ${apnsAuthToken()}`,
-      'apns-topic': process.env.APNS_BUNDLE_ID,
-      // alert وليس background: هذه إشعارات يراها المستخدم.
-      'apns-push-type': 'alert',
-      // 10 = فوري. (5 = موفّر طاقة، وتؤجله آبل — لا يصلح لتذكير
-      // مربوط بصافرة بداية.)
       'apns-priority': '10',
+      ...headers,
     });
 
     let status = 0;
@@ -126,6 +114,58 @@ function apnsSend({ token, title, body, data }) {
 
     req.end(payload);
   });
+}
+
+function apnsSend({ token, title, body, data, collapseId }) {
+  const payload = JSON.stringify({
+    aps: {
+      alert: { title, body },
+      sound: 'default',
+      // الشارة الحمراء على أيقونة التطبيق. لا نحسب عدداً حقيقياً
+      // (يتطلب مزامنة "المقروء" مع كل جهاز)؛ 1 تكفي لتقول
+      // "يوجد جديد" وتختفي حين يفتح التطبيق.
+      badge: 1,
+    },
+    ...data,
+  });
+  return apnsRequest(token, {
+    'apns-topic': process.env.APNS_BUNDLE_ID,
+    // alert وليس background: هذه إشعارات يراها المستخدم.
+    'apns-push-type': 'alert',
+    // معرّف الطيّ: إشعار بنفس المعرّف يحلّ محل سابقه على الشاشة.
+    // للأهداف: «2 - 1» تستبدل «1 - 1» بدل أن تصطفّ تحتها.
+    ...(collapseId ? { 'apns-collapse-id': collapseId } : {}),
+  }, payload);
+}
+
+/**
+ * دفعة نشاط حيّ (Live Activity). نوع مختلف عن الإشعار: لا صوت ولا
+ * بانر، بل حالة جديدة تُرسم على شاشة القفل والجزيرة الديناميكية.
+ *
+ * الموضوع (topic) هو معرّف التطبيق + ".push-type.liveactivity" —
+ * حرفياً كما تطلبه آبل، وبدون اللاحقة تردّ TopicDisallowed.
+ *
+ * الأحداث: update (حالة جديدة)، end (الأخيرة ثم يختفي عند
+ * dismissalDate)، start (إنشاء النشاط من الصفر بتوكن بدء — يحتاج
+ * attributes كاملة واسم نوعها كما في Swift).
+ */
+function apnsLiveActivity({ token, event, contentState, attributes, staleDate, dismissalDate }) {
+  const aps = {
+    timestamp: Math.floor(Date.now() / 1000),
+    event,
+    'content-state': contentState,
+  };
+  if (event === 'start') {
+    aps['attributes-type'] = 'MatchActivityAttributes';
+    aps.attributes = attributes;
+  }
+  if (staleDate) aps['stale-date'] = staleDate;
+  if (dismissalDate) aps['dismissal-date'] = dismissalDate;
+
+  return apnsRequest(token, {
+    'apns-topic': `${process.env.APNS_BUNDLE_ID}.push-type.liveactivity`,
+    'apns-push-type': 'liveactivity',
+  }, JSON.stringify({ aps }));
 }
 
 // ── FCM (HTTP v1) ────────────────────────────────────────────────
@@ -180,7 +220,7 @@ async function fcmAccessToken() {
   return fcmToken;
 }
 
-async function fcmSend({ token, title, body, data }) {
+async function fcmSend({ token, title, body, data, collapseId }) {
   const account = serviceAccount();
   const res = await fetch(
     `https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`,
@@ -199,7 +239,16 @@ async function fcmSend({ token, title, body, data }) {
           data: Object.fromEntries(
             Object.entries(data || {}).map(([k, v]) => [k, String(v)])
           ),
-          android: { priority: 'high', notification: { sound: 'default' } },
+          android: {
+            priority: 'high',
+            // tag = نظير apns-collapse-id: إشعار بنفس الوسم يستبدل
+            // سابقه في مركز الإشعارات وعلى شاشة القفل.
+            ...(collapseId ? { collapse_key: collapseId } : {}),
+            notification: {
+              sound: 'default',
+              ...(collapseId ? { tag: collapseId } : {}),
+            },
+          },
         },
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -220,8 +269,8 @@ async function fcmSend({ token, title, body, data }) {
 // ── الـ drivers ──────────────────────────────────────────────────
 
 const DRIVERS = {
-  console({ token, platform, title, body }) {
-    logger.info(`[push] ── ${platform} ${token.slice(0, 12)}… ──`);
+  console({ token, platform, title, body, collapseId }) {
+    logger.info(`[push] ── ${platform} ${token.slice(0, 12)}…${collapseId ? ` (collapse ${collapseId})` : ''} ──`);
     logger.info(`[push] ${title}`);
     logger.info(`[push] ${body}`);
     return OK;
@@ -246,13 +295,30 @@ const FCM_KEYS = ['FCM_SERVICE_ACCOUNT_PATH'];
  * إرسال إشعار واحد لجهاز واحد.
  * يرجع 'ok' أو 'gone' (توكن ميت يجب حذفه)، ويرمي عند خطأ عابر.
  */
-async function send({ token, platform, title, body, data }) {
+async function send({ token, platform, title, body, data, collapseId }) {
   const name = process.env.PUSH_DRIVER || 'console';
   const driver = DRIVERS[name];
   if (!driver) {
     throw new Error(`PUSH_DRIVER غير معروف: ${name}. المتاح: ${DRIVER_NAMES.join(', ')}`);
   }
-  return driver({ token, platform, title, body, data });
+  return driver({ token, platform, title, body, data, collapseId });
 }
 
-module.exports = { send, OK, GONE, DRIVER_NAMES, APNS_KEYS, FCM_KEYS };
+/**
+ * دفعة نشاط حيّ — iOS فقط. نفس سياسة send: 'ok' أو 'gone' أو ترمي.
+ * في driver console تُطبع الحالة بدل أن تُرسل.
+ */
+async function sendLiveActivity(message) {
+  const name = process.env.PUSH_DRIVER || 'console';
+  if (name === 'console') {
+    logger.info(`[live] ── activity ${message.event} ${message.token.slice(0, 12)}… ──`);
+    logger.info(`[live] ${JSON.stringify(message.contentState)}`);
+    return OK;
+  }
+  if (!APNS_KEYS.every((k) => process.env[k])) {
+    throw new Error('APNs غير مضبوط — لا نشاط حيّ بلا مفاتيح آبل');
+  }
+  return apnsLiveActivity(message);
+}
+
+module.exports = { send, sendLiveActivity, OK, GONE, DRIVER_NAMES, APNS_KEYS, FCM_KEYS };

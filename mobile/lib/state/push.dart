@@ -51,6 +51,10 @@ class Push {
       // النتيجة خبر عن أدائه: "ملفي" حيث نقاطه وسلسلته وأوسمته.
       case 'result':
         tab.select(AppTab.profile);
+      // هدف أو انطلاق: المباراة جارية الآن — تبويب «مباشر».
+      case 'goal':
+      case 'kickoff':
+        tab.select(AppTab.live);
       // طلب انضمام أو قبول أو إضافة: المجلس نفسه.
       case 'group':
         final id = data['groupId']?.toString();

@@ -1,3 +1,4 @@
+import ActivityKit
 import AuthenticationServices
 import Flutter
 import UIKit
@@ -70,6 +71,21 @@ import UserNotifications
         result(self?.takePendingOpen())
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+
+    // قناة النشاط الحيّ (Live Activity): النتيجة على شاشة القفل.
+    // الجسر كله في LiveActivityBridge أسفل الملف؛ هنا الربط فقط.
+    let liveChannel = FlutterMethodChannel(
+      name: "sahfootball/live_activity",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    if #available(iOS 16.2, *) {
+      LiveActivityBridge.shared.attach(channel: liveChannel)
+    } else {
+      liveChannel.setMethodCallHandler { call, result in
+        // ما قبل 16.2 لا نشاط حيّ أصلاً — Dart يسأل isSupported أولاً.
+        result(call.method == "isSupported" ? false : nil)
       }
     }
 
@@ -290,5 +306,135 @@ private class AppleSignInCoordinator: NSObject,
       code: "apple_signin",
       message: error.localizedDescription,
       details: nil))
+  }
+}
+
+/// جسر النشاط الحيّ — يبدأ النشاط ويحدّثه وينهيه، ويسلّم Dart توكناته.
+///
+/// توكنان مختلفان يمرّان من هنا:
+///   • توكن النشاط: يصدره النظام حين يبدأ نشاطٌ بعينه، ويصلح
+///     لتحديث ذلك النشاط وحده من السيرفر.
+///   • توكن البدء بالدفع (iOS 17.2+): يصدره النظام مرة للتطبيق كله،
+///     ويسمح للسيرفر بإنشاء نشاط عند صافرة البداية والتطبيق مغلق.
+/// كلاهما يُحتفظ به هنا إلى أن يطلبه Dart (نفس سباق pendingToken
+/// في الإشعارات: التوكن قد يصل قبل أن يسجّل Dart مستمعه).
+@available(iOS 16.2, *)
+final class LiveActivityBridge {
+  static let shared = LiveActivityBridge()
+
+  private var channel: FlutterMethodChannel?
+  private var pendingStartToken: String?
+  private var observingStartToken = false
+
+  func attach(channel: FlutterMethodChannel) {
+    self.channel = channel
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else { return result(nil) }
+      let args = call.arguments as? [String: Any] ?? [:]
+      switch call.method {
+      case "isSupported":
+        result(ActivityAuthorizationInfo().areActivitiesEnabled)
+      case "start":
+        do { result(try self.start(args)) } catch {
+          result(FlutterError(code: "live_activity", message: error.localizedDescription, details: nil))
+        }
+      case "update":
+        self.update(args); result(nil)
+      case "end":
+        self.end(args); result(nil)
+      case "endAll":
+        self.endAll(); result(nil)
+      case "observeStartToken":
+        self.observeStartToken(); result(nil)
+      case "pendingStartToken":
+        let t = self.pendingStartToken; self.pendingStartToken = nil; result(t)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func state(_ a: [String: Any]) -> MatchActivityAttributes.ContentState {
+    MatchActivityAttributes.ContentState(
+      goalsHome: a["goalsHome"] as? Int ?? 0,
+      goalsAway: a["goalsAway"] as? Int ?? 0,
+      elapsed: a["elapsed"] as? Int,
+      phase: a["phase"] as? String ?? "",
+      status: a["status"] as? String ?? "scheduled")
+  }
+
+  private func hex(_ data: Data) -> String {
+    data.map { String(format: "%02x", $0) }.joined()
+  }
+
+  /// يبدأ نشاطاً لمباراة. نشاط قائم لنفس المباراة يُنهى أولاً:
+  /// اثنان لنفس النتيجة على شاشة القفل يبدوان خللاً.
+  private func start(_ a: [String: Any]) throws -> String {
+    let fixtureId = a["fixtureId"] as? Int ?? 0
+    for old in Activity<MatchActivityAttributes>.activities where old.attributes.fixtureId == fixtureId {
+      Task { await old.end(nil, dismissalPolicy: .immediate) }
+    }
+    let attributes = MatchActivityAttributes(
+      fixtureId: fixtureId,
+      home: a["home"] as? String ?? "",
+      away: a["away"] as? String ?? "",
+      predHome: a["predHome"] as? Int,
+      predAway: a["predAway"] as? Int)
+    let activity = try Activity<MatchActivityAttributes>.request(
+      attributes: attributes,
+      content: .init(state: state(a), staleDate: nil),
+      pushType: .token)
+
+    // توكن النشاط يصل بعد لحظات من البدء — ثم قد يتجدّد. كل مرة
+    // نسلّمه لـ Dart ليسجّله في السيرفر.
+    Task {
+      for await data in activity.pushTokenUpdates {
+        let token = self.hex(data)
+        DispatchQueue.main.async {
+          self.channel?.invokeMethod("onActivityToken",
+                                     arguments: ["fixtureId": fixtureId, "token": token])
+        }
+      }
+    }
+    return activity.id
+  }
+
+  private func update(_ a: [String: Any]) {
+    let fixtureId = a["fixtureId"] as? Int ?? 0
+    let s = state(a)
+    for activity in Activity<MatchActivityAttributes>.activities where activity.attributes.fixtureId == fixtureId {
+      Task { await activity.update(.init(state: s, staleDate: nil)) }
+    }
+  }
+
+  private func end(_ a: [String: Any]) {
+    let fixtureId = a["fixtureId"] as? Int ?? 0
+    let s = state(a)
+    for activity in Activity<MatchActivityAttributes>.activities where activity.attributes.fixtureId == fixtureId {
+      // تبقى النتيجة النهائية نصف ساعة ثم تختفي وحدها.
+      Task { await activity.end(.init(state: s, staleDate: nil), dismissalPolicy: .after(.now + 30 * 60)) }
+    }
+  }
+
+  /// عند الخروج من الحساب: لا تبقى مباراة حسابٍ سابق على شاشة من دخل بعده.
+  private func endAll() {
+    for activity in Activity<MatchActivityAttributes>.activities {
+      Task { await activity.end(nil, dismissalPolicy: .immediate) }
+    }
+  }
+
+  /// توكن البدء بالدفع — مرة واحدة في عمر العملية.
+  private func observeStartToken() {
+    guard #available(iOS 17.2, *), !observingStartToken else { return }
+    observingStartToken = true
+    Task {
+      for await data in Activity<MatchActivityAttributes>.pushToStartTokenUpdates {
+        let token = self.hex(data)
+        DispatchQueue.main.async {
+          self.pendingStartToken = token
+          self.channel?.invokeMethod("onPushToStartToken", arguments: token)
+        }
+      }
+    }
   }
 }

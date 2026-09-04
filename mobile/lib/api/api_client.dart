@@ -719,6 +719,26 @@ class ApiClient {
     }
   }
 
+  /// توكن نشاط حيّ (iOS). بلا fixtureId = توكن «بدء بالدفع» يصلح
+  /// لأي مباراة قادمة.
+  Future<void> registerLiveActivityToken(String token, {int? fixtureId}) async {
+    try {
+      await _dio.post('/api/notifications/live-activity',
+          data: {'token': token, 'fixtureId': ?fixtureId});
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// عند الخروج: تُمسح كل توكنات أنشطة هذا الحساب.
+  Future<void> clearLiveActivityTokens() async {
+    try {
+      await _dio.delete('/api/notifications/live-activity');
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
   Future<NotificationPrefs> notificationPrefs() async {
     try {
       final res = await _dio.get('/api/notifications/prefs');
@@ -732,11 +752,13 @@ class ApiClient {
   Future<NotificationPrefs> updateNotificationPrefs({
     bool? reminders,
     bool? results,
+    bool? live,
   }) async {
     try {
       final res = await _dio.put('/api/notifications/prefs', data: {
         'reminders': ?reminders,
         'results': ?results,
+        'live': ?live,
       });
       return NotificationPrefs.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {

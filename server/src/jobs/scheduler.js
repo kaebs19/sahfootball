@@ -27,6 +27,7 @@ const { mapFixture } = require('../mappers/fixtureMapper');
 const fixtureRepo = require('../repositories/fixtureRepo');
 const scoringService = require('../services/scoringService');
 const { syncAll } = require('./syncFixtures');
+const liveActivityService = require('../services/liveActivityService');
 const logger = require('../utils/logger');
 
 const FULL_SYNC_MS = Number(process.env.SYNC_FULL_HOURS || 6) * 3600 * 1000;
@@ -85,6 +86,7 @@ async function liveTick() {
       const raw = await footballProvider.getFixturesByDate(date, { leagueId, season });
       const fixtures = raw.map(mapFixture);
       await fixtureRepo.upsertMany(fixtures);
+      liveActivityService.syncInBackground(fixtures);
       logger.info(
         `[scheduler] live tick: refreshed ${fixtures.length} fixtures for league ${leagueId} on ${date}`
       );

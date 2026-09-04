@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import '../api/api_client.dart';
 import '../models/user.dart';
 import 'app_tab.dart';
+import 'live_activity.dart';
 import 'push.dart';
 
 enum SessionStatus {
@@ -32,6 +33,10 @@ class Session extends ChangeNotifier {
   /// يُربط الجهاز بالحساب عند الدخول ويُفكّ عند الخروج. وضعه هنا
   /// يمنع الحالة التي تصل فيها إشعارات حساب سابق لمن دخل بعده.
   late final Push _push = Push(api, tab);
+
+  /// النشاط الحيّ (iOS): نفس دورة Push بالضبط — يُفعَّل عند الدخول
+  /// ويُنهى عند الخروج كي لا تبقى مباراة حسابٍ سابق على شاشة القفل.
+  late final LiveActivity liveActivity = LiveActivity(api);
 
   SessionStatus _status = SessionStatus.restoring;
   User? _user;
@@ -72,6 +77,7 @@ class Session extends ChangeNotifier {
       // بلا await: تسجيل الجهاز لا يجوز أن يؤخر ظهور الشاشة
       // الرئيسية، وفشله لا يعني شيئاً للمستخدم.
       _push.enable();
+      liveActivity.enable();
     } on ApiException catch (e) {
       if (e.statusCode == 401) {
         // جلسة ميتة فعلاً
@@ -114,6 +120,7 @@ class Session extends ChangeNotifier {
     _endedReason = null; // دخول ناجح يمسح سبب الخروج السابق
     _setStatus(SessionStatus.loggedIn);
     _push.enable();
+      liveActivity.enable();
   }
 
   /// الدخول بهوية Apple — نفس مسار login تماماً بعد أن يتسلم
@@ -130,6 +137,7 @@ class Session extends ChangeNotifier {
     _endedReason = null;
     _setStatus(SessionStatus.loggedIn);
     _push.enable();
+      liveActivity.enable();
   }
 
   Future<void> loginWithGoogle(String idToken) async {
@@ -139,6 +147,7 @@ class Session extends ChangeNotifier {
     _endedReason = null;
     _setStatus(SessionStatus.loggedIn);
     _push.enable();
+      liveActivity.enable();
   }
 
   /// إتمام استعادة كلمة المرور. السيرفر يرد بجلسة كاملة (المستخدم
@@ -153,6 +162,7 @@ class Session extends ChangeNotifier {
     _endedReason = null;
     _setStatus(SessionStatus.loggedIn);
     _push.enable();
+      liveActivity.enable();
   }
 
   Future<void> register(String email, String password,
@@ -165,6 +175,7 @@ class Session extends ChangeNotifier {
     // أول تسجيل هو أفضل لحظة لطلب الإذن: المستخدم اختار للتو أن
     // يستعمل التطبيق، والسؤال مفهوم في سياقه.
     _push.enable();
+      liveActivity.enable();
   }
 
   Future<void> logout() async {
@@ -172,6 +183,7 @@ class Session extends ChangeNotifier {
     // فيبقى الجهاز مربوطاً بهذا الحساب، وتصل إشعاراته لمن يدخل
     // بعده على نفس الهاتف.
     await _push.disable();
+    await liveActivity.disable();
     await api.logout();
     _user = null;
     _setStatus(SessionStatus.loggedOut);
@@ -190,6 +202,7 @@ class Session extends ChangeNotifier {
   /// الخروج سيفشل بـ 401 ويظهر خطأً على فعل نجح تماماً.
   Future<void> forgetSession() async {
     await _push.disable();
+    await liveActivity.disable();
     await api.tokens.clear();
     _user = null;
     _setStatus(SessionStatus.loggedOut);

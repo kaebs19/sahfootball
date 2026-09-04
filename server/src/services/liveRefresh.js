@@ -18,6 +18,7 @@
 const provider = require('./footballProvider');
 const fixtureRepo = require('../repositories/fixtureRepo');
 const { mapFixture } = require('../mappers/fixtureMapper');
+const liveActivityService = require('./liveActivityService');
 const logger = require('../utils/logger');
 
 /** أقل فاصل بين إنعاشين لنفس (دوري، يوم) — أقصر من كاش المزوّد. */
@@ -59,7 +60,10 @@ async function refresh(fixtures, reload) {
         leagueId: f.league_id,
         season: f.season,
       });
-      await fixtureRepo.upsertMany(raw.map(mapFixture));
+      const mapped = raw.map(mapFixture);
+      await fixtureRepo.upsertMany(mapped);
+      // الأهداف إلى الجيب — بلا انتظار، فالمستدعي في مسار طلب.
+      liveActivityService.syncInBackground(mapped);
       touched = true;
     } catch (err) {
       logger.warn(`[live] refresh ${key} failed: ${err.message}`);

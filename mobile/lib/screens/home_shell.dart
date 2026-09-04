@@ -138,24 +138,8 @@ class HomeShell extends StatelessWidget {
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
             ),
-          // الاسم في تبويب ملفي وحده. كان يظهر في كل شريط: تكرار
-          // لا يضيف شيئاً — المستخدم يعرف من هو، وثلاث شاشات تعرض
-          // مباريات وترتيباً لا علاقة لها باسمه، بينما الشريط أضيق
-          // مكان في الشاشة.
-          if (user != null && index == _profileTab)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 16),
-              child: Center(
-                child: Text(
-                  user.nameOrFallback,
-                  style: const TextStyle(
-                    color: Brand.textMuted,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
+          // ولا اسم في الشريط: ترويسة «ملفي» تعرضه كبيراً تحت الصورة
+          // مباشرة، واسمٌ ثانٍ فوقه بخط صغير تكرارٌ لا يضيف شيئاً.
         ],
       ),
       body: _GroupOpener(

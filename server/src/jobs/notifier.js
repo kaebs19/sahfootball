@@ -1,8 +1,11 @@
 // notifier — الوظيفة المجدولة التي تقرر متى يُزعج المستخدم.
 //
-// نوعان اليوم:
+// ثلاثة أنواع هنا، ورابع يعيش في liveActivityService لأنه يتبع
+// الحدث لا المؤقّت:
 //   reminder — "مباريات تُقفل قريباً ولم تتوقّع بعد"
-//   result   — "احتُسبت نقاطك"
+//   kickoff  — "تنطلق بعد نصف ساعة · توقعك 2 - 1" لمن توقّع
+//   result   — النتيجة وتوقّعك ونقاطك، بنبرة تناسب الحال
+//   (goal)   — هدفٌ بهدف، لحظة وقوعه — راجع liveActivityService
 //
 // المبدأ الحاكم لكل سطر هنا: إشعار واحد مجمّع أفضل من خمسة.
 // المستخدم لا يقرأ خمسة إشعارات متتالية، بل يوقف الإشعارات —
@@ -18,6 +21,10 @@ const logger = require('../utils/logger');
 // كم قبل صافرة البداية نذكّر. ساعتان: وقت كافٍ ليفتح المستخدم
 // التطبيق ويتوقّع بهدوء، وقريب بما يكفي ليبقى الأمر في ذهنه.
 const LEAD_MINUTES = Number(process.env.NOTIFY_LEAD_MINUTES || 120);
+
+// تذكير الانطلاق لمن توقّع: نصف ساعة. أقرب من تذكير الإقفال لأن
+// المطلوب هنا «تعال وتابع» لا «فكّر وقرّر».
+const KICKOFF_MINUTES = Number(process.env.NOTIFY_KICKOFF_MINUTES || 30);
 const TICK_MS = Number(process.env.NOTIFY_TICK_SECONDS || 300) * 1000;
 
 let running = false;
@@ -87,9 +94,30 @@ function reminderText(rows) {
 }
 
 /**
- * نص النتيجة. الرقم أولاً لأنه ما ينتظره المستخدم، والمباراة بعده.
- * صفر نقاط يُقال بلا مواساة ولا تهوين: الصياغة الودّية المفرطة عند
- * الخسارة تُقرأ سخريةً.
+ * نص تذكير الانطلاق: المباراة وتوقّعك فيها — تذكيرٌ بما راهنت عليه
+ * لا دعوة لفعل شيء.
+ */
+function kickoffText(rows) {
+  if (rows.length === 1) {
+    const r = rows[0];
+    return {
+      title: `تنطلق بعد ${counted(KICKOFF_MINUTES, 'دقيقة', 'دقيقتين', 'دقائق', 'دقيقة')}`,
+      body: `${r.home_name} ضد ${r.away_name} · توقعك ${r.pred_home} - ${r.pred_away}`,
+    };
+  }
+  return {
+    title: 'مبارياتك تنطلق بعد قليل',
+    body: `${matches(rows.length)} توقّعتها تبدأ خلال ${counted(KICKOFF_MINUTES, 'دقيقة', 'دقيقتين', 'دقائق', 'دقيقة')}. تابعها في «مباشر».`,
+  };
+}
+
+/**
+ * نص النتيجة. الرقم أولاً لأنه ما ينتظره المستخدم، ثم المباراة
+ * وتوقّعه بجانبها كي يرى بنفسه أين أصاب وأين أخطأ.
+ *
+ * والنبرة بحسب الحال: النتيجة المضبوطة تُقال باسمها («أنت ملك
+ * التوقعات»)، والنقاط الجزئية بتحية، والصفر بـ«حظّ أوفر» — جملة
+ * واحدة صادقة، لا مواساة مطوّلة تُقرأ سخريةً.
  */
 function resultText(rows) {
   const total = rows.reduce((sum, r) => sum + (r.points || 0), 0);
@@ -97,14 +125,22 @@ function resultText(rows) {
   if (rows.length === 1) {
     const r = rows[0];
     const score = `${r.goals_home} - ${r.goals_away}`;
+    const exact = r.pred_home === r.goals_home && r.pred_away === r.goals_away;
+    const title = exact
+      ? `نتيجة مضبوطة! +${r.points} · أنت ملك التوقعات 👑`
+      : total > 0
+        ? `+${r.points} · أحسنت يا ملك التوقعات`
+        : 'حظّ أوفر يا ملك التوقعات';
     return {
-      title: total > 0 ? `كسبت ${points(total)}` : 'انتهت المباراة',
-      body: `${r.home_name} ${score} ${r.away_name}`,
+      title,
+      body: `${r.home_name} ${score} ${r.away_name} · توقعك ${r.pred_home} - ${r.pred_away}`,
     };
   }
   return {
-    title: total > 0 ? `كسبت ${points(total)}` : 'احتُسبت توقعاتك',
-    body: `من ${matches(rows.length)}. افتح "ملفي" لتفاصيل الجولة.`,
+    title: total > 0
+      ? `كسبت ${points(total)} · أحسنت يا ملك التوقعات`
+      : 'حظّ أوفر يا ملك التوقعات',
+    body: `من ${matches(rows.length)}. افتح «ملفي» لتفاصيل الجولة.`,
   };
 }
 
@@ -121,8 +157,9 @@ async function tick() {
   if (running) return;
   running = true;
   try {
-    const [reminders, results] = await Promise.all([
+    const [reminders, kickoffs, results] = await Promise.all([
       notificationRepo.usersNeedingReminder(LEAD_MINUTES),
+      notificationRepo.usersNeedingKickoff(KICKOFF_MINUTES),
       notificationRepo.unnotifiedResults(),
     ]);
 
@@ -138,6 +175,16 @@ async function tick() {
       }
     }
 
+    for (const [userId, rows] of groupByUser(kickoffs)) {
+      const { title, body } = kickoffText(rows);
+      const delivered = await pushService.sendToUser(userId, {
+        title, body, data: { type: 'kickoff', fixtureId: rows[0].fixture_id },
+      });
+      if (delivered > 0) {
+        await notificationRepo.markSent(userId, 'kickoff', rows.map((r) => r.fixture_id));
+      }
+    }
+
     for (const [userId, rows] of groupByUser(results)) {
       const { title, body } = resultText(rows);
       const delivered = await pushService.sendToUser(userId, {
@@ -148,9 +195,9 @@ async function tick() {
       }
     }
 
-    if (reminders.length || results.length) {
+    if (reminders.length || kickoffs.length || results.length) {
       logger.info(
-        `[notifier] tick: ${reminders.length} reminder rows, ${results.length} result rows`
+        `[notifier] tick: ${reminders.length} reminder, ${kickoffs.length} kickoff, ${results.length} result rows`
       );
     }
 
@@ -179,4 +226,4 @@ function start() {
   setInterval(tick, TICK_MS);
 }
 
-module.exports = { start, tick, reminderText, resultText };
+module.exports = { start, tick, reminderText, kickoffText, resultText };

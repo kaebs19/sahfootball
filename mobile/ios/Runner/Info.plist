@@ -97,6 +97,14 @@
 			</array>
 		</dict>
 	</array>
+	<!-- النشاط الحيّ: النتيجة الجارية على شاشة القفل وفي الجزيرة
+	     الديناميكية (امتداد MatchActivity). بلا المفتاح الأول يرفض
+	     ActivityKit إنشاء أي نشاط، والثاني يسمح بتحديثات متقاربة
+	     (هدفان في دقيقة) بلا خنق من النظام. -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>نحتاج الوصول لصورك كي تختار صورة ملفك الشخصي أو صورة مجلسك. لا نقرأ غير الصورة التي تختارها.</string>
 </dict>
