@@ -1,0 +1,11 @@
+# انسخه إلى android/key.properties (خارج git) بعد إنشاء مفتاح الرفع:
+#
+#   keytool -genkey -v -keystore ~/sahfootball-upload.jks -keyalg RSA \
+#           -keysize 2048 -validity 10000 -alias upload
+#
+# احتفظ بالملف وكلمتَي المرور في مكان آمن: ضياعهما يعني ألا تستطيع
+# تحديث التطبيق على Play أبداً إلا بطلب استبدال المفتاح من جوجل.
+storeFile=/Users/mohammedsaleh/sahfootball-upload.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME
