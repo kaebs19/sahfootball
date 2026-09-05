@@ -17,11 +17,17 @@ class FixtureCard extends StatelessWidget {
   final ({int home, int away})? myPick;
   final VoidCallback? onTap; // null = التوقع مقفل، البطاقة غير قابلة للضغط
 
+  /// التوقّع المسجَّل مثبَّت: صاحبه لا يملك تعديله قبل الصافرة (النسخة
+  /// المجانية بعد أول تأكيد). البطاقة تقول ذلك بدل أن تعد بتعديل
+  /// يرفضه السيرفر بعد ثلاث ضغطات.
+  final bool pickLocked;
+
   const FixtureCard({
     super.key,
     required this.fixture,
     this.myPick,
     this.onTap,
+    this.pickLocked = false,
   });
 
   @override
@@ -92,7 +98,11 @@ class FixtureCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            _PickRow(pick: myPick, open: fixture.isOpenForPrediction),
+            _PickRow(
+              pick: myPick,
+              open: fixture.isOpenForPrediction,
+              locked: pickLocked,
+            ),
           ],
         ),
       ),
@@ -175,7 +185,12 @@ class _TeamCell extends StatelessWidget {
 class _PickRow extends StatelessWidget {
   final ({int home, int away})? pick;
   final bool open;
-  const _PickRow({required this.pick, required this.open});
+  final bool locked;
+  const _PickRow({
+    required this.pick,
+    required this.open,
+    this.locked = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -184,6 +199,13 @@ class _PickRow extends StatelessWidget {
     // تتحول التوقعات إلى نقاط، في شاشة توقعاتي والعرش.
     final (String label, IconData icon, BrandTone tone) =
         switch ((pick, open)) {
+      // مثبَّت والمباراة لم تنطلق: أخضر لأنه اختيار مؤكَّد، وقفلٌ لأن
+      // الوعد بالتعديل هنا كان كذبة يكشفها السيرفر.
+      ((var p)?, true) when locked => (
+          'توقعك ${p.home} - ${p.away} · مثبَّت',
+          Icons.lock_outline,
+          BrandTone.correct,
+        ),
       ((var p)?, true) => (
           'توقعك ${p.home} - ${p.away} — اضغط للتعديل',
           Icons.edit_outlined,

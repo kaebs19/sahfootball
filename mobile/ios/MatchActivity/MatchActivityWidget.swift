@@ -22,6 +22,9 @@ private extension Color {
   static let crown = Color(red: 0.949, green: 0.757, blue: 0.306)
   static let correct = Color(red: 0.071, green: 0.878, blue: 0.494)
   static let wrong = Color(red: 1.0, green: 0.353, blue: 0.306)
+  /// مباشر — أخضر لا أحمر (نفس Brand.live في التطبيق): الأحمر يعني
+  /// «خطأ» في هويتنا، فكانت المباراة الحيّة تبدو معطّلة على شاشة القفل.
+  static let live = Color(red: 0.071, green: 0.878, blue: 0.494)
   static let textMuted = Color(red: 0.631, green: 0.631, blue: 0.631)
   static let textFaint = Color(red: 0.42, green: 0.42, blue: 0.42)
 }
@@ -81,7 +84,7 @@ private enum Verdict {
 
 // ── الواجهات ────────────────────────────────────────────────────────
 
-/// شريحة الطور: حمراء للجارية، محايدة لما سواها.
+/// شريحة الطور: خضراء نابضة للجارية، محايدة لما سواها.
 private struct PhasePill: View {
   let state: MatchActivityAttributes.ContentState
 
@@ -89,16 +92,16 @@ private struct PhasePill: View {
     let live = state.status == "live"
     HStack(spacing: 5) {
       if live {
-        Circle().fill(Color.wrong).frame(width: 6, height: 6)
+        Circle().fill(Color.live).frame(width: 6, height: 6)
       }
       Text(verbatim: phaseLabel(state))
         .font(.system(size: 12, weight: .bold, design: .rounded))
         .monospacedDigit()
-        .foregroundColor(live ? .wrong : .textMuted)
+        .foregroundColor(live ? .live : .textMuted)
     }
     .padding(.horizontal, 9)
     .padding(.vertical, 4)
-    .background(live ? Color.wrong.opacity(0.14) : Color.white.opacity(0.06))
+    .background(live ? Color.live.opacity(0.14) : Color.white.opacity(0.06))
     .clipShape(Capsule())
   }
 }
@@ -213,7 +216,7 @@ struct MatchActivityWidget: Widget {
         Text(verbatim: s.status == "live" ? (s.elapsed.map { "\($0)'" } ?? "●") : phaseLabel(s))
           .font(.system(size: 12, weight: .semibold))
           .monospacedDigit()
-          .foregroundColor(s.status == "live" ? .wrong : .textMuted)
+          .foregroundColor(s.status == "live" ? .live : .textMuted)
           .padding(.trailing, 4)
       } minimal: {
         Text(verbatim: "\(s.goalsHome)-\(s.goalsAway)")

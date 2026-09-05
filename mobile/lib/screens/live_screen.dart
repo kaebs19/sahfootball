@@ -190,7 +190,7 @@ class _SectionHeaderState extends State<_SectionHeader>
                 height: 8,
                 margin: const EdgeInsetsDirectional.only(end: 8),
                 decoration: const BoxDecoration(
-                  color: Brand.wrong,
+                  color: Brand.live,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -201,7 +201,7 @@ class _SectionHeaderState extends State<_SectionHeader>
               fontFamily: Brand.displayFont,
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: widget.pulsing ? Brand.wrong : Brand.crown,
+              color: widget.pulsing ? Brand.live : Brand.crown,
             ),
           ),
         ],

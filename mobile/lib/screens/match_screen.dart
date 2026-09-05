@@ -387,10 +387,10 @@ class _PhasePillState extends State<_PhasePill> with SingleTickerProviderStateMi
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: live ? Brand.wrong.withValues(alpha: 0.13) : Brand.fill,
+        color: live ? Brand.live.withValues(alpha: 0.13) : Brand.fill,
         borderRadius: BorderRadius.circular(Brand.radiusChip),
         border: Border.all(
-            color: live ? Brand.wrong.withValues(alpha: 0.3) : Colors.transparent),
+            color: live ? Brand.live.withValues(alpha: 0.3) : Colors.transparent),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -402,7 +402,7 @@ class _PhasePillState extends State<_PhasePill> with SingleTickerProviderStateMi
                 width: 6,
                 height: 6,
                 decoration:
-                    const BoxDecoration(color: Brand.wrong, shape: BoxShape.circle),
+                    const BoxDecoration(color: Brand.live, shape: BoxShape.circle),
               ),
             ),
             const SizedBox(width: 6),
@@ -413,7 +413,7 @@ class _PhasePillState extends State<_PhasePill> with SingleTickerProviderStateMi
               fontFamily: Brand.displayFont,
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: live ? Brand.wrong : Brand.textMuted,
+              color: live ? Brand.live : Brand.textMuted,
               fontFeatures: Brand.tabular,
             ),
           ),

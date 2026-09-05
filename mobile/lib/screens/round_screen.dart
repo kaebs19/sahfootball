@@ -22,6 +22,7 @@ import '../config.dart';
 import '../format.dart';
 import '../models/champion.dart';
 import '../models/round.dart';
+import '../state/premium.dart';
 import '../widgets/brand_widgets.dart';
 
 class RoundScreen extends StatefulWidget {
@@ -137,6 +138,7 @@ class _RoundScreenState extends State<RoundScreen> {
   @override
   Widget build(BuildContext context) {
     final page = _page;
+    final canEdit = context.watch<Premium>().value.canEdit;
     return Scaffold(
       appBar: AppBar(title: const Text('توقّع الجولة')),
       body: _error != null
@@ -186,6 +188,9 @@ class _RoundScreenState extends State<RoundScreen> {
                                   away: e?.away,
                                   x2: e?.x2 ?? false,
                                   factor: page.multiplierFactor,
+                                  // مؤكَّد من قبل ولا يملك التعديل =
+                                  // مثبَّت. الحكم من الامتيازات.
+                                  locked: f.predHome != null && !canEdit,
                                   onChanged: (h, a, x) => setState(
                                       () => _edits[f.id] = (home: h, away: a, x2: x)),
                                 );
@@ -369,6 +374,11 @@ class _FixtureRow extends StatelessWidget {
   final int factor;
   final void Function(int? home, int? away, bool x2) onChanged;
 
+  /// النتيجة مثبَّتة: توقّع مؤكَّد لصاحبٍ لا يملك تعديله. العدّادان
+  /// يختفيان ويبقى المضاعِف (ليس تعديلاً للنتيجة) — نفس قاعدة شيت
+  /// التوقّع، وإلا حُفظت الجولة فرفض السيرفر هذه المباراة وحدها.
+  final bool locked;
+
   const _FixtureRow({
     required this.fixture,
     required this.home,
@@ -376,11 +386,13 @@ class _FixtureRow extends StatelessWidget {
     required this.x2,
     required this.factor,
     required this.onChanged,
+    this.locked = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final open = fixture.open;
+    final editable = open && !locked;
     final touched = home != null || away != null;
 
     return Container(
@@ -393,7 +405,7 @@ class _FixtureRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: _Side(name: fixture.homeName, logo: fixture.homeLogo)),
-          if (open) ...[
+          if (editable) ...[
             _Counter(
               value: home,
               onChanged: (v) => onChanged(v, away, x2),
@@ -410,16 +422,26 @@ class _FixtureRow extends StatelessWidget {
           ] else
             SizedBox(
               width: 74,
-              child: Center(
-                child: Text(
-                  fixture.predHome != null
-                      ? '${fixture.predHome} - ${fixture.predAway}'
-                      : '—',
-                  style: const TextStyle(
-                      color: Brand.textMuted,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700),
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // قفل صغير يفرّق «مثبَّت» عن «انطلقت»: الاثنان يعرضان
+                  // الرقم نفسه، والفرق يهمّ من يتساءل لماذا لا يستطيع.
+                  if (open && locked) ...[
+                    const Icon(Icons.lock_outline,
+                        size: 12, color: Brand.textFaint),
+                    const SizedBox(width: 3),
+                  ],
+                  Text(
+                    fixture.predHome != null
+                        ? '${fixture.predHome} - ${fixture.predAway}'
+                        : '—',
+                    style: const TextStyle(
+                        color: Brand.textMuted,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ],
               ),
             ),
           Expanded(

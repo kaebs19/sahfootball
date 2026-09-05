@@ -119,9 +119,9 @@ class _MinuteBadgeState extends State<_MinuteBadge>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Brand.wrong.withValues(alpha: 0.13),
+        color: Brand.live.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(Brand.radiusChip),
-        border: Border.all(color: Brand.wrong.withValues(alpha: 0.3)),
+        border: Border.all(color: Brand.live.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -132,7 +132,7 @@ class _MinuteBadgeState extends State<_MinuteBadge>
               width: 6,
               height: 6,
               decoration:
-                  const BoxDecoration(color: Brand.wrong, shape: BoxShape.circle),
+                  const BoxDecoration(color: Brand.live, shape: BoxShape.circle),
             ),
           ),
           const SizedBox(width: 6),
@@ -144,7 +144,7 @@ class _MinuteBadgeState extends State<_MinuteBadge>
               fontFamily: Brand.displayFont,
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: Brand.wrong,
+              color: Brand.live,
               fontFeatures: Brand.tabular,
             ),
           ),

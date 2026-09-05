@@ -18,6 +18,7 @@ import '../brand.dart';
 import '../format.dart';
 import '../models/champion.dart';
 import '../models/fixture.dart';
+import '../state/premium.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/premium_widgets.dart';
@@ -126,11 +127,17 @@ class _MatchesScreenState extends State<MatchesScreen> {
       return;
     }
     final existing = _myPicks[fixture.id];
+    // توقّع مؤكَّد لمن لا يملك تعديله (النسخة المجانية): الشيت يُفتح
+    // مقفلاً على النتيجة ويبقي المضاعِف. الحكم من الامتيازات لا من
+    // شرط محلي، فإن فُتح باب التعديل يوماً لا يحتاج التطبيق نشراً.
+    final locked =
+        existing != null && !context.read<Premium>().value.canEdit;
     final result = await showPredictionSheet(
       context,
       fixture: fixture,
       initialHome: existing?.home,
       initialAway: existing?.away,
+      locked: locked,
     );
     if (result != null && mounted) {
       // تحديث متفائل محلي: الشيت لا يرجع قيمة إلا بعد نجاح الحفظ في
@@ -235,6 +242,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
               FixtureCard(
                 fixture: f,
                 myPick: _myPicks[f.id],
+                pickLocked: !context.watch<Premium>().value.canEdit,
                 // المفتوحة تفتح ورقة التوقّع، وما انطلق أو انتهى يفتح
                 // شاشة المباراة: البطاقة لا تموت بعد الإقفال — يتبدّل
                 // سؤالها من «ماذا أتوقّع؟» إلى «ماذا حدث؟».

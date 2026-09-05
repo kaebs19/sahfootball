@@ -23,6 +23,7 @@ Future<({int home, int away})?> showPredictionSheet(
   required Fixture fixture,
   int? initialHome,
   int? initialAway,
+  bool locked = false,
 }) {
   return showModalBottomSheet<({int home, int away})>(
     context: context,
@@ -34,6 +35,7 @@ Future<({int home, int away})?> showPredictionSheet(
       fixture: fixture,
       initialHome: initialHome ?? 0,
       initialAway: initialAway ?? 0,
+      locked: locked,
     ),
   );
 }
@@ -43,10 +45,17 @@ class _PredictionSheet extends StatefulWidget {
   final int initialHome;
   final int initialAway;
 
+  /// النتيجة مثبَّتة: توقّعٌ مؤكَّد لصاحبٍ لا يملك تعديله (النسخة
+  /// المجانية). العدّادان يُطفآن ويبقى المضاعِف — فهو ليس تعديلاً
+  /// للنتيجة، والسيرفر نفسه لا يحاسبه (assertMayEdit). الشيت يُفتح
+  /// مقفلاً بدل أن يُفتح ثم يرفض بعد ثلاث ضغطات.
+  final bool locked;
+
   const _PredictionSheet({
     required this.fixture,
     required this.initialHome,
     required this.initialAway,
+    this.locked = false,
   });
 
   @override
@@ -157,7 +166,7 @@ class _PredictionSheetState extends State<_PredictionSheet> {
             ),
           ),
           const SizedBox(height: 18),
-          Text('سجّل توقعك',
+          Text(widget.locked ? 'توقّعك مثبَّت' : 'سجّل توقعك',
               style: Theme.of(context)
                   .textTheme
                   .titleLarge
@@ -174,7 +183,7 @@ class _PredictionSheetState extends State<_PredictionSheet> {
                 child: _ScoreStepper(
                   label: widget.fixture.homeTeamName,
                   value: _home,
-                  enabled: !_busy,
+                  enabled: !_busy && !widget.locked,
                   onChanged: (v) => setState(() => _home = v),
                 ),
               ),
@@ -187,12 +196,35 @@ class _PredictionSheetState extends State<_PredictionSheet> {
                 child: _ScoreStepper(
                   label: widget.fixture.awayTeamName,
                   value: _away,
-                  enabled: !_busy,
+                  enabled: !_busy && !widget.locked,
                   onChanged: (v) => setState(() => _away = v),
                 ),
               ),
             ],
           ),
+          if (widget.locked) ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_outline,
+                    size: 14, color: Brand.textMuted),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    // الجملة تذكر الميزة فقط حين يمكن شراؤها؛ وإلا تكون
+                    // قاعدة لعب لا إعلاناً عن باب مغلق.
+                    context.watch<Premium>().storeOpen
+                        ? 'يُثبَّت التوقّع من أول تأكيد — تعديله قبل الصافرة من مزايا التاج الذهبي.'
+                        : 'يُثبَّت التوقّع من أول تأكيد ولا يُعدَّل قبل الصافرة.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Brand.textMuted, fontSize: 12.5, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 20),
           // جدول النقاط من الخادم لا من نصّ مكتوب هنا: كان يقول
           // "نتيجة مضبوطة = 5" بينما يمنح النظام مئة.
@@ -270,7 +302,9 @@ class _PredictionSheetState extends State<_PredictionSheet> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Brand.onAccent),
                     )
-                  : const Text('أكّد التوقّع'),
+                  // مقفلاً لا يبقى إلا المضاعِف قابلاً للتغيير، فالزرّ
+                  // «حفظ» لا «أكّد التوقّع» — النتيجة مؤكَّدة أصلاً.
+                  : Text(widget.locked ? 'حفظ' : 'أكّد التوقّع'),
             ),
           ),
         ],
