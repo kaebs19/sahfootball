@@ -56,19 +56,24 @@ class SettingsScreen extends StatelessWidget {
             ],
           ),
 
-          const _GroupLabel('الاشتراك'),
-          _SettingsGroup(
-            children: [
-              _SettingsTile(
-                icon: Icons.workspace_premium,
-                title: 'التاج الذهبي',
-                subtitle: context.watch<Premium>().isPremium
-                    ? 'اشتراكك فعّال'
-                    : 'معزّزات شهرية · بلا إعلانات',
-                onTap: () => _open(context, const PremiumScreen()),
-              ),
-            ],
-          ),
+          // مجموعة الاشتراك كلها تختفي ما دام المتجر مغلقاً (راجع
+          // Premium.storeOpen): مدخلٌ يفضي إلى شاشة أسعار بأزرار معطّلة
+          // سببٌ جاهز لرفض المراجعة، ولا معنى له للاعب أصلاً.
+          if (context.watch<Premium>().storeOpen) ...[
+            const _GroupLabel('الاشتراك'),
+            _SettingsGroup(
+              children: [
+                _SettingsTile(
+                  icon: Icons.workspace_premium,
+                  title: 'التاج الذهبي',
+                  subtitle: context.watch<Premium>().isPremium
+                      ? 'اشتراكك فعّال'
+                      : 'معزّزات شهرية · بلا إعلانات',
+                  onTap: () => _open(context, const PremiumScreen()),
+                ),
+              ],
+            ),
+          ],
 
           const _GroupLabel('التفضيلات'),
           _SettingsGroup(

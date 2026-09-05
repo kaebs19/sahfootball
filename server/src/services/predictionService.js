@@ -96,13 +96,21 @@ async function assertMayEdit({ mine, home, away, ent }) {
   if (ent.edits.max === null) return; // مشترك: بلا حدّ
 
   if (mine.edits >= ent.edits.max) {
-    throw new PredictionError(
-      402,
-      ent.edits.max === 0
+    // والمتجر مغلق لا نبيع ما لا يُشترى: الرسالة تذكر الحدّ وحده بلا
+    // دعوة إلى اشتراك لا سبيل إليه، والرمز يبقى كما هو لأن التطبيق
+    // يقرّر بنفسه إن كان يُظهر الباب (Premium.storeOpen).
+    const open = Boolean(ent.store?.open);
+    let message;
+    if (!open) {
+      message = ent.edits.max === 0
+        ? 'التوقّع يُثبَّت من أول مرة — لا تعديل عليه قبل الصافرة'
+        : 'استعملت تعديلاتك على هذا التوقّع';
+    } else {
+      message = ent.edits.max === 0
         ? 'تعديل التوقّع من مزايا التاج الذهبي — اشترك لتغيّر توقّعك قبل الصافرة'
-        : `استعملت تعديلاتك المجانية على هذا التوقّع — التاج الذهبي يعطيك تعديلاً بلا حدّ`,
-      'EDIT_REQUIRES_CROWN'
-    );
+        : 'استعملت تعديلاتك المجانية على هذا التوقّع — التاج الذهبي يعطيك تعديلاً بلا حدّ';
+    }
+    throw new PredictionError(402, message, 'EDIT_REQUIRES_CROWN');
   }
 }
 

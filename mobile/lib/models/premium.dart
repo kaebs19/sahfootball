@@ -105,6 +105,12 @@ class Entitlements {
   final BoostBalance boost;
   final ShieldState shield;
 
+  /// هل باب الاشتراك مفتوح؟ false = تختفي كل نقاط الدخول إليه.
+  ///
+  /// الافتراضي مغلق عمداً، كالإعلانات: بطاقةُ دعوة تظهر ثم تختفي حين
+  /// يصل الردّ ويقول «المتجر مغلق» أسوأ من بطاقة تتأخر ثانية.
+  final bool storeOpen;
+
   const Entitlements({
     this.premium = false,
     this.premiumUntil,
@@ -112,6 +118,7 @@ class Entitlements {
     this.editsMax = 0,
     this.boost = const BoostBalance(),
     this.shield = const ShieldState(),
+    this.storeOpen = false,
   });
 
   /// الحالة قبل وصول أي ردّ: لا تاج ولا إعلانات.
@@ -135,6 +142,7 @@ class Entitlements {
             (j['multiplier5'] as Map<String, dynamic>?) ?? const {}),
         shield: ShieldState.fromJson(
             (j['shield'] as Map<String, dynamic>?) ?? const {}),
+        storeOpen: j['store']?['open'] == true,
       );
 }
 

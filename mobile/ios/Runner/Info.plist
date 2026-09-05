@@ -4,8 +4,15 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- لغة التطبيق المعلنة: العربية. بدونها يكتب App Store في صفحة
+	     التطبيق «اللغات: الإنجليزية» لأن قالب Flutter يورّث en، والنظام
+	     يختار لتنبيهاته ولوحات المفاتيح الافتراضية لغةً ليست لغتنا. -->
 	<key>CFBundleDevelopmentRegion</key>
-	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<string>ar</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ar</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>ملك التوقعات</string>
 	<key>CFBundleExecutable</key>
@@ -45,6 +52,11 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- تصريح التصدير: التطبيق لا يستعمل تشفيراً غير HTTPS المعتاد
+	     (وهو معفى). بلا هذا المفتاح يسأل App Store Connect سؤال
+	     التشفير يدوياً بعد كل رفع ويحجز البناء حتى يُجاب. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

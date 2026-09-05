@@ -254,12 +254,15 @@ class _NativeAdSlotState extends State<NativeAdSlot> {
 
   @override
   Widget build(BuildContext context) {
-    if (!context.watch<Premium>().showAds) return const SizedBox.shrink();
+    final premium = context.watch<Premium>();
+    if (!premium.showAds) return const SizedBox.shrink();
 
     final ad = _ad;
     // لم يصل إعلان — نضع دعوتنا نحن مكانه. المساحة مساحتنا في
     // الحالتين، والثقب الأسود وسط قائمة أسوأ من إعلان.
+    // إلا إن كان المتجر مغلقاً: لا دعوة تُعرض، فلا نترك حاشيةً فارغة.
     if (ad == null || !_loaded) {
+      if (!premium.storeOpen) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: CrownUpsell(reason: widget.fallbackReason),

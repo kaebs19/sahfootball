@@ -15,6 +15,7 @@ import '../format.dart';
 import '../models/fixture.dart';
 import '../models/rules.dart';
 import '../screens/premium_screen.dart';
+import '../state/premium.dart';
 import 'brand_widgets.dart';
 
 Future<({int home, int away})?> showPredictionSheet(
@@ -242,7 +243,8 @@ class _PredictionSheetState extends State<_PredictionSheet> {
               textAlign: TextAlign.center,
               style: const TextStyle(color: Brand.wrong, fontSize: 13),
             ),
-            if (_paywall) ...[
+            // الباب يُعرض فقط إن كان مفتوحاً؛ وإلا تكفي رسالة السيرفر.
+            if (_paywall && context.watch<Premium>().storeOpen) ...[
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () {

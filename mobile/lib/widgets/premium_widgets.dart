@@ -24,10 +24,13 @@ class CrownTag extends StatelessWidget {
   }
 }
 
-/// بطاقة تدعو إلى الاشتراك — تختفي وحدها عند المشتركين.
+/// بطاقة تدعو إلى الاشتراك — تختفي وحدها عند المشتركين، وحين يكون
+/// المتجر مغلقاً.
 ///
 /// «تختفي وحدها» قرار مقصود: لو تُرك الشرط لكل شاشة لنُسي في واحدة،
 /// فيرى من دفع دعوةً للدفع مرة أخرى — وهي أسرع طريقة لإلغاء اشتراك.
+/// وشرط المتجر بنفس المنطق: دعوةٌ إلى باب مغلق تُحبط اللاعب وتُسقط
+/// التطبيق في المراجعة.
 class CrownUpsell extends StatelessWidget {
   /// سبب الظهور هنا — يُكتب في البطاقة فتصير جواباً لا إعلاناً.
   final String reason;
@@ -36,7 +39,10 @@ class CrownUpsell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (context.watch<Premium>().isPremium) return const SizedBox.shrink();
+    final premium = context.watch<Premium>();
+    if (premium.isPremium || !premium.storeOpen) {
+      return const SizedBox.shrink();
+    }
 
     return BrandCard(
       royal: true,

@@ -28,6 +28,11 @@ class Premium extends ChangeNotifier {
 
   bool get isPremium => _entitlements.premium;
 
+  /// هل يُعرض مسار الاشتراك أصلاً؟ الإعدادات وبطاقات الدعوة وزرّ
+  /// الشيت كلها تسأل هذا السؤال الواحد — شرطٌ يُكرَّر في كل شاشة يُنسى
+  /// في واحدة، فيرى المراجع شاشة أسعار لمتجر مغلق.
+  bool get storeOpen => _entitlements.storeOpen;
+
   /// هل تُعرض الإعلانات؟ الضيف يراها، والمشترك لا.
   bool get showAds => _entitlements.ads.show;
 
