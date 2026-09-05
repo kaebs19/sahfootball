@@ -796,13 +796,14 @@ class ApiClient {
   Future<Group> createGroup({
     required String name,
     JoinPolicy joinPolicy = JoinPolicy.code,
-    int? leagueId,
+    List<int> leagueIds = const [],
   }) async {
     try {
       final res = await _dio.post('/api/groups', data: {
         'name': name,
         'join_policy': joinPolicy.wire,
-        'league_id': leagueId,
+        // فارغة = كل الدوريات.
+        'league_ids': leagueIds,
       });
       return Group.fromJson(res.data['group'] as Map<String, dynamic>);
     } on DioException catch (e) {
@@ -810,20 +811,20 @@ class ApiClient {
     }
   }
 
-  /// تعديل إعدادات المجلس (للمالك). الحقل غير المُمرَّر لا يُلمس —
-  /// وnull قيمة صالحة للدوري تعني «كل الدوريات»، ولهذا يُميَّز
-  /// «لم يتغير» بـ [_unset] كما في updateProfile.
+  /// تعديل إعدادات المجلس. الاسم والعلنية للمالك، والدوريات للمالك
+  /// والمشرف (السيرفر يفصل). الحقل غير المُمرَّر لا يُلمس — والقائمة
+  /// الفارغة قيمة صالحة تعني «كل الدوريات»، فـ null هنا = «لم يتغير».
   Future<Group> updateGroup(
     String id, {
     String? name,
     JoinPolicy? joinPolicy,
-    Object? leagueId = _unset,
+    List<int>? leagueIds,
   }) async {
     try {
       final body = <String, dynamic>{};
       if (name != null) body['name'] = name;
       if (joinPolicy != null) body['join_policy'] = joinPolicy.wire;
-      if (!identical(leagueId, _unset)) body['league_id'] = leagueId;
+      if (leagueIds != null) body['league_ids'] = leagueIds;
       final res = await _dio.patch('/api/groups/$id', data: body);
       return Group.fromJson(res.data['group'] as Map<String, dynamic>);
     } on DioException catch (e) {

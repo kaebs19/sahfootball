@@ -34,8 +34,9 @@ function fail(res, err) {
   throw err;
 }
 
-// POST /api/groups — { name, join_policy?, league_id? } — إنشاء مجلس
-// (is_public من النسخة السابقة ما زال مقبولاً: عام = مفتوح)
+// POST /api/groups — { name, join_policy?, league_ids? } — إنشاء مجلس
+// (is_public وleague_id من النسخ السابقة ما زالا مقبولَين: عام = مفتوح،
+// ودوري واحد = قائمة بعنصر واحد؛ راجع cleanLeagues)
 router.post('/', async (req, res) => {
   try {
     const body = req.body || {};
@@ -44,7 +45,7 @@ router.post('/', async (req, res) => {
       name: body.name,
       isPublic: body.is_public,
       joinPolicy: body.join_policy,
-      leagueId: body.league_id ?? null,
+      leagueIds: body.league_ids ?? body.league_id ?? [],
     });
     res.status(201).json({ group: decorate(group) });
   } catch (err) { fail(res, err); }
@@ -99,7 +100,8 @@ router.get('/:id', async (req, res) => {
   } catch (err) { fail(res, err); }
 });
 
-// PATCH /api/groups/:id — { name?, join_policy?, league_id? } — للمالك
+// PATCH /api/groups/:id — { name?, join_policy?, league_ids? } — الاسم
+// والعلنية للمالك، والدوريات للمالك والمشرف (الفصل في الخدمة)
 router.patch('/:id', async (req, res) => {
   try {
     const body = req.body || {};
@@ -109,7 +111,8 @@ router.patch('/:id', async (req, res) => {
       name: body.name,
       isPublic: body.is_public,
       joinPolicy: body.join_policy,
-      leagueId: body.league_id,
+      // undefined = لم يُرسل فلا يُلمس؛ وleague_id القديم يُقبل كذلك.
+      leagueIds: body.league_ids !== undefined ? body.league_ids : body.league_id,
     });
     res.json({ group: decorate(group) });
   } catch (err) { fail(res, err); }

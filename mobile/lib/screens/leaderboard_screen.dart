@@ -570,7 +570,7 @@ class _CouncilsView extends StatelessWidget {
       final group = await api.createGroup(
         name: form.name,
         joinPolicy: form.joinPolicy,
-        leagueId: form.leagueId,
+        leagueIds: form.leagueIds,
       );
       await onChanged();
       messenger.showSnackBar(

@@ -137,7 +137,7 @@ class _GroupScreenState extends State<GroupScreen> {
                         _Tab.predictions => [
                             _RoundPredictions(
                               groupId: widget.groupId,
-                              leagueId: detail.group.leagueId,
+                              leagueIds: detail.group.leagueIds,
                             ),
                           ],
                       },
@@ -180,9 +180,11 @@ class _GroupScreenState extends State<GroupScreen> {
         title: round ? 'ملك $roundName' : 'ملك «${g.name}»',
         hint: round
             ? 'بنقاط ${detail.roundLabel == null ? 'آخر جولة في كل دوري' : roundName} وحدها'
-            : g.leagueName == null
+            : g.leagues.isEmpty
                 ? 'بمجموع النقاط من كل الدوريات'
-                : 'بنقاط ${g.leagueName} وحده — مبارياته ورهان بطله',
+                : g.leagues.length == 1
+                    ? 'بنقاط ${g.leagueName} وحده — مبارياته ورهان بطله'
+                    : 'بنقاط ${g.leagueName} — مبارياتها ورهانات أبطالها',
         meta: Fmt.counted(rows.length, 'عضو واحد', 'عضوان', 'أعضاء', 'عضواً'),
         podium: Podium(
           entries: rows,
@@ -518,6 +520,22 @@ class _GroupScreenState extends State<GroupScreen> {
                   _editSettings(group);
                 },
               ),
+            // المشرف يعدّل الدوريات وحدها (قاعدة السيرفر): مدخل خاص
+            // بها بدل إعدادات كاملة يُرفض نصفها عند الحفظ.
+            if (!group.isOwner && group.manages)
+              ListTile(
+                leading: const Icon(Icons.emoji_events_outlined,
+                    color: Brand.textMuted),
+                title: const Text('دوريات المجلس'),
+                subtitle: Text(
+                  group.scopeLabel,
+                  style: const TextStyle(color: Brand.textFaint, fontSize: 11.5),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _editLeagues(group);
+                },
+              ),
             // المالك لا يغادر مجلسه: مجلس بلا صاحب لا أحد يديره أو
             // يحذفه. خياره الحذف الكامل — وهذه قاعدة السيرفر نفسها،
             // نعكسها في الواجهة بدل أن نترك المستخدم يصطدم برسالة خطأ.
@@ -571,7 +589,7 @@ class _GroupScreenState extends State<GroupScreen> {
       initial: GroupForm(
         name: group.name,
         joinPolicy: group.joinPolicy,
-        leagueId: group.leagueId,
+        leagueIds: group.leagueIds,
       ),
     );
     if (form == null) return;
@@ -581,10 +599,38 @@ class _GroupScreenState extends State<GroupScreen> {
         group.id,
         name: form.name,
         joinPolicy: form.joinPolicy,
-        leagueId: form.leagueId,
+        leagueIds: form.leagueIds,
       );
       await _load();
       messenger.showSnackBar(const SnackBar(content: Text('حُفظت الإعدادات')));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// دوريات المجلس وحدها — للمشرف. النموذج نفسه بلا الاسم والعلنية،
+  /// والطلب يحمل الدوريات فقط فلا يصطدم بقاعدة «الاسم للمالك».
+  Future<void> _editLeagues(Group group) async {
+    final api = context.read<ApiClient>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final form = await GroupFormSheet.show(
+      context,
+      title: 'دوريات المجلس',
+      action: 'احفظ',
+      leaguesOnly: true,
+      initial: GroupForm(
+        name: group.name,
+        joinPolicy: group.joinPolicy,
+        leagueIds: group.leagueIds,
+      ),
+    );
+    if (form == null) return;
+
+    try {
+      await api.updateGroup(group.id, leagueIds: form.leagueIds);
+      await _load();
+      messenger.showSnackBar(const SnackBar(content: Text('حُفظت الدوريات')));
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -788,7 +834,11 @@ class _HeaderCard extends StatelessWidget {
   }
 }
 
-/// شريحة الدوري — بشعاره حين يكون مقيّداً، و«كل الدوريات» وإلا.
+/// شريحة الدوري — بشعاره حين يكون واحداً، وبعددها حين تتعدّد،
+/// و«كل الدوريات» وإلا.
+///
+/// العدد لا الأسماء عند التعدّد: ثلاثة أسماء في شريحة واحدة فاضت عن
+/// عرض الشاشة (جُرّب ووقع). الأسماء كاملةً تُقرأ في نصّ المنصّة تحتها.
 class _ScopeChip extends StatelessWidget {
   final Group group;
   const _ScopeChip({required this.group});
@@ -796,6 +846,13 @@ class _ScopeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = group;
+    if (g.leagues.length > 1) {
+      return BrandChip(
+        label: Fmt.counted(
+            g.leagues.length, 'دوري واحد', 'دوريان', 'دوريات', 'دورياً'),
+        icon: Icons.emoji_events_outlined,
+      );
+    }
     if (g.leagueLogo == null) {
       return BrandChip(label: g.scopeLabel, icon: Icons.all_inclusive);
     }
@@ -889,7 +946,9 @@ class _StandingSummary extends StatelessWidget {
           Text(
             league == null
                 ? 'الترتيب بمجموع النقاط من كل الدوريات'
-                : 'الترتيب بنقاط $league وحده — مبارياته ورهان بطله',
+                : detail.group.leagues.length == 1
+                    ? 'الترتيب بنقاط $league وحده — مبارياته ورهان بطله'
+                    : 'الترتيب بنقاط $league — مبارياتها ورهانات أبطالها',
             textAlign: TextAlign.center,
             style: const TextStyle(color: Brand.textFaint, fontSize: 10.5),
           ),
@@ -1371,9 +1430,10 @@ class _RoundPredictions extends StatefulWidget {
   final String groupId;
 
   /// دوري المجلس: المنتقي يعرض مبارياته وحدها. null = الكل.
-  final int? leagueId;
+  /// دوريات المجلس؛ فارغة = كل الدوريات.
+  final List<int> leagueIds;
 
-  const _RoundPredictions({required this.groupId, this.leagueId});
+  const _RoundPredictions({required this.groupId, this.leagueIds = const []});
 
   @override
   State<_RoundPredictions> createState() => _RoundPredictionsState();
@@ -1400,11 +1460,11 @@ class _RoundPredictionsState extends State<_RoundPredictions> {
 
   Future<void> _loadFixtures() async {
     final api = context.read<ApiClient>();
-    final leagueId = widget.leagueId;
+    final leagueIds = widget.leagueIds;
     try {
       final today = DateTime.now();
       final results = await Future.wait([
-        api.upcomingFixtures(leagueIds: leagueId == null ? null : [leagueId]),
+        api.upcomingFixtures(leagueIds: leagueIds.isEmpty ? null : leagueIds),
         for (var d = _pastDays; d >= 0; d--)
           api.fixturesByDate(today.subtract(Duration(days: d))),
       ]);
@@ -1415,7 +1475,7 @@ class _RoundPredictionsState extends State<_RoundPredictions> {
       final byId = <int, Fixture>{};
       for (final list in results) {
         for (final f in list) {
-          if (leagueId != null && f.leagueId != leagueId) continue;
+          if (leagueIds.isNotEmpty && !leagueIds.contains(f.leagueId)) continue;
           byId[f.id] = f;
         }
       }

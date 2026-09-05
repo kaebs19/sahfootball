@@ -85,19 +85,32 @@ function cleanName(name) {
   return clean;
 }
 
+/** أقصى عدد دوريات لمجلس — الشريط في التطبيق لا يتّسع لأكثر بلا تمرير. */
+const MAX_GROUP_LEAGUES = 8;
+
 /**
- * دوري المجلس: null = كل الدوريات، وإلا دوري داخل اللعبة (in_app).
+ * دوريات المجلس: قائمة فارغة = كل الدوريات، وإلا دوريات داخل اللعبة
+ * (in_app) بلا تكرار.
+ *
+ * تقبل مصفوفة (league_ids من التطبيق الحديث) أو قيمة مفردة/null
+ * (league_id من نسخة الاختبار المغلق) — الشكلان يصلان معاً حتى
+ * يُحدَّث كل جهاز، ورفض القديم يكسر مجالس قائمة.
  *
  * الدوري المفعّل على الموقع فقط لا يصلح: مبارياته لا تُعرض في
  * التطبيق أصلاً، فمجلسٌ عليه لا يجد أعضاؤه ما يتوقّعونه.
  */
-async function cleanLeague(leagueId) {
-  if (leagueId === null || leagueId === undefined || leagueId === '') return null;
-  const id = Number(leagueId);
-  if (!Number.isInteger(id)) throw new GroupError(400, 'الدوري غير صالح');
-  const league = await leagueRepo.findById(id);
-  if (!league || !league.in_app) throw new GroupError(400, 'الدوري غير متاح في اللعبة');
-  return id;
+async function cleanLeagues(raw) {
+  const list = raw === null || raw === '' ? [] : Array.isArray(raw) ? raw : [raw];
+  const ids = [...new Set(list.map(Number))];
+  if (ids.some((id) => !Number.isInteger(id))) throw new GroupError(400, 'الدوري غير صالح');
+  if (ids.length > MAX_GROUP_LEAGUES) {
+    throw new GroupError(400, `الحد الأقصى ${MAX_GROUP_LEAGUES} دوريات لكل مجلس`);
+  }
+  for (const id of ids) {
+    const league = await leagueRepo.findById(id);
+    if (!league || !league.in_app) throw new GroupError(400, 'الدوري غير متاح في اللعبة');
+  }
+  return ids;
 }
 
 function cleanPolicy(raw) {
@@ -123,9 +136,9 @@ async function displayName(userId) {
   return user?.display_name || 'مشجع';
 }
 
-async function create({ ownerId, name, isPublic, joinPolicy, leagueId = null }) {
+async function create({ ownerId, name, isPublic, joinPolicy, leagueIds = [] }) {
   const clean = cleanName(name);
-  const league = await cleanLeague(leagueId);
+  const leagues = await cleanLeagues(leagueIds);
   // is_public من نسخة 024 من التطبيق يُترجم: عام = مفتوح.
   const policy = cleanPolicy(joinPolicy ?? (isPublic === true ? 'open' : undefined));
   if (await groupRepo.countOwnedBy(ownerId) >= MAX_GROUPS_OWNED) {
@@ -141,7 +154,7 @@ async function create({ ownerId, name, isPublic, joinPolicy, leagueId = null }) 
         inviteCode: generateCode(),
         ownerId,
         joinPolicy: policy,
-        leagueId: league,
+        leagueIds: leagues,
       });
     } catch (err) {
       // 23505 = رمز PostgreSQL الثابت لانتهاك قيد UNIQUE
@@ -179,6 +192,7 @@ async function invitePreview({ code, userId = null }) {
       id: group.id,
       name: group.name,
       image_url: group.image_url,
+      leagues: group.leagues,
       league_id: group.league_id,
       league_name: group.league_name,
       league_logo: group.league_logo,
@@ -191,16 +205,27 @@ async function invitePreview({ code, userId = null }) {
   };
 }
 
-/** تعديل الاسم أو العلنية أو الدوري — للمالك وحده. */
-async function update({ userId, groupId, name, isPublic, joinPolicy, leagueId }) {
+/**
+ * تعديل الاسم أو العلنية أو الدوريات — للمالك والمشرف.
+ *
+ * المشرف يعدّل الدوريات فقط لا الاسم ولا العلنية: طلب محمد أن «يضيف
+ * المشرف للمجلس الدوريات»، والاسم والعلنية هوية المجلس التي يملكها
+ * من أنشأه. الفصل هنا لا في المسار كي لا يُنسى في باب آخر.
+ */
+async function update({ userId, groupId, name, isPublic, joinPolicy, leagueIds }) {
   const group = await requireGroup(groupId);
-  if (group.owner_id !== userId) throw new GroupError(403, 'إعدادات المجلس لمالكه فقط');
+  const role = await groupRepo.memberRole(group.id, userId);
+  const manages = role === 'owner' || role === 'moderator';
+  if (!manages) throw new GroupError(403, 'إعدادات المجلس لمالكه ومشرفيه فقط');
 
   const changes = {};
-  if (name !== undefined) changes.name = cleanName(name);
-  if (joinPolicy !== undefined) changes.joinPolicy = cleanPolicy(joinPolicy);
-  else if (isPublic !== undefined) changes.joinPolicy = isPublic ? 'open' : 'code';
-  if (leagueId !== undefined) changes.leagueId = await cleanLeague(leagueId);
+  if (name !== undefined || joinPolicy !== undefined || isPublic !== undefined) {
+    if (role !== 'owner') throw new GroupError(403, 'اسم المجلس وعلنيته لمالكه فقط');
+    if (name !== undefined) changes.name = cleanName(name);
+    if (joinPolicy !== undefined) changes.joinPolicy = cleanPolicy(joinPolicy);
+    else if (isPublic !== undefined) changes.joinPolicy = isPublic ? 'open' : 'code';
+  }
+  if (leagueIds !== undefined) changes.leagueIds = await cleanLeagues(leagueIds);
   return groupRepo.update(group.id, changes);
 }
 
@@ -454,7 +479,7 @@ async function view({ userId, groupId, scope = 'season' }) {
 
   const manages = viewerRole === 'owner' || viewerRole === 'moderator';
   const [rows, members, requests, viewerRequested] = await Promise.all([
-    groupRepo.standings(group.id, group.league_id),
+    groupRepo.standings(group.id, group.leagues.map((l) => l.id)),
     groupRepo.members(group.id),
     // قائمة الطلبات لمن يبتّ فيها وحده؛ غيره لا يعرف من طلب.
     manages ? groupRepo.requests(group.id) : Promise.resolve([]),

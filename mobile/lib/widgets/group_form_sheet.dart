@@ -24,13 +24,13 @@ class GroupForm {
   final String name;
   final JoinPolicy joinPolicy;
 
-  /// null = كل الدوريات.
-  final int? leagueId;
+  /// فارغة = كل الدوريات.
+  final List<int> leagueIds;
 
   const GroupForm({
     required this.name,
     required this.joinPolicy,
-    required this.leagueId,
+    required this.leagueIds,
   });
 }
 
@@ -39,11 +39,16 @@ class GroupFormSheet extends StatefulWidget {
   final String action;
   final GroupForm? initial;
 
+  /// الدوريات وحدها بلا الاسم والعلنية — للمشرف: السيرفر يسمح له
+  /// بتعديل الدوريات فقط، وحقلٌ يُعرض ثم يُرفض حفظه وعدٌ كاذب.
+  final bool leaguesOnly;
+
   const GroupFormSheet({
     super.key,
     required this.title,
     required this.action,
     this.initial,
+    this.leaguesOnly = false,
   });
 
   static Future<GroupForm?> show(
@@ -51,14 +56,19 @@ class GroupFormSheet extends StatefulWidget {
     required String title,
     required String action,
     GroupForm? initial,
+    bool leaguesOnly = false,
   }) {
     return showModalBottomSheet<GroupForm>(
       context: context,
       backgroundColor: Brand.surface,
       // الورقة تعلو مع لوحة المفاتيح بدل أن تختفي خلفها.
       isScrollControlled: true,
-      builder: (_) =>
-          GroupFormSheet(title: title, action: action, initial: initial),
+      builder: (_) => GroupFormSheet(
+        title: title,
+        action: action,
+        initial: initial,
+        leaguesOnly: leaguesOnly,
+      ),
     );
   }
 
@@ -72,7 +82,8 @@ class _GroupFormSheetState extends State<GroupFormSheet> {
   late final TextEditingController _name =
       TextEditingController(text: widget.initial?.name ?? '');
   late JoinPolicy _policy = widget.initial?.joinPolicy ?? JoinPolicy.code;
-  late int? _leagueId = widget.initial?.leagueId;
+  /// المختارة — مجموعة لا قائمة: النقر يقلب العضوية ولا يكرّرها.
+  late final Set<int> _leagueIds = {...?widget.initial?.leagueIds};
   List<LeagueFollow>? _leagues;
   String? _leaguesError;
 
@@ -104,7 +115,8 @@ class _GroupFormSheetState extends State<GroupFormSheet> {
     if (name.length < 2) return;
     Navigator.pop(
       context,
-      GroupForm(name: name, joinPolicy: _policy, leagueId: _leagueId),
+      GroupForm(
+          name: name, joinPolicy: _policy, leagueIds: _leagueIds.toList()),
     );
   }
 
@@ -130,40 +142,42 @@ class _GroupFormSheetState extends State<GroupFormSheet> {
                 ),
               ),
               const SizedBox(height: 14),
-              TextField(
-                controller: _name,
-                autofocus: widget.initial == null,
-                textInputAction: TextInputAction.done,
-                maxLength: 50,
-                decoration: const InputDecoration(
-                  labelText: 'اسم المجلس',
-                  hintText: 'مثلاً: شباب الحي',
-                  counterText: '',
+              if (!widget.leaguesOnly) ...[
+                TextField(
+                  controller: _name,
+                  autofocus: widget.initial == null,
+                  textInputAction: TextInputAction.done,
+                  maxLength: 50,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم المجلس',
+                    hintText: 'مثلاً: شباب الحي',
+                    counterText: '',
+                  ),
+                  onSubmitted: (_) => _submit(),
                 ),
-                onSubmitted: (_) => _submit(),
-              ),
-              const SizedBox(height: 18),
-              const BrandSectionLabel('من يدخل؟'),
-              const SizedBox(height: 8),
-              // ثلاث سياسات بترتيب الانفتاح: بالرمز ← بموافقة ← مفتوح.
-              // الرمز يعمل في الثلاث: من معه الرمز مدعوّ، والدعوة تسبق
-              // الموافقة.
-              BrandSegmented(
-                labels: [for (final p in _policies) p.label],
-                selected: _policies.indexOf(_policy),
-                onChanged: (i) => setState(() => _policy = _policies[i]),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _policy.hint,
-                style: const TextStyle(
-                    color: Brand.textMuted, fontSize: 12, height: 1.6),
-              ),
-              const SizedBox(height: 18),
-              const BrandSectionLabel('على أي دوري؟'),
+                const SizedBox(height: 18),
+                const BrandSectionLabel('من يدخل؟'),
+                const SizedBox(height: 8),
+                // ثلاث سياسات بترتيب الانفتاح: بالرمز ← بموافقة ← مفتوح.
+                // الرمز يعمل في الثلاث: من معه الرمز مدعوّ، والدعوة تسبق
+                // الموافقة.
+                BrandSegmented(
+                  labels: [for (final p in _policies) p.label],
+                  selected: _policies.indexOf(_policy),
+                  onChanged: (i) => setState(() => _policy = _policies[i]),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _policy.hint,
+                  style: const TextStyle(
+                      color: Brand.textMuted, fontSize: 12, height: 1.6),
+                ),
+                const SizedBox(height: 18),
+              ],
+              const BrandSectionLabel('على أي دوريات؟'),
               const SizedBox(height: 4),
               const Text(
-                'يُرتَّب الأعضاء بنقاط هذا الدوري وحده — ومجلس «كل الدوريات» يجمع كل نقاطهم.',
+                'اختر دورياً أو أكثر: تُعرض مبارياتها وحدها في المجلس ويُرتَّب الأعضاء بنقاطها — ومجلس «كل الدوريات» يجمع كل نقاطهم. يمكن الإضافة لاحقاً.',
                 style: TextStyle(
                     color: Brand.textMuted, fontSize: 12, height: 1.6),
               ),
@@ -188,17 +202,21 @@ class _GroupFormSheetState extends State<GroupFormSheet> {
                   spacing: 7,
                   runSpacing: 7,
                   children: [
+                    // «كل الدوريات» = لا اختيار؛ نقرها يمسح الاختيار كله
+                    // بدل أن تكون شريحةً تُختار مع غيرها فتتناقض.
                     _LeagueChip(
                       label: 'كل الدوريات',
-                      selected: _leagueId == null,
-                      onTap: () => setState(() => _leagueId = null),
+                      selected: _leagueIds.isEmpty,
+                      onTap: () => setState(_leagueIds.clear),
                     ),
                     for (final l in _leagues!)
                       _LeagueChip(
                         label: l.name,
                         logoUrl: l.logoUrl,
-                        selected: _leagueId == l.id,
-                        onTap: () => setState(() => _leagueId = l.id),
+                        selected: _leagueIds.contains(l.id),
+                        onTap: () => setState(() {
+                          if (!_leagueIds.remove(l.id)) _leagueIds.add(l.id);
+                        }),
                       ),
                   ],
                 ),

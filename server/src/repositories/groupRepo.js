@@ -11,33 +11,74 @@ const db = require('../config/db');
 //
 // is_public مشتق من join_policy لا عمود: الواجهات تقرؤه منذ 024،
 // وحقيقة واحدة في عمود واحد (راجع الهجرة 025).
+//
+// دوريات المجلس (منذ 035) علاقة في group_leagues لا عمود، وتخرج من
+// هنا بشكلين:
+//   • leagues — مصفوفة {id, name, logo}؛ فارغة = كل الدوريات. هذا ما
+//     يقرؤه التطبيق الحديث.
+//   • league_id / league_name / league_logo — حقول توافق: التطبيق
+//     الذي في الاختبار المغلق والموقع ولوحة التحكم تقرؤها منذ 024.
+//     المعرّف والشعار يُملآن حين يكون الدوري واحداً فقط (لا معنى
+//     لـ«شعار واحد» لثلاثة دوريات)، والاسم يجمع الأسماء بفاصلة كي
+//     تبقى الجملة «مجلس · الإنجليزي، الإسباني» صادقة في كل باب.
 const GROUP_COLUMNS = `
-  g.id, g.name, g.invite_code, g.owner_id, g.join_policy, g.league_id, g.image_url, g.created_at,
+  g.id, g.name, g.invite_code, g.owner_id, g.join_policy, g.image_url, g.created_at,
   (g.join_policy <> 'code') AS is_public,
-  COALESCE(l.name_ar, l.name_en) AS league_name,
-  CASE WHEN g.league_id IS NULL THEN NULL
-       ELSE '/logos/league-' || g.league_id || '.png' END AS league_logo,
+  COALESCE(gls.leagues, '[]'::json) AS leagues,
+  CASE WHEN gls.n = 1 THEN gls.single_id END AS league_id,
+  gls.names AS league_name,
+  CASE WHEN gls.n = 1 THEN '/logos/league-' || gls.single_id || '.png' END AS league_logo,
   (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id)::int AS members_count,
   (SELECT COUNT(*) FROM group_join_requests r WHERE r.group_id = g.id)::int AS pending_requests`;
 
-const GROUP_FROM = `FROM groups g LEFT JOIN leagues l ON l.id = g.league_id`;
+// الدوريات مجمّعةً لكل مجلس في صفّ واحد — LATERAL كي يُكتب التجميع
+// مرة ويُستعمل في كل استعلام يقرأ المجلس (findMine له FROM خاص).
+const GROUP_LEAGUES_JOIN = `
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS n,
+           MIN(gl.league_id) AS single_id,
+           string_agg(COALESCE(l.name_ar, l.name_en), '، ' ORDER BY l.name_ar) AS names,
+           json_agg(json_build_object(
+             'id', gl.league_id,
+             'name', COALESCE(l.name_ar, l.name_en),
+             'logo', '/logos/league-' || gl.league_id || '.png'
+           ) ORDER BY l.name_ar) AS leagues
+      FROM group_leagues gl
+      JOIN leagues l ON l.id = gl.league_id
+     WHERE gl.group_id = g.id
+  ) gls ON true`;
+
+const GROUP_FROM = `FROM groups g ${GROUP_LEAGUES_JOIN}`;
+
+// استبدال دوريات مجلس داخل معاملة مفتوحة: حذفٌ ثم إدراج، لا فرقٌ
+// يُحسب — القائمة صغيرة، والفرق كودٌ أكثر بلا مكسب.
+async function replaceLeagues(client, groupId, leagueIds) {
+  await client.query(`DELETE FROM group_leagues WHERE group_id = $1`, [groupId]);
+  if (leagueIds.length === 0) return;
+  await client.query(
+    `INSERT INTO group_leagues (group_id, league_id)
+     SELECT $1, UNNEST($2::int[])`,
+    [groupId, leagueIds]
+  );
+}
 
 // الإنشاء والانضمام في معاملة واحدة: قروب بلا عضوية مالكه حالة
 // نصف مكتملة يجب ألا توجد ولو للحظة.
-async function create({ name, inviteCode, ownerId, joinPolicy = 'code', leagueId = null }) {
+async function create({ name, inviteCode, ownerId, joinPolicy = 'code', leagueIds = [] }) {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO groups (name, invite_code, owner_id, join_policy, league_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO groups (name, invite_code, owner_id, join_policy)
+       VALUES ($1, $2, $3, $4)
        RETURNING id`,
-      [name, inviteCode, ownerId, joinPolicy, leagueId]
+      [name, inviteCode, ownerId, joinPolicy]
     );
     await client.query(
       `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)`,
       [rows[0].id, ownerId]
     );
+    await replaceLeagues(client, rows[0].id, leagueIds);
     await client.query('COMMIT');
     return findById(rows[0].id);
   } catch (err) {
@@ -50,16 +91,32 @@ async function create({ name, inviteCode, ownerId, joinPolicy = 'code', leagueId
 
 // تعديل إعدادات المجلس. الحقول بأسماء ثابتة لا من الطلب: أسماء
 // الأعمدة لا تُمرَّر كمعاملات في SQL، فقائمة مغلقة هي الحماية.
-async function update(id, { name, joinPolicy, leagueId, imageUrl }) {
+//
+// الدوريات في معاملة مع بقية الحقول: «حُفظ الاسم ولم تُحفظ الدوريات»
+// حالة نصف مكتملة يجب ألا يراها المالك.
+async function update(id, { name, joinPolicy, leagueIds, imageUrl }) {
   const sets = [];
   const params = [];
   if (name !== undefined) { params.push(name); sets.push(`name = $${params.length}`); }
   if (imageUrl !== undefined) { params.push(imageUrl); sets.push(`image_url = $${params.length}`); }
   if (joinPolicy !== undefined) { params.push(joinPolicy); sets.push(`join_policy = $${params.length}`); }
-  if (leagueId !== undefined) { params.push(leagueId); sets.push(`league_id = $${params.length}`); }
-  if (sets.length === 0) return findById(id);
-  params.push(id);
-  await db.query(`UPDATE groups SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+  if (sets.length === 0 && leagueIds === undefined) return findById(id);
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (sets.length > 0) {
+      params.push(id);
+      await client.query(`UPDATE groups SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+    }
+    if (leagueIds !== undefined) await replaceLeagues(client, id, leagueIds);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   return findById(id);
 }
 
@@ -90,7 +147,7 @@ async function findMine(userId) {
             CASE WHEN g.owner_id = $1 THEN 'owner' ELSE gm.role END AS role
      FROM group_members gm
      JOIN groups g ON g.id = gm.group_id
-     LEFT JOIN leagues l ON l.id = g.league_id
+     ${GROUP_LEAGUES_JOIN}
      WHERE gm.user_id = $1
      ORDER BY gm.joined_at DESC`,
     [userId]
@@ -287,14 +344,16 @@ async function members(groupId) {
 // LEFT JOIN حتى يظهر العضو الجديد بلا توقعات بصفر نقاط — اختفاؤه من
 // القائمة سيبدو خطأً لأصحابه.
 //
-// leagueId هو دوري المجلس: حين يُقيَّد المجلس بدوري تُحسب النقاط من
-// مبارياته ورهان بطله وحدهما.
+// leagueIds هي دوريات المجلس: حين يُقيَّد المجلس بدوريات تُحسب النقاط
+// من مبارياتها ورهانات أبطالها وحدها. قائمة فارغة = كل الدوريات،
+// وتُمرَّر NULL كي يُطفأ الشرط في SQL بدل مصفوفة فارغة لا يطابقها شيء.
 //
 // «الجولة الأخيرة» = لكل دوري في النطاق، الجولة التي تحمل آخر مباراة
-// احتُسب فيها توقع. مجلس «كل الدوريات» يجمع آخر جولة من كل دوري —
+// احتُسب فيها توقع. مجلس بعدة دوريات يجمع آخر جولة من كل دوري —
 // فلا يُحرم من يلعب الإسباني لأن الإنجليزي لعب بعده بيوم.
 // رهان البطل خارج الجولة: هو موسمي بطبيعته.
-async function standings(groupId, leagueId = null) {
+async function standings(groupId, leagueIds = []) {
+  const scope = leagueIds.length > 0 ? leagueIds : null;
   const { rows } = await db.query(
     `WITH latest AS (
        SELECT DISTINCT ON (f.league_id) f.league_id, f.round, f.season,
@@ -302,7 +361,7 @@ async function standings(groupId, leagueId = null) {
          FROM fixtures f
          JOIN leagues l ON l.id = f.league_id
         WHERE f.round IS NOT NULL
-          AND ($2::int IS NULL OR f.league_id = $2)
+          AND ($2::int[] IS NULL OR f.league_id = ANY($2))
           AND EXISTS (SELECT 1 FROM predictions p
                        WHERE p.fixture_id = f.id AND p.settled_at IS NOT NULL)
         ORDER BY f.league_id, f.kickoff_at DESC
@@ -316,7 +375,7 @@ async function standings(groupId, leagueId = null) {
               COUNT(*) FILTER (WHERE p.kind = 'match')::int AS settled,
               COUNT(*) FILTER (WHERE p.kind = 'match' AND p.points > 0)::int AS hits
          FROM user_settled_points p
-        WHERE ($2::int IS NULL OR p.league_id = $2)
+        WHERE ($2::int[] IS NULL OR p.league_id = ANY($2))
         GROUP BY p.user_id
      ),
      round AS (
@@ -355,7 +414,7 @@ async function standings(groupId, leagueId = null) {
        LEFT JOIN round  r ON r.user_id = u.id
       WHERE gm.group_id = $1
       ORDER BY gm.joined_at ASC`,
-    [groupId, leagueId]
+    [groupId, scope]
   );
   return rows;
 }
@@ -407,12 +466,12 @@ async function adminList(search = '') {
   const { rows } = await db.query(
     `SELECT g.id, g.name, g.invite_code, g.created_at, g.join_policy,
             (g.join_policy <> 'code') AS is_public,
-            COALESCE(l.name_ar, l.name_en) AS league_name,
+            gls.names AS league_name,
             u.email AS owner_email,
             (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id)::int AS members_count
      FROM groups g
      JOIN users u ON u.id = g.owner_id
-     LEFT JOIN leagues l ON l.id = g.league_id
+     ${GROUP_LEAGUES_JOIN}
      ${where}
      ORDER BY g.created_at DESC
      LIMIT 200`,

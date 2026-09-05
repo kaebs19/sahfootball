@@ -135,9 +135,11 @@ class _InviteScreenState extends State<InviteScreen> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            p.group.leagueName == null
+                            p.group.leagues.isEmpty
                                 ? 'ترتيبٌ بينك وبين الأعضاء بمجموع نقاطك من كل الدوريات — نفس نقاطك في العرش، بلا حساب جديد.'
-                                : 'ترتيبٌ بينك وبين الأعضاء بنقاطك في ${p.group.leagueName} وحده — نفس نقاطك في العرش، بلا حساب جديد.',
+                                : p.group.leagues.length == 1
+                                    ? 'ترتيبٌ بينك وبين الأعضاء بنقاطك في ${p.group.leagueName} وحده — نفس نقاطك في العرش، بلا حساب جديد.'
+                                    : 'ترتيبٌ بينك وبين الأعضاء بنقاطك في ${p.group.leagueName} — نفس نقاطك في العرش، بلا حساب جديد.',
                             style: const TextStyle(
                                 color: Brand.textMuted, fontSize: 12.5, height: 1.7),
                           ),

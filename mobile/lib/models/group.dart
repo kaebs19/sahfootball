@@ -79,10 +79,9 @@ class Group {
   /// طلبات معلّقة تنتظر البتّ — لشارة «طلبات (3)» عند المدير.
   final int pendingRequests;
 
-  /// null = كل الدوريات. وإلا يُرتَّب الأعضاء بنقاط هذا الدوري وحده.
-  final int? leagueId;
-  final String? leagueName;
-  final String? leagueLogo;
+  /// دوريات المجلس. فارغة = كل الدوريات. وإلا تُعرض مبارياتها وحدها
+  /// في تبويب التوقعات ويُرتَّب الأعضاء بنقاطها وحدها.
+  final List<GroupLeague> leagues;
 
   final int membersCount;
 
@@ -99,9 +98,7 @@ class Group {
     this.joinPolicy = JoinPolicy.code,
     this.hasRequest = false,
     this.pendingRequests = 0,
-    this.leagueId,
-    this.leagueName,
-    this.leagueLogo,
+    this.leagues = const [],
     this.membersCount = 0,
     this.role = GroupRole.none,
   });
@@ -109,10 +106,23 @@ class Group {
   bool get isOwner => role == GroupRole.owner;
   bool get isMember => role.isMember;
 
+  /// المالك أو المشرف — من يعدّل دوريات المجلس ويبتّ في الطلبات.
+  bool get manages => role == GroupRole.owner || role == GroupRole.moderator;
+
   /// يظهر في الاستكشاف ويُدخَل بلا رمز (مباشرة أو بطلب).
   bool get isPublic => joinPolicy.isPublic;
 
-  /// «كل الدوريات» أو اسم الدوري — ما يُقرأ تحت اسم المجلس.
+  List<int> get leagueIds => [for (final l in leagues) l.id];
+
+  /// أسماء الدوريات مفصولةً — null حين يكون المجلس على كل الدوريات،
+  /// كي تبقى الجمل التي تقول «بنقاط X وحده» صادقة للدوري والدوريات.
+  String? get leagueName =>
+      leagues.isEmpty ? null : leagues.map((l) => l.name).join('، ');
+
+  /// شعار واحد حين يكون الدوري واحداً؛ لثلاثة دوريات لا شعار يمثّلها.
+  String? get leagueLogo => leagues.length == 1 ? leagues.first.logo : null;
+
+  /// «كل الدوريات» أو أسماء الدوريات — ما يُقرأ تحت اسم المجلس.
   String get scopeLabel => leagueName ?? 'كل الدوريات';
 
   factory Group.fromJson(Map<String, dynamic> j) {
@@ -137,9 +147,9 @@ class Group {
       joinPolicy: JoinPolicy.parse(j['join_policy']),
       hasRequest: j['has_request'] == true,
       pendingRequests: (j['pending_requests'] as num?)?.toInt() ?? 0,
-      leagueId: (j['league_id'] as num?)?.toInt(),
-      leagueName: j['league_name'] as String?,
-      leagueLogo: j['league_logo'] as String?,
+      leagues: (j['leagues'] as List? ?? const [])
+          .map((e) => GroupLeague.fromJson(e as Map<String, dynamic>))
+          .toList(),
       membersCount: (j['members_count'] as num?)?.toInt() ?? 0,
       role: role,
     );
@@ -156,11 +166,24 @@ class Group {
         joinPolicy: joinPolicy,
         hasRequest: hasRequest ?? this.hasRequest,
         pendingRequests: pendingRequests,
-        leagueId: leagueId,
-        leagueName: leagueName,
-        leagueLogo: leagueLogo,
+        leagues: leagues,
         membersCount: membersCount ?? this.membersCount,
         role: role ?? this.role,
+      );
+}
+
+/// دوري من دوريات المجلس — كما يرسله السيرفر في `leagues`.
+class GroupLeague {
+  final int id;
+  final String name;
+  final String logo;
+
+  const GroupLeague({required this.id, required this.name, required this.logo});
+
+  factory GroupLeague.fromJson(Map<String, dynamic> j) => GroupLeague(
+        id: (j['id'] as num).toInt(),
+        name: (j['name'] ?? '') as String,
+        logo: (j['logo'] ?? '') as String,
       );
 }
 
