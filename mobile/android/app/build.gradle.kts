@@ -65,10 +65,18 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName(if (hasUploadKey) "upload" else "debug")
-            // تصغير وإزالة الكود غير المستعمل في نسخة المتجر وحدها.
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // ولا تصغير (R8). جُرّب فانهار التطبيق عند الإقلاع على
+            // أندرويد بـ «Failed to create an instance of
+            // androidx.work.impl.WorkDatabase»: الأصناف التي تُستدعى
+            // بالانعكاس — Room يبني اسم `X_Impl` نصّاً ثم يطلبه —
+            // تُحذف لأن R8 لا يرى من ينادينها.
+            //
+            // ولا نلاحقها بقواعد keep: في تطبيق Flutter كودُ Dart
+            // مترجَم أصلاً (AOT)، فلا يمسّ R8 إلا غراء الإضافات وهو
+            // كسرٌ من الحزمة. مكسبٌ بالميغابايت مقابل انهيارٍ صامت
+            // لا يظهر إلا في نسخة الإصدار على جهاز حقيقي.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

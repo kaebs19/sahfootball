@@ -3,6 +3,8 @@ package com.sahfootball.app
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -39,7 +41,15 @@ class PushService : FirebaseMessagingService() {
         // وهي بالضبط الأيام التي كان التذكير سيعيده فيها.
         val channel = MainActivity.liveChannel
         if (channel != null) {
-            channel.invokeMethod("onToken", token)
+            // على الخيط الرئيسي إلزاماً: FirebaseMessagingService
+            // تنادينا على خيطها الخاص، وكل نداء إلى Flutter موسوم
+            // بـ @UiThread فيرمي استثناءً قاتلاً من غيره. وهذا
+            // ينهار عند أول تثبيت لا في حالة نادرة: التوكن الأول
+            // يصدر لحظة الإقلاع، فكان كل جهاز أندرويد جديد يرى
+            // التطبيق يُغلق فور فتحه.
+            Handler(Looper.getMainLooper()).post {
+                channel.invokeMethod("onToken", token)
+            }
             return
         }
         // التطبيق مغلق ولا جسر إلى Dart. لا حاجة لتخزينه: كل إقلاع
