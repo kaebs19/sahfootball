@@ -7,6 +7,7 @@
 // وما لا تفعله هذه الشاشة أهم مما تفعله: لا تعد بنقاط ولا بمراكز.
 // التاج يشتري راحةً وأدوات تُنفق قبل معرفة النتيجة، ولو باع مركزاً
 // في اللوحة لانتهت قيمة اللوحة — وهي المنتج كله.
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import '../api/api_client.dart';
 import '../brand.dart';
 import '../format.dart';
 import '../models/premium.dart';
+import '../services/store_bridge.dart';
 import '../state/premium.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
@@ -34,18 +36,36 @@ class _PremiumScreenState extends State<PremiumScreen> {
   PremiumOffer? _offer;
   String? _error;
   String? _busyProduct;
+  StreamSubscription<StoreOutcome>? _outcomes;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // نتائج المتجر تصل عبر مجرى لا كقيمة راجعة: ورقة الدفع نافذة
+    // نظام قد تُغلق وتُفتح، والمعاملة قد تكتمل بعد ثوانٍ أو أيام
+    // (موافقة وليّ الأمر). الشاشة تترجم النتيجة إلى جملة وحسب.
+    _outcomes = context.read<StoreBridge>().outcomes.listen(_onOutcome);
+  }
+
+  @override
+  void dispose() {
+    _outcomes?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
     setState(() => _error = null);
     try {
       final offer = await context.read<ApiClient>().premiumOffer();
-      if (mounted) setState(() => _offer = offer);
+      if (!mounted) return;
+      setState(() => _offer = offer);
+      // أسعار المتجر بعملة المشتري — آبل تشترط عرضها هي لا أرقامنا.
+      await context.read<StoreBridge>().loadProducts({
+        offer.crown.productId,
+        offer.pack.productId,
+        if (offer.shieldPack != null) offer.shieldPack!.productId,
+      });
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     }
@@ -55,18 +75,39 @@ class _PremiumScreenState extends State<PremiumScreen> {
   /// الإيصال.
   String get _platform => Platform.isIOS ? 'apple' : 'google';
 
+  void _onOutcome(StoreOutcome outcome) {
+    if (!mounted) return;
+    final premium = context.read<Premium>().isPremium;
+    final text = switch (outcome) {
+      StoreOutcome.granted => premium ? 'أهلاً بك في التاج الذهبي' : 'تمّ الشراء',
+      StoreOutcome.restoredNothing => 'لا مشتريات على هذا الحساب',
+      StoreOutcome.cancelled => null,
+      StoreOutcome.pending => 'بانتظار الموافقة على الشراء',
+      StoreOutcome.failed =>
+        context.read<StoreBridge>().lastError ?? 'تعذّر إتمام الشراء',
+    };
+    setState(() => _busyProduct = null);
+    if (text != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    }
+  }
+
   /// الشراء.
   ///
-  /// اليوم يذهب مباشرة إلى السيرفر بلا إيصال: المشتريات داخل
-  /// التطبيق تحتاج منتجات في App Store Connect ومفاتيح تحقّق، وحتى
-  /// تُنشأ يردّ السيرفر برسالة صريحة تُعرض كما هي. وحين تُوصَل
-  /// (`in_app_purchase`) يُستدعى المتجر هنا ويُمرَّر إيصاله إلى نفس
-  /// النداء — ولا يتغيّر شيء آخر في هذه الشاشة.
-  Future<void> _buy(StoreProduct product) async {
+  /// على iOS يذهب إلى StoreKit عبر [StoreBridge]: المتجر يقبض ويُصدر
+  /// معاملة موقّعة، والجسر يسلّمها إلى السيرفر الذي يتحقّق ويمنح.
+  /// على أندرويد يبقى المسار القديم حتى يُربط Play Billing، والسيرفر
+  /// يردّ عليه برسالة صريحة تُعرض كما هي.
+  Future<void> _buy(StoreProduct product, {required bool consumable}) async {
+    final store = context.read<StoreBridge>();
+    setState(() => _busyProduct = product.productId);
+    if (store.available) {
+      await store.buy(product.productId, consumable: consumable);
+      return; // النتيجة تصل عبر _onOutcome
+    }
     final api = context.read<ApiClient>();
     final premium = context.read<Premium>();
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _busyProduct = product.productId);
     try {
       final ent = await api.verifyPurchase(
         platform: _platform,
@@ -85,6 +126,11 @@ class _PremiumScreenState extends State<PremiumScreen> {
   }
 
   Future<void> _restore() async {
+    final store = context.read<StoreBridge>();
+    if (store.supported) {
+      await store.restore(); // النتيجة تصل عبر _onOutcome
+      return;
+    }
     final api = context.read<ApiClient>();
     final premium = context.read<Premium>();
     final messenger = ScaffoldMessenger.of(context);
@@ -99,6 +145,10 @@ class _PremiumScreenState extends State<PremiumScreen> {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
+
+  /// سعر المنتج كما يعرضه المتجر إن وُجد، وإلا سعرنا الاحتياطي.
+  String _price(StoreProduct p) =>
+      context.watch<StoreBridge>().products[p.productId]?.price ?? p.label;
 
   @override
   Widget build(BuildContext context) {
@@ -168,13 +218,13 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       FilledButton(
                         onPressed: _busyProduct != null
                             ? null
-                            : () => _buy(offer.crown),
+                            : () => _buy(offer.crown, consumable: false),
                         child: _busyProduct == offer.crown.productId
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
                                 child: CircularProgressIndicator(strokeWidth: 2))
-                            : Text('اشترك · ${offer.crown.label} شهرياً'),
+                            : Text('اشترك · ${_price(offer.crown)} شهرياً'),
                       ),
                       const SizedBox(height: 10),
                       _RenewalTerms(product: offer.crown),
@@ -188,10 +238,10 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       icon: Icons.bolt,
                       title: '${offer.pack.size} مضاعِفات ×${offer.pack.factor}',
                       note: 'رصيدك الآن ${ent.boost.left} · تُنفق في أي دوري',
-                      price: offer.pack.label,
+                      price: _price(offer.pack),
                       busy: _busyProduct == offer.pack.productId,
                       onBuy: signedIn && offer.enabled
-                          ? () => _buy(offer.pack)
+                          ? () => _buy(offer.pack, consumable: true)
                           : null,
                     ),
                     if (offer.shieldPack != null) ...[
@@ -203,10 +253,10 @@ class _PremiumScreenState extends State<PremiumScreen> {
                             : '${offer.shieldPack!.size} دروع سلسلة',
                         note: 'يحمي أول خطأ بعد شرائه · اشتريت '
                             '${ent.shield.purchased}',
-                        price: offer.shieldPack!.label,
+                        price: _price(offer.shieldPack!),
                         busy: _busyProduct == offer.shieldPack!.productId,
                         onBuy: signedIn && offer.enabled
-                            ? () => _buy(offer.shieldPack!)
+                            ? () => _buy(offer.shieldPack!, consumable: true)
                             : null,
                       ),
                     ],

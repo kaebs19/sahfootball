@@ -18,6 +18,7 @@ import 'screens/onboarding_screen.dart';
 import 'state/app_tab.dart';
 import 'state/links.dart';
 import 'widgets/ads.dart';
+import 'services/store_bridge.dart';
 import 'state/premium.dart';
 import 'state/session.dart';
 import 'widgets/brand_mark.dart';
@@ -40,6 +41,10 @@ Future<void> main() async {
   // الامتيازات تستمع إلى الجلسة بنفسها: الدخول والخروج وتبديل
   // الحساب كلها تغيّرها، ونداءٌ يدوي في كل مسار منها يُنسى في واحد.
   final premium = Premium(api, session);
+  // جسر المتجر يُنشأ هنا لا في شاشة الشراء: مستمع StoreKit يجب أن
+  // يعيش طوال عمر التطبيق كي تصل معاملة اكتملت والشاشة مغلقة
+  // (تجديد شهري، موافقة وليّ أمر) وتُصرَف إلى السيرفر.
+  final store = StoreBridge(api, premium);
   // نبدأ استعادة الجلسة قبل runApp حتى لا يرى المستخدم وميض شاشة
   // الدخول ثم قفزة للرئيسية. لا ننتظرها (بلا await) — الواجهة تعرض
   // شاشة الانتظار وتتحدث وحدها عند الانتهاء.
@@ -52,6 +57,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: tab),
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: premium),
+        ChangeNotifierProvider.value(value: store),
       ],
       child: const SahApp(),
     ),

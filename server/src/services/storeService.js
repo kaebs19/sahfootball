@@ -15,6 +15,7 @@
 // يقبل أي نصّ كإيصال في الإنتاج = تاج مجاني لكل من يعرف curl،
 // فالرفض هنا صريح ويقع عند الإقلاع لا عند أول محاولة شراء.
 const premiumService = require('./premiumService');
+const appleStore = require('./appleStore');
 const logger = require('../utils/logger');
 
 class StoreError extends Error {
@@ -75,6 +76,11 @@ async function verifyAndGrant({ userId, platform, productId, receipt }) {
   if (!product) throw new StoreError(400, 'منتج غير معروف');
 
   const verified = await verifyReceipt({ platform, productId, receipt });
+  // المتجر يقول ماذا اشترى فعلاً؛ لو خالف ما ادّعاه العميل نصدّق المتجر
+  // ونرفض: العميل لا يختار المنتج، الإيصال يحدّده.
+  if (verified.productId && verified.productId !== productId) {
+    throw new StoreError(400, 'الإيصال لمنتج آخر', 'RECEIPT_PRODUCT_MISMATCH');
+  }
 
   const { already, entitlements } = await premiumService.grant({
     userId,
@@ -82,6 +88,7 @@ async function verifyAndGrant({ userId, platform, productId, receipt }) {
     quantity: product.quantity,
     platform: verified.platform,
     externalId: verified.transactionId,
+    until: verified.expiresAt || null,
   });
 
   logger.info(`[store] ${already ? 'إيصال مكرّر' : 'منح'} ${product.kind} للمستخدم ${userId}`);
@@ -106,21 +113,25 @@ async function restore({ userId, platform, receipt }) {
   const verified = await verifyReceipt({
     platform, productId: cfg.crown.product_id, receipt,
   });
+  // المُستعاد قد يكون أي منتج: الإيصال يقول أيّها، ونمنح بحسبه.
+  const product = await resolveProduct(verified.productId || cfg.crown.product_id);
+  if (!product) throw new StoreError(400, 'منتج غير معروف');
   const { entitlements } = await premiumService.grant({
-    userId, kind: 'crown', quantity: 1,
+    userId, kind: product.kind, quantity: product.quantity,
     platform: verified.platform, externalId: verified.transactionId,
+    until: verified.expiresAt || null,
   });
   return { ok: true, restored: true, entitlements };
 }
 
 /**
- * التحقّق الفعلي من الإيصال. يرجع { platform, transactionId }.
+ * التحقّق الفعلي من الإيصال.
+ * يرجع { platform, transactionId, productId?, expiresAt? }.
  *
- * السائق الحقيقي غير مكتوب بعد عمداً، ولا يجوز أن يُكتب تخميناً:
- * آبل تتحقّق اليوم عبر App Store Server API بمفتاح p8 ومعرّف
- * مُصدِر ومعرّف مفتاح تُنشأ كلها في App Store Connect — وكتابة
- * تحقّق قبل وجودها تعني كوداً لم يُشغَّل مرة واحدة يحرس المال.
- * حتى تصل تلك المفاتيح، الرفض صريح ومكتوب فيه ما ينقص بالضبط.
+ * آبل (منذ 2026-09-07): الإيصال هو معاملة StoreKit 2 الموقّعة (JWS)،
+ * ويتحقّق منها appleStore محلياً بشهادات جذر آبل — بلا مفتاح API.
+ * جوجل: لم يُكتب بعد عمداً، ولا يجوز أن يُكتب تخميناً؛ حتى يصل حساب
+ * الخدمة يبقى الرفض صريحاً ومكتوباً فيه ما ينقص.
  */
 async function verifyReceipt({ platform, productId, receipt }) {
   const plat = String(platform || '').toLowerCase();
@@ -134,12 +145,20 @@ async function verifyReceipt({ platform, productId, receipt }) {
   }
 
   if (plat === 'apple') {
-    if (!process.env.APPLE_IAP_KEY_PATH || !process.env.APPLE_IAP_ISSUER_ID) {
-      throw new StoreError(503,
-        'الشراء عبر App Store غير مفعّل بعد',
-        'APPLE_IAP_NOT_CONFIGURED');
+    try {
+      const t = await appleStore.verifyTransaction(receipt);
+      return {
+        platform: 'apple',
+        transactionId: `apple:${t.transactionId}`,
+        productId: t.productId,
+        expiresAt: t.expiresAt,
+      };
+    } catch (err) {
+      if (err instanceof appleStore.AppleStoreError) {
+        throw new StoreError(err.status, err.message, err.code);
+      }
+      throw err;
     }
-    throw new StoreError(503, 'التحقّق من إيصال آبل غير مكتمل', 'APPLE_IAP_NOT_CONFIGURED');
   }
 
   if (plat === 'google') {

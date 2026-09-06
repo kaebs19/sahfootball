@@ -442,6 +442,24 @@ async function extendPremium(id, days) {
   return rows[0]?.premium_until ?? null;
 }
 
+/**
+ * تمديد الاشتراك إلى تاريخ بعينه — تاريخ الانتهاء الذي تقوله آبل.
+ *
+ * GREATEST لا تعيين مباشر: إيصالٌ قديم يصل متأخّراً (استعادة) لا يجوز
+ * أن يُرجع اشتراكاً ممدَّداً إلى الوراء. وحين يكون التاريخ أقدم مما
+ * عندنا لا يتغيّر شيء، وهذا هو المطلوب.
+ */
+async function setPremiumUntilAtLeast(id, until) {
+  const { rows } = await db.query(
+    `UPDATE users
+        SET premium_until = GREATEST(COALESCE(premium_until, to_timestamp(0)), $2::timestamptz)
+      WHERE id = $1
+      RETURNING premium_until`,
+    [id, until]
+  );
+  return rows[0]?.premium_until ?? null;
+}
+
 /** إلغاء الاشتراك فوراً — للأدمن ولحذف الحساب. */
 async function clearPremium(id) {
   await db.query('UPDATE users SET premium_until = NULL WHERE id = $1', [id]);

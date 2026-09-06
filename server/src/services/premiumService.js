@@ -235,7 +235,9 @@ async function shieldFor(userId) {
  * الاشتراك: وصولُ الإيصال مرتين لا يمنحها مرتين، لأن الثاني
  * يصطدم بقيد UNIQUE ويُهمَل بصمت.
  */
-async function grant({ userId, kind, quantity = 1, platform = 'manual', externalId = null }) {
+async function grant({
+  userId, kind, quantity = 1, platform = 'manual', externalId = null, until = null,
+}) {
   if (!['crown', 'multiplier', 'shield'].includes(kind)) {
     throw new PremiumError(400, 'نوع الشراء غير معروف');
   }
@@ -246,8 +248,15 @@ async function grant({ userId, kind, quantity = 1, platform = 'manual', external
   if (!row) return { already: true, entitlements: await forUser(userId) };
 
   if (kind === 'crown') {
-    const days = (cfg.crown.days || 30) * quantity;
-    await userRepo.extendPremium(userId, days);
+    if (until) {
+      // المتجر يعرف متى ينتهي الاشتراك بالضبط (تجديد، فترة سماح،
+      // استرداد جزئي). حسابُ «ثلاثين يوماً» من عندنا كان سيخالفه
+      // يوماً ويُظهر تاجاً لمن ألغى أو يحرم من دفع.
+      await userRepo.setPremiumUntilAtLeast(userId, until);
+    } else {
+      const days = (cfg.crown.days || 30) * quantity;
+      await userRepo.extendPremium(userId, days);
+    }
 
     const boosters = cfg.crown.monthly_boosters || 0;
     if (boosters > 0) {
