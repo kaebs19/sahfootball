@@ -139,6 +139,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             totalCompetitors: stats.totalCompetitors,
             accuracy: stats.accuracy,
           ),
+
+          // دعوة التاج تحت الصورة مباشرة لا في آخر الشاشة: هنا يقرأ
+          // اللاعب رقمه ومركزه، وهي اللحظة التي يسأل فيها «كيف
+          // أتقدّم؟» — والجواب أمامه. وتختفي وحدها عند المشترك وحين
+          // يكون المتجر مغلقاً (راجع CrownUpsell).
+          const SizedBox(height: 10),
+          const CrownUpsell(
+            reason: 'عدّل توقّعك، واحمِ سلسلتك، وتصفّح بلا إعلانات.',
+          ),
+
           const SizedBox(height: 10),
           PerformanceStrip(
             longestStreak: stats.longestStreak,
@@ -168,12 +178,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _Log.points => _pointsLog(stats, preds),
             _Log.badges => [BadgeGrid(badges: stats.badges)],
           },
-
-          // دعوة الاشتراك تختفي وحدها عند المشترك (راجع CrownUpsell).
-          const SizedBox(height: 22),
-          const CrownUpsell(
-            reason: 'عدّل توقّعك، واحمِ سلسلتك، وتصفّح بلا إعلانات.',
-          ),
 
           // الحصيلة لكل دوري: الرقم الكلي فوق يخفي أن اللاعب ملكٌ في
           // السعودي ومتفرّج في الإنجليزي — وهنا يظهر ذلك دورياً دورياً.
