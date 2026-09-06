@@ -125,11 +125,33 @@ class _PremiumScreenState extends State<PremiumScreen> {
                     ],
                     const SizedBox(height: 8),
                     if (!offer.enabled)
-                      const BrandCard(
-                        child: Text(
-                          'الاشتراك متوقّف مؤقتاً.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Brand.textMuted),
+                      // الصفحة معروضة والشراء لم يُفتح بعد: نقول ذلك
+                      // بالسعر لا بجملة «متوقّف» توحي بعطل. اللاعب يعرف ما
+                      // سيأتي وبكم، ولا زرّ يضغطه فيفشل.
+                      BrandCard(
+                        child: Column(
+                          children: [
+                            const Icon(Icons.hourglass_top,
+                                color: Brand.crown, size: 26),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'قريباً',
+                              style: TextStyle(
+                                fontFamily: Brand.displayFont,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Brand.text,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'الاشتراك الشهري ${offer.crown.label} — يُفتح '
+                              'مع التحديث القادم.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: Brand.textMuted, fontSize: 13),
+                            ),
+                          ],
                         ),
                       )
                     else if (!signedIn)

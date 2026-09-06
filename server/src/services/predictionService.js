@@ -99,7 +99,9 @@ async function assertMayEdit({ mine, home, away, ent }) {
     // والمتجر مغلق لا نبيع ما لا يُشترى: الرسالة تذكر الحدّ وحده بلا
     // دعوة إلى اشتراك لا سبيل إليه، والرمز يبقى كما هو لأن التطبيق
     // يقرّر بنفسه إن كان يُظهر الباب (Premium.storeOpen).
-    const open = Boolean(ent.store?.open);
+    // الدعوة إلى الاشتراك فقط حين يمكن شراؤه فعلاً؛ صفحة «قريباً»
+    // المعروضة للاطّلاع لا تبرّر جملة «اشترك لتغيّر توقّعك».
+    const open = Boolean(ent.store?.purchasable);
     let message;
     if (!open) {
       message = ent.edits.max === 0
