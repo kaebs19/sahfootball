@@ -20,6 +20,8 @@ import '../models/premium.dart';
 import '../state/premium.dart';
 import '../state/session.dart';
 import '../widgets/brand_widgets.dart';
+import 'contact_screen.dart';
+import 'page_screen.dart';
 
 class PremiumScreen extends StatefulWidget {
   const PremiumScreen({super.key});
@@ -152,12 +154,8 @@ class _PremiumScreenState extends State<PremiumScreen> {
                                 child: CircularProgressIndicator(strokeWidth: 2))
                             : Text('اشترك · ${offer.crown.label} شهرياً'),
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'يتجدّد شهرياً، ويُلغى متى شئت من إعدادات المتجر.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Brand.textFaint, fontSize: 11.5),
-                      ),
+                      const SizedBox(height: 10),
+                      _RenewalTerms(product: offer.crown),
                     ],
                     const SizedBox(height: 26),
                     // مشتريات لمرة واحدة، لمن لا يريد اشتراكاً شهرياً:
@@ -199,8 +197,121 @@ class _PremiumScreenState extends State<PremiumScreen> {
                         ),
                       ),
                     ],
+                    // الروابط في آخر الشاشة لا في الإعدادات وحدها:
+                    // آبل تشترط أن يجد المشتري سياسة الخصوصية وشروط
+                    // الاستخدام في نفس الشاشة التي يدفع فيها، لا بعد
+                    // بحثٍ في قائمة أخرى (بند 3.1.2).
+                    const SizedBox(height: 14),
+                    const _LegalLinks(),
                   ],
                 ),
+    );
+  }
+}
+
+/// شروط التجديد التلقائي — نصٌّ تشترطه المتاجر حرفاً بحرف.
+///
+/// آبل (بند 3.1.2) تطلب أن يقرأ المشتري قبل الدفع: اسم الخدمة، ومدّة
+/// الاشتراك، وسعره، وأنه يتجدّد تلقائياً ما لم يُلغَ قبل انتهاء المدّة
+/// بأربع وعشرين ساعة، وأن الخصم يقع على حسابه في المتجر، وأين يُلغيه.
+/// نقصُ بندٍ واحد منها سببُ رفض متكرّر — ولهذا النصّ هنا لا في صفحة
+/// بعيدة يصلها من يبحث.
+///
+/// والصياغة تتبدّل بالمنصّة: من يقرأ على آيفون يُقال له «حساب Apple»
+/// لأنه هناك يلغي فعلاً، ومن على أندرويد «Google Play».
+class _RenewalTerms extends StatelessWidget {
+  final StoreProduct product;
+  const _RenewalTerms({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = Platform.isIOS ? 'Apple' : 'Google Play';
+    final path = Platform.isIOS
+        ? 'إعدادات جهازك ← اسمك ← الاشتراكات'
+        : 'تطبيق Google Play ← الاشتراكات';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Brand.fill,
+        borderRadius: BorderRadius.circular(Brand.radiusSmall),
+      ),
+      child: Text(
+        'التاج الذهبي اشتراك شهري بـ${product.label} يتجدّد تلقائياً.\n'
+        'يُخصم المبلغ من حساب $store عند تأكيد الشراء، ثم يُجدَّد خلال '
+        'الأربع والعشرين ساعة السابقة لنهاية كل شهر ما لم تُلغِ التجديد '
+        'قبل ذلك بأربع وعشرين ساعة على الأقل.\n'
+        'تُدير اشتراكك وتُلغي التجديد من $path.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+            color: Brand.textFaint, fontSize: 11.5, height: 1.7),
+      ),
+    );
+  }
+}
+
+/// سياسة الخصوصية وشروط الاستخدام والتواصل — في شاشة الدفع نفسها.
+///
+/// الصفحتان تُفتحان داخل التطبيق من نفس مسار الإعدادات (site_pages على
+/// السيرفر)، فنصّ واحد يُصحَّح في مكان واحد ويظهر في البابين.
+class _LegalLinks extends StatelessWidget {
+  const _LegalLinks();
+
+  void _open(BuildContext context, Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
+      children: [
+        _LegalLink(
+          label: 'سياسة الخصوصية',
+          onTap: () => _open(
+            context,
+            const PageScreen(
+                slug: 'privacy', fallbackTitle: 'سياسة الخصوصية'),
+          ),
+        ),
+        const Text('·', style: TextStyle(color: Brand.textFaint)),
+        _LegalLink(
+          label: 'شروط الاستخدام',
+          onTap: () => _open(
+            context,
+            const PageScreen(slug: 'terms', fallbackTitle: 'شروط الاستخدام'),
+          ),
+        ),
+        const Text('·', style: TextStyle(color: Brand.textFaint)),
+        _LegalLink(
+          label: 'اتصل بنا',
+          onTap: () => _open(context, const ContactScreen()),
+        ),
+      ],
+    );
+  }
+}
+
+class _LegalLink extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _LegalLink({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        // زرّ نصّي مضغوط: ثلاثة أزرار بالحشو الافتراضي تفيض عن السطر
+        // في العربية، والمطلوب سطرٌ واحد هادئ لا صفّ أزرار.
+        minimumSize: Size.zero,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: Brand.textMuted,
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 11.5)),
     );
   }
 }
