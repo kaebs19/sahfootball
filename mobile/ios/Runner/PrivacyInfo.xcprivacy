@@ -90,6 +90,21 @@
 				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
+		<!-- سجلّ الشراء: دفتر المشتريات على السيرفر مربوط بحساب اللاعب،
+		     وهو ما يفعّل التاج ويستعيده على جهاز آخر. يُصرَّح به منذ ربط
+		     StoreKit (البناء 5). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePurchaseHistory</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
 		<!-- ما تجمعه حزمة AdMob لعرض الإعلانات: معرّف الجهاز وبيانات
 		     الإعلان. غير مرتبطة بحساب اللاعب عندنا، وبلا تتبّع. -->
 		<dict>
