@@ -195,7 +195,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'الاشتراك الشهري ${offer.crown.label} — يُفتح '
+                              'الاشتراك الشهري ${_price(offer.crown)} — يُفتح '
                               'مع التحديث القادم.',
                               textAlign: TextAlign.center,
                               style: const TextStyle(
@@ -227,7 +227,9 @@ class _PremiumScreenState extends State<PremiumScreen> {
                             : Text('اشترك · ${_price(offer.crown)} شهرياً'),
                       ),
                       const SizedBox(height: 10),
-                      _RenewalTerms(product: offer.crown),
+                      // السعر نفسه الذي على الزرّ: سعر المتجر إن وُجد.
+                      // إفصاحٌ بسعر يخالف الزرّ سببُ رفض عند آبل.
+                      _RenewalTerms(price: _price(offer.crown)),
                     ],
                     const SizedBox(height: 26),
                     // مشتريات لمرة واحدة، لمن لا يريد اشتراكاً شهرياً:
@@ -292,8 +294,9 @@ class _PremiumScreenState extends State<PremiumScreen> {
 /// والصياغة تتبدّل بالمنصّة: من يقرأ على آيفون يُقال له «حساب Apple»
 /// لأنه هناك يلغي فعلاً، ومن على أندرويد «Google Play».
 class _RenewalTerms extends StatelessWidget {
-  final StoreProduct product;
-  const _RenewalTerms({required this.product});
+  /// السعر كما يُعرض على زرّ الاشتراك — من المتجر حين يتوفّر.
+  final String price;
+  const _RenewalTerms({required this.price});
 
   @override
   Widget build(BuildContext context) {
@@ -309,7 +312,7 @@ class _RenewalTerms extends StatelessWidget {
         borderRadius: BorderRadius.circular(Brand.radiusSmall),
       ),
       child: Text(
-        'التاج الذهبي اشتراك شهري بـ${product.label} يتجدّد تلقائياً.\n'
+        'التاج الذهبي اشتراك شهري بـ$price يتجدّد تلقائياً.\n'
         'يُخصم المبلغ من حساب $store عند تأكيد الشراء، ثم يُجدَّد خلال '
         'الأربع والعشرين ساعة السابقة لنهاية كل شهر ما لم تُلغِ التجديد '
         'قبل ذلك بأربع وعشرين ساعة على الأقل.\n'
