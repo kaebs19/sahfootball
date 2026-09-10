@@ -33,6 +33,14 @@ const DEFAULT_PREMIUM = {
   // بخطأ 503 — وهو ما رآه محمد على الإنتاج في 2026-09-06.
   enabled: true,
   visible: false,
+  // one_time = تُعرض أدوات الشراء لمرة واحدة (حزمة المضاعِفات ودرع
+  // السلسلة). مفتاح ثالث لأن سؤاله غير سؤالَي enabled و visible:
+  // «هل نبيع الاشتراك؟» شيء، و«هل نبيع أدوات مستهلَكة إلى جانبه؟»
+  // شيء آخر — وقد يُغلق الثاني وحده لأسباب متجر أو تسعير.
+  //
+  // مطفأ اليوم: أول إصدار على App Store يحمل الاشتراك وحده،
+  // والمستهلَكات تُضاف بعد أن تُوافق آبل على الاشتراك.
+  one_time: false,
   crown: {
     product_id: 'com.sahfootball.app.crown.monthly',
     price: 19,
@@ -279,8 +287,12 @@ async function products() {
   return {
     enabled: Boolean(cfg.enabled),
     crown: cfg.crown,
-    multiplier_pack: cfg.multiplier_pack,
-    shield_pack: cfg.shield_pack,
+    // المستهلَكات تُحذف من العرض حين يكون one_time مطفأ — لا تُرسل
+    // بسعر ولا بزرّ معطّل: منتجٌ يظهر في التطبيق ولا يقابله منتج
+    // مُقدَّم للمراجعة في App Store Connect هو نفسه سبب الرفض تحت
+    // بند 2.1(b) الذي جاءنا في 2026-09-10.
+    multiplier_pack: cfg.one_time ? cfg.multiplier_pack : null,
+    shield_pack: cfg.one_time ? cfg.shield_pack : null,
     // ما يعطيه التاج، نصّاً واحداً يقرأه التطبيق والموقع معاً —
     // وقائمتان تتباعدان عند أول امتياز يُضاف.
     perks: [

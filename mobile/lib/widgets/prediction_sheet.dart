@@ -84,6 +84,11 @@ class _PredictionSheetState extends State<_PredictionSheet> {
   /// مشغّلان" التي لا وجود لها.
   int _multiplier = 1;
 
+  /// المضاعِف كما وصل من الخادم — به نعرف هل غيّر اللاعب شيئاً.
+  /// في الحالة المثبَّتة لا يبقى قابلاً للتغيير سواه، فإن لم يمسّه
+  /// فلا شيء يُحفظ، ولا معنى لزرّ اسمه «حفظ».
+  int _savedMultiplier = 1;
+
   @override
   void initState() {
     super.initState();
@@ -105,6 +110,7 @@ class _PredictionSheetState extends State<_PredictionSheet> {
               : mult.on
                   ? mult.factor
                   : 1;
+      _savedMultiplier = _multiplier;
     });
   }
 
@@ -177,53 +183,66 @@ class _PredictionSheetState extends State<_PredictionSheet> {
             style: const TextStyle(color: Brand.textFaint, fontSize: 12),
           ),
           const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: _ScoreStepper(
-                  label: widget.fixture.homeTeamName,
-                  value: _home,
-                  enabled: !_busy && !widget.locked,
-                  onChanged: (v) => setState(() => _home = v),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6),
-                child: Text(':',
-                    style: TextStyle(color: Brand.textFaint, fontSize: 20)),
-              ),
-              Expanded(
-                child: _ScoreStepper(
-                  label: widget.fixture.awayTeamName,
-                  value: _away,
-                  enabled: !_busy && !widget.locked,
-                  onChanged: (v) => setState(() => _away = v),
-                ),
-              ),
-            ],
-          ),
-          if (widget.locked) ...[
-            const SizedBox(height: 12),
+          // مثبَّتاً: لوحة نتيجة تُقرأ، لا عدّادان مطفآن.
+          //
+          // العدّاد المعطّل يقول «مسموح لك بهذا لكنه لا يعمل الآن»،
+          // فيظل اللاعب يضغط عليه. والتوقّع المؤكَّد ليس حقلاً معطّلاً
+          // بل نتيجةٌ سُجّلت باسمه — فتُعرض كما تُعرض النتائج: رقمان
+          // كبيران على أرضٍ خضراء بينهما شارة قفل.
+          if (widget.locked)
+            _LockedScore(
+              homeName: widget.fixture.homeTeamName,
+              awayName: widget.fixture.awayTeamName,
+              home: _home,
+              away: _away,
+            )
+          else
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.lock_outline,
-                    size: 14, color: Brand.textMuted),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    // الجملة تذكر الميزة فقط حين يمكن شراؤها؛ وإلا تكون
-                    // قاعدة لعب لا إعلاناً عن باب مغلق.
-                    context.watch<Premium>().storeOpen
-                        ? 'يُثبَّت التوقّع من أول تأكيد — تعديله قبل الصافرة من مزايا التاج الذهبي.'
-                        : 'يُثبَّت التوقّع من أول تأكيد ولا يُعدَّل قبل الصافرة.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Brand.textMuted, fontSize: 12.5, height: 1.4),
+                Expanded(
+                  child: _ScoreStepper(
+                    label: widget.fixture.homeTeamName,
+                    value: _home,
+                    enabled: !_busy,
+                    onChanged: (v) => setState(() => _home = v),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(':',
+                      style: TextStyle(color: Brand.textFaint, fontSize: 20)),
+                ),
+                Expanded(
+                  child: _ScoreStepper(
+                    label: widget.fixture.awayTeamName,
+                    value: _away,
+                    enabled: !_busy,
+                    onChanged: (v) => setState(() => _away = v),
                   ),
                 ),
               ],
             ),
+          if (widget.locked) ...[
+            const SizedBox(height: 14),
+            // الدعوة تُعرض فقط حين يكون الباب مفتوحاً ولمن لا يملك
+            // التاج؛ وإلا فهي قاعدة لعب تُقال بسطر، لا إعلانٌ عن
+            // بابٍ مغلق ولا بيعٌ لمن اشترى.
+            if (context.watch<Premium>().storeOpen &&
+                !context.watch<Premium>().isPremium)
+              _EditUpsell(
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const PremiumScreen()));
+                },
+              )
+            else
+              const Text(
+                'يُثبَّت التوقّع من أول تأكيد ولا يُعدَّل قبل الصافرة.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: Brand.textMuted, fontSize: 12.5, height: 1.4),
+              ),
           ],
           const SizedBox(height: 20),
           // جدول النقاط من الخادم لا من نصّ مكتوب هنا: كان يقول
@@ -294,7 +313,15 @@ class _PredictionSheetState extends State<_PredictionSheet> {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: _busy ? null : _save,
+              // مقفلاً لا يبقى إلا المضاعِف قابلاً للتغيير. فإن لم
+              // يمسّه اللاعب فلا شيء يُرسل، والزرّ يُغلق الشيت باسمه
+              // الصادق: «تمّ». وزرُّ «حفظ» فوق شاشة لا تحفظ شيئاً
+              // يجعل اللاعب يظن أنه عدّل نتيجته وهو لم يفعل.
+              onPressed: _busy
+                  ? null
+                  : widget.locked && _multiplier == _savedMultiplier
+                      ? () => Navigator.pop(context)
+                      : _save,
               child: _busy
                   ? const SizedBox(
                       width: 20,
@@ -302,12 +329,147 @@ class _PredictionSheetState extends State<_PredictionSheet> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Brand.onAccent),
                     )
-                  // مقفلاً لا يبقى إلا المضاعِف قابلاً للتغيير، فالزرّ
-                  // «حفظ» لا «أكّد التوقّع» — النتيجة مؤكَّدة أصلاً.
-                  : Text(widget.locked ? 'حفظ' : 'أكّد التوقّع'),
+                  : Text(widget.locked
+                      ? (_multiplier == _savedMultiplier ? 'تمّ' : 'حفظ')
+                      : 'أكّد التوقّع'),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// لوحة التوقّع المثبَّت — رقمان كبيران بينهما شارة قفل.
+///
+/// اللون أخضر لا رمادي: الرمادي لغة المعطّل، والتوقّع هنا ليس
+/// معطّلاً بل **مسجَّلٌ ونافذ** — وهو نفس الأخضر الذي تحمله شارة
+/// «توقّعك · مثبَّت» على بطاقة المباراة، فيعرف اللاعب أنهما شيء واحد.
+class _LockedScore extends StatelessWidget {
+  final String homeName;
+  final String awayName;
+  final int home;
+  final int away;
+
+  const _LockedScore({
+    required this.homeName,
+    required this.awayName,
+    required this.home,
+    required this.away,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: Brand.correctWash(0.07),
+        border: Border.all(color: Brand.correctWash(0.28)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _side(homeName, home)),
+              Column(
+                children: [
+                  Icon(Icons.lock, size: 15, color: Brand.correctWash(0.75)),
+                  const SizedBox(height: 6),
+                  const Text('-',
+                      style:
+                          TextStyle(color: Brand.textFaint, fontSize: 18)),
+                ],
+              ),
+              Expanded(child: _side(awayName, away)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'توقّعك مسجَّل',
+            style: TextStyle(
+              color: Brand.correctWash(0.85),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _side(String name, int value) => Column(
+        children: [
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                color: Brand.textMuted,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          BrandNumber('$value', size: 34, color: Brand.correct),
+        ],
+      );
+}
+
+/// دعوة التعديل — سطرٌ واحد يقول الميزة ويفتح بابها.
+///
+/// جملةٌ رمادية تذكر «التاج الذهبي» بلا زرّ كانت طريقاً مسدوداً:
+/// اللاعب يقرأ أن التعديل ممكن ولا يجد كيف. هنا البطاقة نفسها هي
+/// الزرّ.
+class _EditUpsell extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _EditUpsell({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Brand.crownWash(0.08),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            border: Border.all(color: Brand.crownWash(0.32)),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.workspace_premium,
+                  size: 20, color: Brand.crown),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'عدّل توقّعك مع التاج الذهبي',
+                      style: TextStyle(
+                        color: Brand.crown,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'غيّر نتيجتك ما دامت الصافرة لم تُطلق.',
+                      style:
+                          TextStyle(color: Brand.textMuted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_left, size: 20, color: Brand.crown),
+            ],
+          ),
+        ),
       ),
     );
   }

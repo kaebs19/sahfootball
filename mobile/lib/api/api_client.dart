@@ -99,6 +99,28 @@ class ApiClient {
   // استخدام (rotation)، الطلب الثاني سيفشل ويُسقط الجلسة خطأً.
   Future<bool>? _refreshInFlight;
 
+  /// مسارات لا يعني فيها 401 «انتهت الجلسة» بل «الاعتماد خاطئ»:
+  /// بريد أو كلمة سر لا تطابق، أو توكن تجديد مرفوض. تجديدُ الجلسة
+  /// عندها بلا معنى.
+  ///
+  /// قائمة صريحة لا بادئة `/api/auth/`: تحت تلك البادئة يقع أيضاً
+  /// `/api/auth/me` — وهو الطلب الذي يستعيد به التطبيق جلسته عند كل
+  /// إقلاع. استثناؤه كان يعني أن أول 401 بعد انتهاء الـ access token
+  /// (خمس عشرة دقيقة) يُخرج المستخدم بلا محاولة تجديد واحدة، فيجد
+  /// نفسه أمام شاشة الدخول كل يوم ومعه refresh token صالح ثلاثين يوماً.
+  static const _noRefreshPaths = {
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/apple',
+    '/api/auth/google',
+    '/api/auth/refresh',
+    '/api/auth/forgot-password',
+    '/api/auth/reset-password',
+  };
+
+  /// هل كان آخر فشل تجديد رفضاً من الخادم (وليس تعذّر وصول إليه)؟
+  bool _refreshRejected = false;
+
   ApiClient() {
     _dio = Dio(BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
@@ -145,14 +167,32 @@ class ApiClient {
 
         // نحاول التجديد فقط لو: الرد 401، وعندنا refresh token،
         // ولم نجرب مع هذا الطلب من قبل (منعاً لحلقة لا نهائية)،
-        // وليس الطلب نفسه طلب مصادقة (فشل الدخول 401 طبيعي وليس
+        // وليس الطلب نفسه طلب اعتماد (فشل الدخول 401 طبيعي وليس
         // انتهاء جلسة).
-        final isAuthPath = error.requestOptions.path.startsWith('/api/auth/');
+        final isCredentialPath = _noRefreshPaths.contains(
+            error.requestOptions.path);
         if (response?.statusCode == 401 &&
             tokens.refreshToken != null &&
             !alreadyRetried &&
-            !isAuthPath) {
-          final refreshed = await _refreshTokens();
+            !isCredentialPath) {
+          // هل جدّد غيرُنا بينما كان هذا الطلب في الطريق؟
+          //
+          // عند الإقلاع تنطلق عدة طلبات معاً بنفس الـ access token
+          // المنتهي. أولها يعود 401 فيجدّد وينجح، ثم يعود الثاني —
+          // وقد أُرسل قبل التجديد — بـ 401 أيضاً، فيطلب تجديداً
+          // ثانياً. والخادم يدوّر توكن التجديد عند كل استعمال، فأول
+          // تجديد أبطل ما بيدنا: الثاني يُرفض بـ 401، ونقرأ الرفض
+          // «ماتت الجلسة» فنمحو توكنات صالحة تماماً.
+          //
+          // العلاج ألّا نجدّد أصلاً: التوكن الذي حمله الطلب الفاشل
+          // يختلف عن الذي بأيدينا الآن ⇒ التجديد وقع وكفى، نعيد
+          // الطلب بالجديد فوراً.
+          final sentToken = (error.requestOptions.headers['Authorization']
+                  as String?)
+              ?.replaceFirst('Bearer ', '');
+          final refreshed = sentToken != null && sentToken != tokens.accessToken
+              ? true
+              : await _refreshTokens();
           if (refreshed) {
             // نعيد الطلب الأصلي نفسه بالتوكن الجديد.
             final opts = error.requestOptions;
@@ -164,10 +204,15 @@ class ApiClient {
             } on DioException catch (e) {
               return handler.next(e);
             }
-          } else {
+          } else if (_refreshRejected) {
+            // الخادم ردّ ورفض التوكن: الجلسة ميتة فعلاً.
             await tokens.clear();
             onSessionExpired?.call();
           }
+          // وإلا فالتجديد فشل لأننا لم نصل إلى الخادم أصلاً — شبكة
+          // مقطوعة، أو 502 أثناء نشر. لا نمحو توكنات صالحة بسبب
+          // انقطاع لحظي؛ يفشل هذا الطلب وحده ويُعاد التجديد في
+          // الطلب التالي.
         }
         handler.next(error);
       },
@@ -186,15 +231,29 @@ class ApiClient {
     try {
       // Dio جديد بلا interceptors: لو استعملنا _dio نفسه ورجع
       // التجديد 401 لدخلنا في تجديد داخل تجديد.
-      final bare = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl));
+      final bare = Dio(BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 20),
+      ));
       final res = await bare.post('/api/auth/refresh',
           data: {'refreshToken': tokens.refreshToken});
       await tokens.save(
         access: res.data['accessToken'] as String,
         refresh: res.data['refreshToken'] as String,
       );
+      _refreshRejected = false;
       return true;
+    } on DioException catch (e) {
+      // الفرق الذي يحفظ الجلسة: ردٌّ صريح من الخادم يرفض التوكن =
+      // جلسة ميتة. أما مهلة أو DNS أو 502 فليست حكماً على التوكن.
+      // ليس كل 4xx حكماً على التوكن: 429 يعني «أبطئ» و408 يعني
+      // «تأخّرت»، وكلاهما يزول بعد لحظة. الرفض الحقيقي ثلاثة فقط.
+      final code = e.response?.statusCode;
+      _refreshRejected = code == 400 || code == 401 || code == 403;
+      return false;
     } catch (_) {
+      _refreshRejected = false;
       return false;
     }
   }

@@ -30,11 +30,42 @@ const teamRepo = require('../repositories/teamRepo');
 const leagueRepo = require('../repositories/leagueRepo');
 const logger = require('../utils/logger');
 
-const DEFAULT_CHAMPION = { max_award: 1000 };
+const DEFAULT_CHAMPION = {
+  max_award: 1000,
+  // lock_after_pick = الرهان يُقفل من أول اختيار ولا يُغيَّر حتى نهاية
+  // الموسم. مفتاحٌ لا ثابت لأنه قرار لعبة يُراجَع: التسعير أدناه
+  // كان يسمح بالتغيير مقابل سعر اليوم، وهو عادل حسابياً لكنه يجعل
+  // «من يرفع الكأس؟» سؤالاً يُجاب عليه كل أسبوع لا مرة في الموسم —
+  // فيفقد وزنه. القفل يعيد للرهان معناه: قرارٌ واحد يُحمَل موسماً.
+  lock_after_pick: true,
+};
 
-/** إعدادات الجائزة المعمول بها. */
+/**
+ * إعدادات الجائزة المعمول بها، مدموجة فوق الاحتياطية.
+ *
+ * دمجٌ لا استبدال: صفّ الإعدادات في القاعدة سبق هذا المفتاح، ولو
+ * أخذناه كما هو لغاب lock_after_pick عنه فصار «لا قفل» بلا أن
+ * يقرّره أحد.
+ */
 async function config() {
-  return (await settingsRepo.get('champion').catch(() => null)) ?? DEFAULT_CHAMPION;
+  const saved = await settingsRepo.get('champion').catch(() => null);
+  return { ...DEFAULT_CHAMPION, ...(saved || {}) };
+}
+
+/** خطأ يصل إلى اللاعب بنصّه ورمزه (راجع معالج الأخطاء في app.js). */
+class ChampionError extends Error {
+  constructor(status, message, code) {
+    super(message);
+    this.status = status;
+    this.expose = true;
+    this.code = code;
+  }
+}
+
+/** رهان هذا اللاعب على هذا الدوري في هذا الموسم، إن وُجد. */
+async function mineFor(userId, leagueId, season) {
+  const mine = await championRepo.findMine(userId);
+  return mine.find((m) => m.league_id === leagueId && m.season === season) || null;
 }
 
 /**
@@ -71,6 +102,17 @@ async function quote(leagueId, season) {
  * التبكير وحده.
  */
 async function pick({ userId, leagueId, season, teamId }) {
+  const cfg = await config();
+  if (cfg.lock_after_pick) {
+    const mine = await mineFor(userId, leagueId, season);
+    // نفس الفريق مرة ثانية ليس تغييراً: نعيده كما هو بلا إعادة تسعير،
+    // فضغطةٌ مكرّرة لا تُنقص جائزة أحد.
+    if (mine && mine.team_id === teamId) return mine;
+    if (mine) {
+      throw new ChampionError(409,
+        'رهانك على البطل مقفل حتى نهاية الموسم', 'CHAMPION_LOCKED');
+    }
+  }
   const { award } = await quote(leagueId, season);
   return championRepo.upsert({ userId, leagueId, season, teamId, award });
 }
@@ -123,15 +165,20 @@ async function settleFinishedSeasons() {
  * ثالث.
  */
 async function card(userId, league) {
-  const [teams, mine] = await Promise.all([
+  const [teams, mine, cfg] = await Promise.all([
     teamRepo.findPlayable(),
     championRepo.findMine(userId),
+    config(),
   ]);
+  const own = mine.find((m) => m.league_id === league.id && m.season === league.season) || null;
   return {
     league: { id: league.id, name: league.name },
     teams: teams.filter((t) => t.league_id === league.id),
     quote: await quote(league.id, league.season),
-    mine: mine.find((m) => m.league_id === league.id && m.season === league.season) || null,
+    mine: own,
+    // «مقفل» يُحسب هنا لا في العميل: التطبيق والموقع يعرضان الحالة
+    // نفسها، والقاعدة واحدة في مكان واحد.
+    locked: Boolean(cfg.lock_after_pick && own),
   };
 }
 
@@ -151,5 +198,6 @@ async function cards(userId) {
 }
 
 module.exports = {
-  config, quote, pick, card, cards, settleFinishedSeasons, DEFAULT_CHAMPION,
+  config, quote, pick, card, cards, settleFinishedSeasons,
+  DEFAULT_CHAMPION, ChampionError,
 };

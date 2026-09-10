@@ -2295,6 +2295,8 @@ a.fx:hover { background: rgba(255,255,255,.025); }
   transition: border-color .15s, background .15s, transform .1s;
 }
 .wl-team:hover { border-color: var(--crown); background: var(--crown-wash); }
+.wl-team:disabled { opacity: .45; cursor: default; }
+.wl-team:disabled:hover { border-color: var(--line); background: transparent; }
 .wl-team:active { transform: scale(.97); }
 .wl-team .fx-logo { width: 38px; height: 38px; }
 .wl-team span {

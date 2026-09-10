@@ -338,7 +338,8 @@ class _ChampionStep extends StatelessWidget {
                 // لا نسخة مصغرة تتقادم عند أول تعديل عليها.
                 onPressed: followedAny
                     ? () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const ChampionScreen()))
+                        builder: (_) =>
+                            const ChampionScreen(fromOnboarding: true)))
                     : null,
                 child: Text(followedAny
                     ? 'اختر بطلك الآن'

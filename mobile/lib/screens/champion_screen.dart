@@ -20,7 +20,11 @@ import '../widgets/brand_widgets.dart';
 import 'leagues_screen.dart';
 
 class ChampionScreen extends StatefulWidget {
-  const ChampionScreen({super.key});
+  /// هل جئنا من رحلة أول مرة؟ يغيّر نصّ زرّ الخروج وحده: «واصل»
+  /// تُكمل الرحلة، و«تمّ» تُغلق شاشةً فُتحت من الإعدادات.
+  final bool fromOnboarding;
+
+  const ChampionScreen({super.key, this.fromOnboarding = false});
 
   @override
   State<ChampionScreen> createState() => _ChampionScreenState();
@@ -48,12 +52,23 @@ class _ChampionScreenState extends State<ChampionScreen> {
 
   Future<void> _pick(ChampionCard card, ChampionTeam team) async {
     try {
-      await context
-          .read<ApiClient>()
-          .pickChampion(leagueId: card.leagueId, teamId: team.id);
+      await context.read<ApiClient>().pickChampion(
+        leagueId: card.leagueId,
+        teamId: team.id,
+      );
       // نُعيد الجلب بدل تعديل الحالة محلياً: السعر يُقفل في الخادم
       // لحظة الاختيار، وتخمينه هنا يعرض رقماً قد يخالف المحفوظ.
       await _load();
+      if (mounted) {
+        // إقرارٌ صريح بالحفظ.
+        //
+        // الضغطة نفسها هي الحفظ — لا زرّ «احفظ» بعدها — وهذا سريع
+        // لكنه صامت: اللاعب اختار فريقه ولم يجد ما يؤكّد، فظنّ أن
+        // شيئاً لم يقع ووقف ينتظر زرّاً لا وجود له.
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('حُفظ رهانك على ${team.name}')));
+      }
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -70,21 +85,35 @@ class _ChampionScreenState extends State<ChampionScreen> {
       body: _error != null
           ? _Message(text: _error!, onRetry: _load)
           : cards == null
-              ? const Center(child: CircularProgressIndicator())
-              : cards.isEmpty
-                  ? _NoLeagues(onDone: _load)
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-                        children: [
-                          for (final c in cards) ...[
-                            _CardView(card: c, onPick: (t) => _pick(c, t)),
-                            const SizedBox(height: 14),
-                          ],
-                        ],
-                      ),
-                    ),
+          ? const Center(child: CircularProgressIndicator())
+          : cards.isEmpty
+          ? _NoLeagues(onDone: _load)
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+                children: [
+                  for (final c in cards) ...[
+                    _CardView(card: c, onPick: (t) => _pick(c, t)),
+                    const SizedBox(height: 14),
+                  ],
+                ],
+              ),
+            ),
+      // مخرجٌ ظاهر دائماً.
+      //
+      // الشاشة تُفتح فوق رحلة أول مرة، ولا شيء فيها يقول كيف تعود
+      // إليها غير سهم صغير في الزاوية. زرٌّ عريض أسفلها يُنهي القرار
+      // ويُرجع اللاعب إلى حيث كان.
+      bottomNavigationBar: cards == null || cards.isEmpty
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: Text(widget.fromOnboarding ? 'واصل' : 'تمّ'),
+              ),
+            ),
     );
   }
 }
@@ -114,9 +143,10 @@ class _CardView extends StatelessWidget {
                 child: Text(
                   card.leagueName,
                   style: const TextStyle(
-                      color: Brand.text,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700),
+                    color: Brand.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               BrandChip(
@@ -129,12 +159,35 @@ class _CardView extends StatelessWidget {
           Text(
             mine == null
                 ? 'مضى ${card.progressPct}% من الموسم، فقيمة الرهان الآن '
-                    '${card.award} من ${card.maxAward}.'
-                : 'رهانك محفوظ بـ ${mine.award} نقطة. تغييره الآن يُعيد تسعيره '
-                    'بـ ${card.award} — السعر ينزل مع الموسم.',
+                      '${card.award} من ${card.maxAward}.'
+                : card.locked
+                ? 'رهانك محفوظ بـ ${mine.award} نقطة، ومقفل حتى نهاية '
+                      'الموسم.'
+                : 'رهانك محفوظ بـ ${mine.award} نقطة. تغييره الآن يُعيد '
+                      'تسعيره بـ ${card.award} — السعر ينزل مع الموسم.',
             style: const TextStyle(
-                color: Brand.textMuted, fontSize: 12.5, height: 1.6),
+              color: Brand.textMuted,
+              fontSize: 12.5,
+              height: 1.6,
+            ),
           ),
+          if (card.locked) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.lock, size: 13, color: Brand.crown),
+                const SizedBox(width: 5),
+                Text(
+                  'قرارٌ واحد للموسم',
+                  style: TextStyle(
+                    color: Brand.crownWash(0.9),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 14),
           // شبكة الأندية: ضغطة واحدة تختار وترسل. الخطوة التي لا
           // وجود لها لا تُنسى ولا تُخطئ.
@@ -150,10 +203,14 @@ class _CardView extends StatelessWidget {
             ),
             itemBuilder: (_, i) {
               final t = card.teams[i];
+              final picked = mine?.teamId == t.id;
+              // مقفلاً: الفريق المختار وحده يبقى حيّاً، والبقية تخفت
+              // ولا تستجيب — لا نفتح باباً يردّه الخادم بعد الضغط.
               return _TeamTile(
                 team: t,
-                picked: mine?.teamId == t.id,
-                onTap: () => onPick(t),
+                picked: picked,
+                dimmed: card.locked && !picked,
+                onTap: card.locked ? null : () => onPick(t),
               );
             },
           ),
@@ -166,50 +223,58 @@ class _CardView extends StatelessWidget {
 class _TeamTile extends StatelessWidget {
   final ChampionTeam team;
   final bool picked;
-  final VoidCallback onTap;
+  final bool dimmed;
+  final VoidCallback? onTap;
 
-  const _TeamTile(
-      {required this.team, required this.picked, required this.onTap});
+  const _TeamTile({
+    required this.team,
+    required this.picked,
+    required this.onTap,
+    this.dimmed = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        decoration: BoxDecoration(
-          color: picked ? Brand.crownWash(0.13) : Brand.fill,
-          border: Border.all(color: picked ? Brand.crown : Brand.border),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (team.logoUrl != null)
-              CachedNetworkImage(
-                imageUrl: AppConfig.absoluteUrl(team.logoUrl!),
-                width: 30,
-                height: 30,
-                errorWidget: (_, _, _) =>
-                    const Icon(Icons.shield_outlined, size: 26),
-              )
-            else
-              const Icon(Icons.shield_outlined, size: 26),
-            const SizedBox(height: 5),
-            Text(
-              team.name,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: picked ? Brand.crown : Brand.textMuted,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                height: 1.25,
+    return Opacity(
+      opacity: dimmed ? 0.4 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          decoration: BoxDecoration(
+            color: picked ? Brand.crownWash(0.13) : Brand.fill,
+            border: Border.all(color: picked ? Brand.crown : Brand.border),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (team.logoUrl != null)
+                CachedNetworkImage(
+                  imageUrl: AppConfig.absoluteUrl(team.logoUrl!),
+                  width: 30,
+                  height: 30,
+                  errorWidget: (_, _, _) =>
+                      const Icon(Icons.shield_outlined, size: 26),
+                )
+              else
+                const Icon(Icons.shield_outlined, size: 26),
+              const SizedBox(height: 5),
+              Text(
+                team.name,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: picked ? Brand.crown : Brand.textMuted,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -224,37 +289,39 @@ class _NoLeagues extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'تابِع دورياً لتراهن على بطله',
-                style: TextStyle(
-                    color: Brand.text,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'الجائزة تصل 1000 نقطة، وتنقص مع كل جولة تُلعب.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Brand.textMuted, fontSize: 13),
-              ),
-              const SizedBox(height: 18),
-              FilledButton(
-                onPressed: () async {
-                  await Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const LeaguesScreen()));
-                  await onDone();
-                },
-                child: const Text('اختر دورياتك'),
-              ),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'تابِع دورياً لتراهن على بطله',
+            style: TextStyle(
+              color: Brand.text,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-      );
+          const SizedBox(height: 8),
+          const Text(
+            'الجائزة تصل 1000 نقطة، وتنقص مع كل جولة تُلعب.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Brand.textMuted, fontSize: 13),
+          ),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: () async {
+              await Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const LeaguesScreen()));
+              await onDone();
+            },
+            child: const Text('اختر دورياتك'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _Message extends StatelessWidget {
@@ -264,19 +331,23 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(text,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Brand.textMuted)),
-              const SizedBox(height: 14),
-              OutlinedButton(
-                  onPressed: () => onRetry(), child: const Text('أعد المحاولة')),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Brand.textMuted),
           ),
-        ),
-      );
+          const SizedBox(height: 14),
+          OutlinedButton(
+            onPressed: () => onRetry(),
+            child: const Text('أعد المحاولة'),
+          ),
+        ],
+      ),
+    ),
+  );
 }

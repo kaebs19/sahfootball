@@ -201,7 +201,10 @@ class StoreProduct {
 class PremiumOffer {
   final bool enabled;
   final StoreProduct crown;
-  final StoreProduct pack;
+
+  /// أدوات لمرة واحدة — قد تغيب: السيرفر يحذفها من العرض حين يكون
+  /// مفتاح `one_time` مطفأ، فتختفي أقسامها من الشاشة بلا نشر جديد.
+  final StoreProduct? pack;
   final StoreProduct? shieldPack;
   final List<Perk> perks;
 
@@ -216,8 +219,9 @@ class PremiumOffer {
   factory PremiumOffer.fromJson(Map<String, dynamic> j) => PremiumOffer(
         enabled: j['enabled'] == true,
         crown: StoreProduct.fromJson(j['crown'] as Map<String, dynamic>),
-        pack:
-            StoreProduct.fromJson(j['multiplier_pack'] as Map<String, dynamic>),
+        pack: j['multiplier_pack'] != null
+            ? StoreProduct.fromJson(j['multiplier_pack'] as Map<String, dynamic>)
+            : null,
         shieldPack: j['shield_pack'] != null
             ? StoreProduct.fromJson(j['shield_pack'] as Map<String, dynamic>)
             : null,

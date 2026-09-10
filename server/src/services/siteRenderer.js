@@ -678,15 +678,17 @@ function championCard(p, csrf) {
   </header>
 
   <p class="ch-note">
-    ${p.mine
-      ? `رهانك محفوظ بـ <b>${esc(String(p.mine.award))}</b> نقطة. تغييره الآن يُعيد تسعيره بـ <b>${esc(String(p.quote.award))}</b> — السعر ينزل مع الموسم.`
-      : `مضى <b class="num">${esc(String(pct))}%</b> من الموسم، فقيمة الرهان الآن <b>${esc(String(p.quote.award))}</b> من <span class="num">${esc(String(p.quote.max))}</span>.`}
+    ${p.locked
+      ? `رهانك محفوظ بـ <b>${esc(String(p.mine.award))}</b> نقطة، ومقفل حتى نهاية الموسم.`
+      : p.mine
+        ? `رهانك محفوظ بـ <b>${esc(String(p.mine.award))}</b> نقطة. تغييره الآن يُعيد تسعيره بـ <b>${esc(String(p.quote.award))}</b> — السعر ينزل مع الموسم.`
+        : `مضى <b class="num">${esc(String(pct))}%</b> من الموسم، فقيمة الرهان الآن <b>${esc(String(p.quote.award))}</b> من <span class="num">${esc(String(p.quote.max))}</span>.`}
   </p>
 
   <div class="wl-grid ch-grid">
     ${p.teams.map((t) => `
     <button class="wl-team${p.mine?.team_id === t.id ? ' picked' : ''}"
-            type="submit" name="team" value="${esc(String(t.id))}">
+            type="submit" name="team" value="${esc(String(t.id))}"${p.locked && p.mine?.team_id !== t.id ? ' disabled' : ''}>
       ${teamBadge(t.name, t.logo_url, t.id)}
       <span>${esc(t.name)}</span>
     </button>`).join('')}

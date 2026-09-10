@@ -63,7 +63,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
       // أسعار المتجر بعملة المشتري — آبل تشترط عرضها هي لا أرقامنا.
       await context.read<StoreBridge>().loadProducts({
         offer.crown.productId,
-        offer.pack.productId,
+        if (offer.pack != null) offer.pack!.productId,
         if (offer.shieldPack != null) offer.shieldPack!.productId,
       });
     } on ApiException catch (e) {
@@ -231,21 +231,29 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       // إفصاحٌ بسعر يخالف الزرّ سببُ رفض عند آبل.
                       _RenewalTerms(price: _price(offer.crown)),
                     ],
-                    const SizedBox(height: 26),
                     // مشتريات لمرة واحدة، لمن لا يريد اشتراكاً شهرياً:
                     // الأداة تُشترى وتُنفق وتنتهي، ولا تلتزم بشيء.
-                    const BrandSectionLabel('أو اشترِ أدوات لمرة واحدة'),
-                    const SizedBox(height: 10),
-                    _PackCard(
-                      icon: Icons.bolt,
-                      title: '${offer.pack.size} مضاعِفات ×${offer.pack.factor}',
-                      note: 'رصيدك الآن ${ent.boost.left} · تُنفق في أي دوري',
-                      price: _price(offer.pack),
-                      busy: _busyProduct == offer.pack.productId,
-                      onBuy: signedIn && offer.enabled
-                          ? () => _buy(offer.pack, consumable: true)
-                          : null,
-                    ),
+                    //
+                    // والقسم كله يغيب حين يحذفها السيرفر من العرض: عنوانٌ
+                    // فوق فراغ أسوأ من لا شيء.
+                    if (offer.pack != null || offer.shieldPack != null) ...[
+                      const SizedBox(height: 26),
+                      const BrandSectionLabel('أو اشترِ أدوات لمرة واحدة'),
+                    ],
+                    if (offer.pack != null) ...[
+                      const SizedBox(height: 10),
+                      _PackCard(
+                        icon: Icons.bolt,
+                        title: '${offer.pack!.size} مضاعِفات '
+                            '×${offer.pack!.factor}',
+                        note: 'رصيدك الآن ${ent.boost.left} · تُنفق في أي دوري',
+                        price: _price(offer.pack!),
+                        busy: _busyProduct == offer.pack!.productId,
+                        onBuy: signedIn && offer.enabled
+                            ? () => _buy(offer.pack!, consumable: true)
+                            : null,
+                      ),
+                    ],
                     if (offer.shieldPack != null) ...[
                       const SizedBox(height: 10),
                       _PackCard(

@@ -78,16 +78,17 @@ class Session extends ChangeNotifier {
       // الرئيسية، وفشله لا يعني شيئاً للمستخدم.
       _push.enable();
       liveActivity.enable();
-    } on ApiException catch (e) {
-      if (e.statusCode == 401) {
-        // جلسة ميتة فعلاً
-        await api.tokens.clear();
-        _setStatus(SessionStatus.loggedOut);
-      } else {
-        // سيرفر مطفأ أو لا شبكة ≠ جلسة منتهية: لا نرمي توكنات صالحة
-        // بسبب انقطاع مؤقت. ندخله ويُعاد المحاولة مع أول طلب بيانات.
-        _setStatus(SessionStatus.loggedIn);
-      }
+    } on ApiException catch (_) {
+      // من يحكم بموت الجلسة هو الـ interceptor وحده: هو الذي حاول
+      // التجديد ورأى ردّ الخادم عليه، فإن كان رفضاً محا التوكنات
+      // ونادى _handleExpired. فحصُ 401 هنا كان يحكم على الجلسة من
+      // ظاهر الطلب الأول قبل أن تُعرف نتيجة التجديد.
+      //
+      // فنقرأ الأثر لا الرمز: بقيت التوكنات = الجلسة حيّة وما وقع
+      // انقطاع (سيرفر مطفأ، شبكة، 502 أثناء نشر). ذهبت = ماتت فعلاً.
+      _setStatus(api.tokens.hasSession
+          ? SessionStatus.loggedIn
+          : SessionStatus.loggedOut);
     }
   }
 

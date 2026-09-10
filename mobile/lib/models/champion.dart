@@ -77,6 +77,11 @@ class ChampionCard {
 
   final ChampionPick? mine;
 
+  /// الرهان مقفل حتى نهاية الموسم — يحسبه الخادم (مفتاح
+  /// lock_after_pick مع وجود رهان)، فالتطبيق والموقع يعرضان الحالة
+  /// نفسها بلا نسختين من القاعدة.
+  final bool locked;
+
   const ChampionCard({
     required this.leagueId,
     required this.leagueName,
@@ -85,6 +90,7 @@ class ChampionCard {
     required this.maxAward,
     required this.progress,
     this.mine,
+    this.locked = false,
   });
 
   /// نسبة مئوية جاهزة للعرض.
@@ -104,6 +110,7 @@ class ChampionCard {
       maxAward: (quote['max'] as num?)?.toInt() ?? 1000,
       progress: (quote['progress'] as num?)?.toDouble() ?? 0,
       mine: mine == null ? null : ChampionPick.fromJson(mine),
+      locked: json['locked'] == true,
     );
   }
 }
