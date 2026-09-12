@@ -74,6 +74,10 @@ class RoundPage {
   final int multiplierLeft;
   final int multiplierFactor;
 
+  /// لا دوري متابَعاً أصلاً: الشاشة تعرض دعوة للمتابعة لا جولة
+  /// فارغة — التوقّع نفسه ممنوع خارج المتابعة (حارس السيرفر).
+  final bool followRequired;
+
   const RoundPage({
     required this.leagueId,
     required this.leagueName,
@@ -83,6 +87,7 @@ class RoundPage {
     required this.fixtures,
     required this.multiplierLeft,
     required this.multiplierFactor,
+    this.followRequired = false,
   });
 
   factory RoundPage.fromJson(Map<String, dynamic> j) {
@@ -101,6 +106,7 @@ class RoundPage {
           .toList(),
       multiplierLeft: (mult['left'] as num?)?.toInt() ?? 0,
       multiplierFactor: (mult['factor'] as num?)?.toInt() ?? 2,
+      followRequired: j['follow_required'] == true,
     );
   }
 }

@@ -25,8 +25,11 @@ import '../brand.dart';
 import '../format.dart';
 import '../models/fixture.dart';
 import '../models/live_fixture.dart';
+import '../state/league_filter.dart';
 import '../widgets/brand_widgets.dart';
+import '../widgets/league_strip.dart';
 import '../widgets/live_match_card.dart';
+import 'leagues_screen.dart';
 import 'match_screen.dart';
 
 class LiveScreen extends StatefulWidget {
@@ -78,7 +81,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   Future<void> _load({bool silent = false}) async {
     if (!silent) setState(() => _error = null);
     try {
-      final state = await context.read<ApiClient>().liveState();
+      final filter = context.read<LeagueFilter>();
+      // القائمة قد لا تكون وصلت بعد إن كان «مباشر» أول تبويب يُفتح.
+      await filter.load();
+      if (!mounted) return;
+      final state =
+          await context.read<ApiClient>().liveState(leagueIds: filter.askedIds);
       if (mounted) setState(() => _state = state);
     } on ApiException catch (e) {
       // التحديث الصامت لا يمسح ما على الشاشة عند فشل شبكة عابر:
@@ -87,8 +95,52 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// تبديل الدوري: نفس اختيار تبويب المباريات — الحالة مشتركة،
+  /// فما يختاره هنا يجده هناك والعكس.
+  void _pickLeague(int? id) {
+    final filter = context.read<LeagueFilter>();
+    if (filter.selected == id) return;
+    filter.select(id);
+    setState(() => _state = null); // مؤشّر تحميل بدل نتائج دوري آخر
+    _load();
+  }
+
+  Future<void> _addLeague() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const LeaguesScreen()),
+    );
+    if (changed == true && mounted) {
+      await context.read<LeagueFilter>().load(force: true);
+      if (!mounted) return;
+      setState(() => _state = null);
+      await _load();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // الشريط نفسه الذي في «المباريات»، وبنفس الاختيار: «ماذا يحدث
+    // لتوقّعي الآن؟» سؤالٌ عن دورياته هو، ومبارياتٌ من دوريات لا
+    // يتابعها تدفن مباراته الوحيدة تحتها.
+    final filter = context.watch<LeagueFilter>();
+    return Column(
+      children: [
+        if (filter.strip.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 2),
+            child: LeagueStrip(
+              leagues: filter.strip,
+              active: filter.selected,
+              onPick: _pickLeague,
+              onAdd: _addLeague,
+            ),
+          ),
+        Expanded(child: _buildBody()),
+      ],
+    );
+  }
+
+  Widget _buildBody() {
     if (_error != null && _state == null) {
       return BrandEmpty(
         icon: Icons.wifi_off,

@@ -457,9 +457,15 @@ class ApiClient {
   /// طلب واحد لا ثلاثة: الشاشة تُحدَّث كل عشرين ثانية، وثلاثة طلبات
   /// في كل دورة تضاعف الحمل بلا سبب — الأجزاء الثلاثة تُقرأ معاً
   /// دائماً ولا معنى لتحديث أحدها دون الآخر.
-  Future<LiveState> liveState() async {
+  /// leagueIds = نطاق الدوريات المطلوب (المختار وحده أو متابعاته).
+  /// السيرفر يضيّق بما يتابعه صاحب الطلب مهما أرسلنا، فالوسيط
+  /// وسيلة تضييق لا توسيع — راجع leagueScope في routes/fixtures.
+  Future<LiveState> liveState({List<int>? leagueIds}) async {
     try {
-      final res = await _dio.get('/api/fixtures/live');
+      final res = await _dio.get('/api/fixtures/live', queryParameters: {
+        if (leagueIds != null && leagueIds.isNotEmpty)
+          'leagues': leagueIds.join(','),
+      });
       return LiveState.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {
       _throwReadable(e);

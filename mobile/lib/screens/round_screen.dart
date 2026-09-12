@@ -22,8 +22,10 @@ import '../config.dart';
 import '../format.dart';
 import '../models/champion.dart';
 import '../models/round.dart';
+import '../state/league_filter.dart';
 import '../state/premium.dart';
 import '../widgets/brand_widgets.dart';
+import 'leagues_screen.dart';
 
 class RoundScreen extends StatefulWidget {
   const RoundScreen({super.key});
@@ -34,9 +36,13 @@ class RoundScreen extends StatefulWidget {
 
 class _RoundScreenState extends State<RoundScreen> {
   RoundPage? _page;
-  List<LeagueFollow>? _leagues;
   String? _error;
   bool _busy = false;
+
+  /// الدوريات هنا متابعاته وحدها لا دوريات اللعبة: ما لا يتابعه لا
+  /// يستطيع حفظ توقّع فيه (حارس المتابعة في السيرفر)، وعرض جولته
+  /// وعدٌ تظهر خيبته عند الضغط على الزر.
+  LeagueFilter get _filter => context.read<LeagueFilter>();
 
   int? _leagueId;
   String? _round;
@@ -55,12 +61,16 @@ class _RoundScreenState extends State<RoundScreen> {
     try {
       final api = context.read<ApiClient>();
       // الدوريات مرة واحدة: قائمة الشرائح لا تتغيّر بتغيّر الجولة.
-      _leagues ??= await api.leagues();
+      await _filter.load();
+      if (!mounted) return;
+      // الاختيار المشترك هو الافتراضي: من اختار دورياً في المباريات
+      // يفتح «توقّع الجولة» على دوريه لا على أول دوري في القائمة.
+      _leagueId ??= _filter.selected;
       final page = await api.round(leagueId: _leagueId, round: _round);
       if (!mounted) return;
       setState(() {
         _page = page;
-        _leagueId = page.leagueId;
+        _leagueId = page.followRequired ? null : page.leagueId;
         _round = page.round;
         _edits.clear();
         for (final f in page.fixtures) {
@@ -119,6 +129,25 @@ class _RoundScreenState extends State<RoundScreen> {
     }
   }
 
+  /// شاشة الدوريات ثم إعادة التحميل: من تابع دورياً الآن يجب أن
+  /// يجد جولته حاضرة لا أن يعود ويخرج ليراها.
+  Future<void> _openLeagues() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const LeaguesScreen()),
+    );
+    if (!mounted) return;
+    if (changed == true) {
+      await _filter.load(force: true);
+      if (!mounted) return;
+      setState(() {
+        _leagueId = null;
+        _round = null;
+        _page = null;
+      });
+      await _load();
+    }
+  }
+
   /// حصيلة الحفظ بالعربية — الجمع في مكان واحد.
   String _summary(RoundSaveResult r) {
     final parts = <String>[];
@@ -145,12 +174,16 @@ class _RoundScreenState extends State<RoundScreen> {
           ? _Retry(text: _error!, onRetry: _load)
           : page == null
               ? const Center(child: CircularProgressIndicator())
+              : page.followRequired
+              ? _FollowInvite(onFollow: _openLeagues)
               : Column(
                   children: [
                     _LeagueStrip(
-                      leagues: _leagues ?? const [],
+                      leagues: context.watch<LeagueFilter>().followed,
                       active: _leagueId,
                       onPick: (id) {
+                        // الاختيار مشترك مع بقية التبويبات.
+                        _filter.select(id);
                         setState(() {
                           _leagueId = id;
                           _round = null; // جولة الدوري الجديد تُختار من جديد
@@ -574,4 +607,51 @@ class _Retry extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// دعوة المتابعة — بديل الجولة الفارغة لمن لا يتابع دورياً.
+///
+/// الشاشة لا تستطيع أن تعرض جولةً أصلاً: التوقّع خارج المتابعة
+/// مرفوض في السيرفر، فقائمةٌ فارغة هنا كانت ستقول «لا مباريات» وهي
+/// لا تعني ذلك — المباريات موجودة، والناقص اختياره هو.
+class _FollowInvite extends StatelessWidget {
+  final VoidCallback onFollow;
+  const _FollowInvite({required this.onFollow});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.emoji_events_outlined, size: 46, color: Brand.crown),
+            const SizedBox(height: 14),
+            const Text(
+              'اختر دورياتك أولاً',
+              style: TextStyle(
+                  color: Brand.text, fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'التوقّع يبدأ من دوريٍ تتابعه: لوحته ونقاطه وتذكيراته '
+              'كلها تتبع متابعتك.',
+              textAlign: TextAlign.center,
+              style:
+                  TextStyle(color: Brand.textMuted, fontSize: 13, height: 1.6),
+            ),
+            const SizedBox(height: 18),
+            FilledButton(
+              // حدّ أدنى صريح: زرّ السمة عرضه لا نهائي (راجع brand.dart)
+              // ووضعه في عمود بلا هذا يرمي في البناء.
+              style: FilledButton.styleFrom(minimumSize: const Size(180, 48)),
+              onPressed: onFollow,
+              child: const Text('تابع دورياً'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

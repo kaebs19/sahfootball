@@ -22,6 +22,7 @@ import '../brand.dart';
 import '../config.dart';
 import '../models/champion.dart';
 import '../models/rules.dart';
+import '../state/league_filter.dart';
 import '../state/session.dart';
 import 'champion_screen.dart';
 
@@ -73,6 +74,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       await context.read<ApiClient>().setFollowedLeagues(
             leagues.where((l) => l.followed).map((l) => l.id).toList(),
           );
+      if (!mounted) return;
+      // النطاق المشترك يُحمَّل عند الدخول، أي قبل هذه الخطوة بلحظة:
+      // بلا تحديثه هنا يدخل اللاعب على تطبيق لا يعرف الدوريات التي
+      // اختارها للتو.
+      await context.read<LeagueFilter>().load(force: true);
       if (mounted) _next();
     } on ApiException catch (e) {
       if (mounted) {

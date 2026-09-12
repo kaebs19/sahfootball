@@ -14,6 +14,7 @@ import '../brand.dart';
 import '../format.dart';
 import '../models/fixture.dart';
 import '../models/rules.dart';
+import '../screens/leagues_screen.dart';
 import '../screens/premium_screen.dart';
 import '../state/premium.dart';
 import 'brand_widgets.dart';
@@ -70,6 +71,9 @@ class _PredictionSheetState extends State<_PredictionSheet> {
 
   /// آخر خطأ كان سببه غياب الاشتراك — فنعرض باب الاشتراك تحته.
   bool _paywall = false;
+
+  /// وخطأٌ سببه دوريٌ خارج متابعته — فنعرض باب الدوريات تحته.
+  bool _needsFollow = false;
 
   // القواعد وحالة الأداة تصلان بعد الفتح: الشيت يُفتح فوراً بجدول
   // احتياطي ثم يُصحّح نفسه. انتظارُ الشبكة قبل عرضه يجعل ضغطة
@@ -147,6 +151,7 @@ class _PredictionSheetState extends State<_PredictionSheet> {
         // تعديلٌ يحتاج التاج: الرسالة وحدها طريق مسدود، فنعرض معها
         // باباً — الرمز من السيرفر لا مطابقة نصّ (راجع ApiException.code).
         _paywall = e.code == 'EDIT_REQUIRES_CROWN';
+        _needsFollow = e.code == 'LEAGUE_NOT_FOLLOWED';
       });
     }
   }
@@ -295,6 +300,21 @@ class _PredictionSheetState extends State<_PredictionSheet> {
               style: const TextStyle(color: Brand.wrong, fontSize: 13),
             ),
             // الباب يُعرض فقط إن كان مفتوحاً؛ وإلا تكفي رسالة السيرفر.
+            // دوريٌ لا يتابعه: الرسالة تشرح والزرّ يحلّ في ضغطة —
+            // وإرساله لإعدادات يبحث فيها بنفسه يُفقد التوقّع لحظته.
+            if (_needsFollow) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const LeaguesScreen()));
+                },
+                icon: const Icon(Icons.add_circle_outline,
+                    size: 18, color: Brand.crown),
+                label: const Text('تابع الدوري'),
+              ),
+            ],
             if (_paywall && context.watch<Premium>().storeOpen) ...[
               const SizedBox(height: 12),
               OutlinedButton.icon(

@@ -16,7 +16,6 @@ import 'package:provider/provider.dart';
 import '../api/api_client.dart';
 import '../brand.dart';
 import '../format.dart';
-import '../models/champion.dart';
 import '../models/fixture.dart';
 import '../state/premium.dart';
 import '../state/session.dart';
@@ -24,6 +23,7 @@ import '../widgets/brand_widgets.dart';
 import '../widgets/premium_widgets.dart';
 import '../widgets/fixture_card.dart';
 import '../widgets/guest_gate.dart';
+import '../state/league_filter.dart';
 import '../widgets/league_strip.dart';
 import '../widgets/prediction_sheet.dart';
 import 'leagues_screen.dart';
@@ -41,12 +41,10 @@ class MatchesScreen extends StatefulWidget {
 const _adAfterCard = 3;
 
 class _MatchesScreenState extends State<MatchesScreen> {
-  /// دوريات الشريط: ما يتابعه المستخدم، وإن لم يتابع شيئاً فكل
-  /// دوريات اللعبة — شاشة بلا شريط شاشة بلا مباريات.
-  List<LeagueFollow>? _leagues;
-
-  /// المختار؛ null = «الكل» (كل دوريات الشريط).
-  int? _leagueId;
+  /// الدوريات والاختيار يعيشان في [LeagueFilter] لا هنا: نفس
+  /// الاختيار يحكم «مباشر» و«توقّع الجولة»، ونسخةٌ محلية منه تجعل
+  /// التبويبات الثلاثة تقول ثلاثة أشياء عن سؤال واحد.
+  LeagueFilter get _filter => context.read<LeagueFilter>();
 
   List<Fixture>? _fixtures;
   Map<int, ({int home, int away})> _myPicks = {};
@@ -65,28 +63,14 @@ class _MatchesScreenState extends State<MatchesScreen> {
   /// كل الدوريات، فلا يمكن طلب المباريات قبل معرفة أيّها له.
   Future<void> _init() async {
     setState(() => _error = null);
-    try {
-      final all = await context.read<ApiClient>().leagues();
-      final followed = all.where((l) => l.followed).toList();
-      if (!mounted) return;
-      setState(() {
-        _leagues = followed.isNotEmpty ? followed : all;
-        // من يتابع دورياً واحداً لا يحتاج «الكل» ليصل إليه.
-        _leagueId = followed.length == 1 ? followed.first.id : null;
-      });
-      await _load();
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+    await _filter.load();
+    if (!mounted) return;
+    final err = _filter.error;
+    if (err != null && _filter.strip.isEmpty) {
+      setState(() => _error = err);
+      return;
     }
-  }
-
-  /// معرّفات الدوريات المطلوبة من السيرفر: المختار وحده، أو كل
-  /// دوريات الشريط. null = لا تصفية (الشريط يعرض اللعبة كلها أصلاً).
-  List<int>? get _askedLeagueIds {
-    if (_leagueId != null) return [_leagueId!];
-    final strip = _leagues;
-    if (strip == null || strip.every((l) => !l.followed)) return null;
-    return strip.map((l) => l.id).toList();
+    await _load();
   }
 
   Future<void> _load() async {
@@ -101,7 +85,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     try {
       // Future.wait = انطلاق الطلبين معاً وانتظارهما — نصف زمن التتابع
       final results = await Future.wait([
-        api.upcomingFixtures(leagueIds: _askedLeagueIds),
+        api.upcomingFixtures(leagueIds: _filter.askedIds),
         if (!guest) api.myPredictions(),
       ]);
       final fixtures = results[0] as List<Fixture>;
@@ -147,8 +131,8 @@ class _MatchesScreenState extends State<MatchesScreen> {
   }
 
   void _pickLeague(int? id) {
-    if (_leagueId == id) return;
-    setState(() => _leagueId = id);
+    if (_filter.selected == id) return;
+    _filter.select(id);
     _load();
   }
 
@@ -158,22 +142,26 @@ class _MatchesScreenState extends State<MatchesScreen> {
       MaterialPageRoute(builder: (_) => const LeaguesScreen()),
     );
     if (changed == true && mounted) {
-      setState(() => _leagueId = null);
-      await _init();
+      await _filter.load(force: true);
+      if (!mounted) return;
+      await _load();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final leagues = _leagues;
+    // watch لا read: تغيّر المتابعة من شاشة الدوريات أو من تبويب
+    // آخر يجب أن يعيد رسم الشريط هنا بلا زيارة جديدة للتبويب.
+    final filter = context.watch<LeagueFilter>();
+    final leagues = filter.strip;
     return Column(
       children: [
-        if (leagues != null)
+        if (leagues.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 2),
             child: LeagueStrip(
               leagues: leagues,
-              active: _leagueId,
+              active: filter.selected,
               onPick: _pickLeague,
               // الضيف لا يتابع شيئاً فلا يُعرض عليه ما لا يستطيعه.
               onAdd: _isGuest ? null : _addLeague,
@@ -200,7 +188,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     if (fixtures.isEmpty) {
       return BrandEmpty(
         icon: Icons.event_busy,
-        message: _leagueId == null
+        message: _filter.selected == null
             ? 'لا مباريات قادمة في دورياتك حالياً'
             : 'لا مباريات قادمة في هذا الدوري حالياً',
         onRefresh: _load,

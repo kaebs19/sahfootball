@@ -12,6 +12,7 @@ const { DEFAULT_SCORING, DEFAULT_MULTIPLIERS } = require('./scoringService');
 const predictionRepo = require('../repositories/predictionRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
 const premiumService = require('./premiumService');
+const championRepo = require('../repositories/championRepo');
 
 /**
  * خطأ متوقّع برمز HTTP ورسالة صالحة للعرض — نفس عقد AuthError.
@@ -60,6 +61,7 @@ async function submit({ userId, fixtureId, home, away, multiplier = null }) {
   const mine = await predictionRepo.findOne(userId, fixtureId);
   const ent = await premiumService.forUser(userId);
 
+  await assertFollowsLeague({ userId, fixture, mine });
   await assertMayEdit({ mine, home, away, ent });
 
   // المضاعِف بعد فحص الإقفال لا قبله: من تأخر عن الصافرة يُردّ
@@ -73,6 +75,36 @@ async function submit({ userId, fixtureId, home, away, multiplier = null }) {
   // العلم على الصف لا استثناء: التوقّع نجح، وأداةٌ وحدها لم تتوفّر.
   if (row && mult.denied) row.multiplierDenied = mult.denied;
   return row;
+}
+
+/**
+ * حارس المتابعة: لا توقّع في دوري لا يتابعه اللاعب.
+ *
+ * المتابعة صارت هي حدود اللعبة لا مجرد تصفية عرض: لوحة كل دوري
+ * مستقلة، وحصّة المضاعِف لكل دوري، والتذكير يتبع المتابعة — فلاعبٌ
+ * يتوقّع في دوري خارج متابعته يدخل منافسةً لا يرى شريطها ولا
+ * تصله إشعاراتها، ثم يسأل لماذا تبعثرت نقاطه على لوحات لا يعرفها.
+ * وهذا القرار في الخادم لا في الشاشة لأن للموقع باباً ثانياً.
+ *
+ * ومن له توقّع على هذه المباراة أصلاً يمرّ: إلغاء المتابعة لا يجوز
+ * أن يحبس صاحبه داخل توقّع قديم لا يستطيع تصحيحه.
+ */
+async function assertFollowsLeague({ userId, fixture, mine }) {
+  if (mine) return;
+
+  const followed = await championRepo.followedIds(userId);
+  if (followed.includes(fixture.league_id)) return;
+
+  // الرسالتان مختلفتان لأن الفعل المطلوب مختلف: الأولى «تابع هذا
+  // الدوري»، والثانية «ابدأ باختيار دورياتك» — ومن تخطّى التهيئة
+  // لا يفهم من «خارج متابعتك» أنه لا يتابع شيئاً أصلاً.
+  throw new PredictionError(
+    403,
+    followed.length
+      ? 'هذا الدوري خارج متابعتك — تابعه لتتوقّع مبارياته'
+      : 'تابع دورياً واحداً على الأقل لتبدأ التوقّع',
+    'LEAGUE_NOT_FOLLOWED'
+  );
 }
 
 /**

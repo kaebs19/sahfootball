@@ -1837,6 +1837,10 @@ function renderRound(settings, {
       ${result.late ? `${esc(counted(result.late, 'مباراة واحدة انطلقت', 'مباراتان انطلقتا', 'مباريات انطلقت', 'مباراة انطلقت'))} قبل الحفظ فلم تُسجَّل.` : ''}
     </div>` : ''}
     ${result.none ? '<div class="note bad">ما كتبت أي نتيجة.</div>' : ''}
+    ${result.unfollowed ? `<div class="note warn">
+      هذا الدوري خارج متابعتك، والتوقّع يبدأ من دوريٍ تتابعه.
+      <a href="/account">تابعه من صفحة حسابك</a> ثم عُد إلى الجولة.
+    </div>` : ''}
 
     ${!fixtures.length ? `
     <div class="card" style="text-align:center;padding:38px 20px">

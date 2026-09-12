@@ -16,6 +16,7 @@ import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'state/app_tab.dart';
+import 'state/league_filter.dart';
 import 'state/links.dart';
 import 'widgets/ads.dart';
 import 'services/store_bridge.dart';
@@ -45,6 +46,9 @@ Future<void> main() async {
   // يعيش طوال عمر التطبيق كي تصل معاملة اكتملت والشاشة مغلقة
   // (تجديد شهري، موافقة وليّ أمر) وتُصرَف إلى السيرفر.
   final store = StoreBridge(api, premium);
+  // نطاق الدوريات مشترك بين المباريات و«مباشر» والجولة، ولنفس سبب
+  // Premium يستمع إلى الجلسة بنفسه بدل أن تنادَيه كل شاشة.
+  final leagueFilter = LeagueFilter(api, session);
   // نبدأ استعادة الجلسة قبل runApp حتى لا يرى المستخدم وميض شاشة
   // الدخول ثم قفزة للرئيسية. لا ننتظرها (بلا await) — الواجهة تعرض
   // شاشة الانتظار وتتحدث وحدها عند الانتهاء.
@@ -58,6 +62,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: premium),
         ChangeNotifierProvider.value(value: store),
+        ChangeNotifierProvider.value(value: leagueFilter),
       ],
       child: const SahApp(),
     ),

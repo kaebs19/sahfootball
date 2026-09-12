@@ -360,6 +360,15 @@ router.get('/round', async (req, res) => {
   const settings = await pageContext(req);
   const session = settings.viewer ? await webSession.read(req).catch(() => null) : null;
 
+  // المتابعة شرط التوقّع (حارس predictionService)، فالصفحة تقولها
+  // قبل أن يكتب تسع نتائج ترفَض كلها: الدوري يبقى معروضاً للقراءة
+  // — الصفحة عامة ويتصفّحها من لا حساب له — لكن خاناته تُقفل لمن
+  // لا يتابعه، مع ملاحظة تشرح وتدلّ على مكان المتابعة.
+  const followed = settings.viewer
+    ? await championRepo.followedIds(settings.viewer.id).catch(() => [])
+    : [];
+  const followsLeague = followed.includes(current.id);
+
   const rows = round
     ? await fixtureRepo.byRound(current.id, current.season, round)
     : [];
@@ -386,7 +395,7 @@ router.get('/round', async (req, res) => {
   res.type('html').send(renderer.renderRound(settings, {
     leagues, league: current.id, rounds, round, fixtures, mine, points, mult,
     csrf: session?.csrf || '',
-    viewer: Boolean(settings.viewer),
+    viewer: Boolean(settings.viewer) && followsLeague,
     // أعداد لا جُمل — العرض يصوغها بالعربية. وnum يحدّها بعدد
     // معقول: الرقم يأتي من العنوان، ومن يكتب 99999 في شريط
     // المتصفح يجب ألا يقرأ "حُفظ 99999 توقّعاً".
@@ -395,6 +404,7 @@ router.get('/round', async (req, res) => {
       denied: countParam(req.query.denied, fixtures.length),
       late: countParam(req.query.late, fixtures.length),
       none: req.query.none === '1',
+      unfollowed: Boolean(settings.viewer) && !followsLeague,
     },
   }));
 });
@@ -411,6 +421,12 @@ router.post('/round', async (req, res) => {
 
   const current = (await leagueRepo.findEnabled()).find((l) => l.id === league && l.in_app);
   if (!current || !round) return res.redirect(303, '/round');
+
+  // فحصٌ واحد قبل الحلقة لا تسع محاولات ترفَض: بلا هذا تعود
+  // الصفحة بـ"تسع مباريات انطلقت قبل الحفظ" — رسالة كاذبة عن سبب
+  // آخر تماماً.
+  const followed = await championRepo.followedIds(session.userId).catch(() => []);
+  if (!followed.includes(current.id)) return back('&unfollowed=1');
 
   // المباريات من القاعدة لا من الجسم المرسل: الجسم يكتبه العميل،
   // ومن يصنع طلباً بيده يستطيع إقحام مباراة من جولة أخرى — بل من

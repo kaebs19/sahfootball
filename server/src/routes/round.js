@@ -8,6 +8,7 @@
 const express = require('express');
 const requireAuth = require('../middleware/requireAuth');
 const leagueRepo = require('../repositories/leagueRepo');
+const championRepo = require('../repositories/championRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
 const predictionRepo = require('../repositories/predictionRepo');
 const predictionService = require('../services/predictionService');
@@ -27,11 +28,26 @@ function pickRound(rounds, asked) {
 }
 
 // GET /api/round?league=307&round=...
+//
+// الدوريات هنا دوريات المستخدم لا دوريات اللعبة: الشاشة تقول
+// «توقّع الجولة»، ومن لا يتابع دورياً لا يتوقّع فيه أصلاً (راجع
+// حارس المتابعة في predictionService) — فعرضُ جولةٍ لا يستطيع
+// حفظها وعدٌ كاذب تظهر خيبته عند الضغط على الزر.
 router.get('/', async (req, res) => {
-  const leagues = (await leagueRepo.findEnabled()).filter((l) => l.in_app);
+  const followed = await championRepo.followedIds(req.userId);
+  const leagues = (await leagueRepo.findEnabled())
+    .filter((l) => l.in_app && followed.includes(l.id));
+
+  // صفر متابعات: الجواب ليس جولةً فارغة بل دعوةٌ لمتابعة دوري.
+  // العَلَم يُقرأ في العميل ليعرض الزر بدل قائمة فارغة لا تشرح شيئاً.
+  if (!leagues.length) {
+    return res.json({
+      league: null, rounds: [], fixtures: [], follow_required: true,
+    });
+  }
+
   const askedLeague = Number(req.query.league);
   const league = leagues.find((l) => l.id === askedLeague) || leagues[0];
-  if (!league) return res.json({ league: null, rounds: [], fixtures: [] });
 
   const rounds = await fixtureRepo.roundsFor(league.id, league.season);
   const round = pickRound(rounds, String(req.query.round || ''));

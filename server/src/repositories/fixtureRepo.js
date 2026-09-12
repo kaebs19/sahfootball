@@ -136,11 +136,18 @@ async function findUpcoming(limit = 20, leagueIds = null) {
 // ── استعلامات تبويب "مباشر" ─────────────────────────────────────
 
 // المباريات الجارية الآن.
-async function findLive() {
+//
+// leagueIds اختيارية في الثلاثة أدناه — null = بلا تصفية. تبويب
+// «مباشر» يمرّر دوريات المستخدم (أو الدوري المختار وحده)، لأن
+// «ماذا يحدث لتوقّعي الآن؟» سؤالٌ عن مبارياته هو لا عن كل ملاعب
+// أوروبا: أربع مباريات لدوريات لا يتابعها تدفن مباراته الوحيدة.
+async function findLive(leagueIds = null) {
   const { rows } = await db.query(
     `${FIXTURE_SELECT_LIVE}
      WHERE f.status = 'live'
-     ORDER BY f.kickoff_at`
+       AND ($1::int[] IS NULL OR f.league_id = ANY($1))
+     ORDER BY f.kickoff_at`,
+    [leagueIds]
   );
   return rows;
 }
@@ -150,12 +157,14 @@ async function findLive() {
 // وجودها في تبويب "مباشر" ليس حشواً: المباريات تُلعب ساعات معدودة
 // في الأسبوع، فالتبويب فارغ في أغلب الأوقات. "لا شيء الآن، والقادم
 // بعد ١٧ ساعة" جواب مفيد، أما الشاشة الفارغة فتبدو عطلاً.
-async function findNextKickoff() {
+async function findNextKickoff(leagueIds = null) {
   const { rows } = await db.query(
     `${FIXTURE_SELECT_LIVE}
      WHERE f.status = 'scheduled' AND f.kickoff_at > now()
+       AND ($1::int[] IS NULL OR f.league_id = ANY($1))
      ORDER BY f.kickoff_at
-     LIMIT 1`
+     LIMIT 1`,
+    [leagueIds]
   );
   return rows[0] ?? null;
 }
@@ -168,13 +177,15 @@ async function findNextKickoff() {
 // والتصفية على kickoff_at وليست على وقت انتهاء (لا نخزّنه): فارق
 // الساعتين بين الانطلاق والنهاية لا يغيّر اليوم إلا في حالة نادرة
 // جداً، وتخزين عمود ثالث لأجلها مبالغة.
-async function findFinishedToday() {
+async function findFinishedToday(leagueIds = null) {
   const { rows } = await db.query(
     `${FIXTURE_SELECT_LIVE}
      WHERE f.status = 'finished'
+       AND ($1::int[] IS NULL OR f.league_id = ANY($1))
        AND (f.kickoff_at AT TIME ZONE 'Asia/Riyadh')::date
          = (now() AT TIME ZONE 'Asia/Riyadh')::date
-     ORDER BY f.kickoff_at`
+     ORDER BY f.kickoff_at`,
+    [leagueIds]
   );
   return rows;
 }

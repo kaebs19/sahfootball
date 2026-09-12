@@ -16,6 +16,7 @@ import '../api/api_client.dart';
 import '../brand.dart';
 import '../config.dart';
 import '../models/champion.dart';
+import '../state/league_filter.dart';
 
 class LeaguesScreen extends StatefulWidget {
   const LeaguesScreen({super.key});
@@ -53,6 +54,11 @@ class _LeaguesScreenState extends State<LeaguesScreen> {
       await context.read<ApiClient>().setFollowedLeagues(
             leagues.where((l) => l.followed).map((l) => l.id).toList(),
           );
+      if (!mounted) return;
+      // التحديث من هنا لا من كل مستدعٍ: الشاشة تُفتح من المباريات
+      // ومن «مباشر» ومن الجولة ومن شيت التوقّع، ونسيانُه في مسار
+      // واحد يترك شريطاً يعرض دوريات لم تعد متابَعة.
+      await context.read<LeagueFilter>().load(force: true);
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
       if (mounted) {

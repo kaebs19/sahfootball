@@ -9,6 +9,7 @@
 const express = require('express');
 const requireAuth = require('../middleware/requireAuth');
 const fixtureRepo = require('../repositories/fixtureRepo');
+const championRepo = require('../repositories/championRepo');
 const predictionRepo = require('../repositories/predictionRepo');
 const settingsRepo = require('../repositories/settingsRepo');
 const scoringService = require('../services/scoringService');
@@ -108,19 +109,47 @@ async function withMyPredictions(userId, fixtures) {
   });
 }
 
+/**
+ * نطاق الدوريات لصاحب الطلب: ما يتابعه، مقصوراً على ما طلبه إن طلب.
+ *
+ * التقاطع لا الاستبدال: الوسيط ?leagues= يضيّق النطاق ولا يوسّعه
+ * أبداً، فلا يستطيع عميل (أو نسخة قديمة منه) أن يرى دوريات لا
+ * يتابعها بتمرير معرّفاتها. والقاعدة تُطبَّق في السيرفر لا في
+ * الجوال لأن الويب باب ثانٍ على نفس البيانات.
+ *
+ * ومن لا يتابع شيئاً يرى الكل: شاشةٌ فارغة تبدو عطلاً، والدعوة
+ * لمتابعة دوري محلّها شاشة الدوريات لا صمتٌ في تبويب «مباشر».
+ */
+async function leagueScope(userId, query) {
+  const asked = String(query.leagues || '')
+    .split(',')
+    .filter((s) => /^\d+$/.test(s))
+    .map(Number);
+
+  const followed = await championRepo.followedIds(userId).catch(() => []);
+  if (!followed.length) return null;
+
+  const scoped = asked.length ? followed.filter((id) => asked.includes(id)) : followed;
+  // طلبٌ لا يتقاطع مع متابعاته (دوري أُلغيت متابعته من جهاز آخر
+  // مثلاً) يرجع إلى متابعاته كلها، لا إلى فراغ.
+  return scoped.length ? scoped : followed;
+}
+
 router.get('/live', requireAuth, async (req, res) => {
+  const leagues = await leagueScope(req.userId, req.query);
+
   // الاستعلامات الثلاثة مستقلة تماماً، فلا معنى لانتظار كل واحد
   // قبل بدء التالي — Promise.all يجعل زمن الرد زمن أبطأها لا مجموعها.
   const [liveStale, nextKickoff, finishedToday] = await Promise.all([
-    fixtureRepo.findLive(),
-    fixtureRepo.findNextKickoff(),
-    fixtureRepo.findFinishedToday(),
+    fixtureRepo.findLive(leagues),
+    fixtureRepo.findNextKickoff(leagues),
+    fixtureRepo.findFinishedToday(leagues),
   ]);
 
   // الطلب نفسه يُنعش الجارية من المزوّد (راجع liveRefresh): من فتح
   // الشاشة يرى نتيجة عمرها ثوانٍ لا دقائق، ومن لم يفتحها لا يكلّف
   // شيئاً. ونعيد القراءة بعده لأن مباراة قد تكون انتهت للتو.
-  const live = await liveRefresh.refresh(liveStale, () => fixtureRepo.findLive());
+  const live = await liveRefresh.refresh(liveStale, () => fixtureRepo.findLive(leagues));
 
   const fixtures = [...live, ...(nextKickoff ? [nextKickoff] : []), ...finishedToday];
   const decorated = await withMyPredictions(req.userId, fixtures);

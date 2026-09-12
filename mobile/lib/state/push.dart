@@ -7,6 +7,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../api/api_client.dart';
 import 'app_tab.dart';
@@ -26,6 +27,15 @@ class Push {
   /// آخر توكن سلّمه النظام. نحفظه لأن الخروج من الحساب يحتاجه
   /// لفكّ الارتباط، وهو لا يصل مرة أخرى في نفس التشغيل.
   String? _token;
+
+  /// ونحفظه على القرص أيضاً، لا في الذاكرة وحدها.
+  ///
+  /// الذاكرة تموت مع التشغيل، والتوكن لا يُعاد إصداره إلا حين يشاء
+  /// النظام: فمن أغلق التطبيق ثم فتحه وخرج من حسابه كان يخرج بلا
+  /// توكن يفكّه، فيبقى الجهاز مربوطاً بحسابه وتصل إشعاراته لمن
+  /// يدخل بعده على نفس الهاتف — وهي شكوى «تصلني إشعارات حساب آخر».
+  static const _storeKey = 'sah_push_token';
+  static const _storage = FlutterSecureStorage();
 
   Future<dynamic> _onCall(MethodCall call) async {
     switch (call.method) {
@@ -83,6 +93,14 @@ class Push {
     // التسليم (APNs أو FCM) لا شكل الطلب.
     if (!Platform.isIOS && !Platform.isAndroid) return;
 
+    // التوكن المحفوظ أولاً: نداء واحد ينقل ملكية الجهاز إلى الحساب
+    // الداخل الآن (INSERT … ON CONFLICT (token) DO UPDATE في
+    // السيرفر). وبه يصحّح الربطُ نفسه عند كل دخول مهما كان سبب بقاء
+    // الربط القديم: جلسة انتهت بلا خروج، تطبيق أُغلق قسراً، أو
+    // فكٌّ لم يصل لانقطاع الشبكة.
+    _token ??= await _storage.read(key: _storeKey);
+    await _submit(_token);
+
     try {
       final granted = await _channel.invokeMethod<bool>('requestPermission');
       if (granted != true) return;
@@ -102,6 +120,7 @@ class Push {
   Future<void> _submit(String? token) async {
     if (token == null || token.isEmpty) return;
     _token = token;
+    await _storage.write(key: _storeKey, value: token);
     try {
       await api.registerDeviceToken(token, _platform);
     } catch (e) {
@@ -117,12 +136,18 @@ class Push {
   /// فيبقى الجهاز مربوطاً بالحساب السابق وتصل إشعاراته لمن يدخل
   /// بعده على نفس الهاتف.
   Future<void> disable() async {
-    final token = _token;
-    if (token == null) return;
+    // المحفوظ إن لم يصل شيء في هذا التشغيل — وهو الحال الغالب:
+    // النظام يسلّم التوكن مرة عند الإقلاع، ومن فتح التطبيق ثم خرج
+    // بعد ساعة لا توكن في ذاكرته.
+    final token = _token ?? await _storage.read(key: _storeKey);
     _token = null;
+    if (token == null) return;
     try {
       await api.unregisterDeviceToken(token);
     } catch (e) {
+      // فشل الفكّ (شبكة، أو جلسة ماتت قبله). التوكن يبقى محفوظاً
+      // عمداً: أول دخول تالٍ يعيد تسجيله باسم صاحبه الجديد، وهو ما
+      // يقطع وصول إشعارات الحساب السابق.
       debugPrint('[push] تعذّر فكّ ارتباط الجهاز: $e');
     }
   }
