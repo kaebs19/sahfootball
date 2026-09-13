@@ -168,9 +168,37 @@ class _PremiumScreenState extends State<PremiumScreen> {
     final offer = _offer;
     final canBuy = _canBuy;
 
+    // خلفية خاصة بهذه الشاشة وحدها: ليلٌ أدفأ قليلاً من ليل التطبيق،
+    // وفوقه وهجٌ ذهبي خافت خلف التاج يخبو قبل منتصف الشاشة.
+    //
+    // ولماذا وهجٌ لا لونٌ مصمت؟ قاعدة الهوية تمنع الذهبي كخلفية
+    // واسعة (راجع Brand.crown): يفقد معناه إن غطّى مساحة، ويصير
+    // النص الأبيض فوقه صعب القراءة. الوهج يعطي الشاشة تميّزها
+    // ويُبقي الذهب إشارةً لا سطحاً — أعلاها يلمع حيث التاج، وأسفلها
+    // يعود ليلاً عادياً تحت البطاقات.
     return Scaffold(
-      appBar: AppBar(title: const Text('التاج الذهبي')),
-      body: _error != null
+      backgroundColor: _backdropBase,
+      appBar: AppBar(
+        title: const Text('التاج الذهبي'),
+        // شفاف كي لا يقطع الوهجَ خطٌّ أفقي عند حافّة الشريط.
+        backgroundColor: Colors.transparent,
+        scrolledUnderElevation: 0,
+      ),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            // مركز الوهج خلف دائرة التاج لا وسط الشاشة.
+            center: Alignment(0, -0.72),
+            radius: 0.95,
+            colors: [
+              Color(0x2BF2C14E), // ذهبي ~17%
+              Color(0x14F2C14E), // ~8%
+              Color(0x00F2C14E), // شفاف
+            ],
+            stops: [0, 0.42, 1],
+          ),
+        ),
+        child: _error != null
           ? BrandEmpty(icon: Icons.wifi_off, message: _error!, onRetry: _load)
           : offer == null
               ? const Center(
@@ -298,8 +326,13 @@ class _PremiumScreenState extends State<PremiumScreen> {
                     const _LegalLinks(),
                   ],
                 ),
+      ),
     );
   }
+
+  /// أساس الخلفية: ليل التطبيق بلمسة دفء بدل الرمادي المحايد — فرقٌ
+  /// يُحسّ ولا يكاد يُرى، وهو ما يجعل الشاشة تبدو «مكاناً آخر».
+  static const _backdropBase = Color(0xFF0E0B05);
 }
 
 /// شروط التجديد التلقائي — نصٌّ تشترطه المتاجر حرفاً بحرف.
