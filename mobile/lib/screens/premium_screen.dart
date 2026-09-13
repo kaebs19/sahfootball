@@ -150,12 +150,23 @@ class _PremiumScreenState extends State<PremiumScreen> {
   String _price(StoreProduct p) =>
       context.watch<StoreBridge>().products[p.productId]?.price ?? p.label;
 
+  /// هل الشراء ممكن فعلاً على هذا الجهاز؟
+  ///
+  /// شرطان لا واحد: أن يفتح الخادمُ المتجر (offer.enabled)، وأن يكون
+  /// للمنصّة مسار شراء حقيقي. وأندرويد ليس له بعد — لا Play Billing
+  /// في التطبيق، والخادم يردّ «الشراء عبر Google Play غير مفعّل بعد».
+  /// فزرُّ اشتراكٍ يضغطه صاحبه ليقرأ رسالة عطل أسوأ من بطاقة «قريباً»
+  /// التي تقول الحقيقة وتذكر السعر.
+  bool get _canBuy =>
+      (_offer?.enabled ?? false) && context.read<StoreBridge>().supported;
+
   @override
   Widget build(BuildContext context) {
     final ent = context.watch<Premium>().value;
     final signedIn =
         context.watch<Session>().status == SessionStatus.loggedIn;
     final offer = _offer;
+    final canBuy = _canBuy;
 
     return Scaffold(
       appBar: AppBar(title: const Text('التاج الذهبي')),
@@ -174,7 +185,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       const SizedBox(height: 14),
                     ],
                     const SizedBox(height: 8),
-                    if (!offer.enabled)
+                    if (!canBuy)
                       // الصفحة معروضة والشراء لم يُفتح بعد: نقول ذلك
                       // بالسعر لا بجملة «متوقّف» توحي بعطل. اللاعب يعرف ما
                       // سيأتي وبكم، ولا زرّ يضغطه فيفشل.
@@ -249,7 +260,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                         note: 'رصيدك الآن ${ent.boost.left} · تُنفق في أي دوري',
                         price: _price(offer.pack!),
                         busy: _busyProduct == offer.pack!.productId,
-                        onBuy: signedIn && offer.enabled
+                        onBuy: signedIn && canBuy
                             ? () => _buy(offer.pack!, consumable: true)
                             : null,
                       ),
@@ -265,7 +276,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                             '${ent.shield.purchased}',
                         price: _price(offer.shieldPack!),
                         busy: _busyProduct == offer.shieldPack!.productId,
-                        onBuy: signedIn && offer.enabled
+                        onBuy: signedIn && canBuy
                             ? () => _buy(offer.shieldPack!, consumable: true)
                             : null,
                       ),
