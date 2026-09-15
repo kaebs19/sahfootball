@@ -142,7 +142,47 @@ async function statsForFixtures(fixtureIds) {
   return rows;
 }
 
+/**
+ * نقاط اللاعبين في مبارياتهم — تُكتب عند التسوية.
+ *
+ * العمود مخزّن لا محسوب لسببين: بطاقة اللاعب في السوق ترتّب به
+ * (وجمعُه لكل لاعب في كل فتحة استعلامٌ ثقيل)، وشاشةُ الجولة يجب
+ * أن تبقى ثابتة بعد أشهر حتى لو عُدّل الجدول من اللوحة.
+ */
+async function writeStatPoints(rows) {
+  if (!rows.length) return 0;
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const r of rows) {
+      await client.query(
+        'UPDATE player_fixture_stats SET points = $3 WHERE fixture_id = $1 AND player_id = $2',
+        [r.fixture_id, r.player_id, r.points]
+      );
+    }
+    await client.query('COMMIT');
+    return rows.length;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** مراكز لاعبين بمعرّفاتهم — التسوية تحتاج مركز من لم يلعب أيضاً. */
+async function positionsFor(ids) {
+  if (!ids.length) return new Map();
+  const { rows } = await db.query(
+    'SELECT id, position FROM players WHERE id = ANY($1)',
+    [ids]
+  );
+  return new Map(rows.map((r) => [r.id, { position: r.position }]));
+}
+
 module.exports = {
+  positionsFor,
+  writeStatPoints,
   upsertSquad,
   upsertFixtureStats,
   teamIdsInLeague,
