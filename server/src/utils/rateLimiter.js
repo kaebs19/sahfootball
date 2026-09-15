@@ -18,6 +18,63 @@ const logger = require('./logger');
 // بسبعين ضعفاً — عطل صامت يبدو كأن المزوّد هو من رفض.
 const DAILY_LIMIT = Number(process.env.FOOTBALL_DAILY_LIMIT) || 100;
 
+// وللمزوّد حدٌّ ثانٍ **بالدقيقة** غير الحد اليومي، وهو ما لا تذكره
+// لوحته ولا يظهر في /status. اكتشفناه بالتجربة: مزامنة القوائم
+// أطلقت ١١٤ طلباً في خمس ثوانٍ (نحو ٢٣ في الثانية) فردّ المزوّد
+// على أربعين منها بـ rateLimit — والحصة اليومية لم تكن قد لُمست
+// أصلاً. أي أن عدّاداً يومياً وحده يمرّ الطلب ويتركه يُرفض.
+//
+// Pro يسمح بثلاثمئة في الدقيقة (خمسة في الثانية)، والمجانية عشرة.
+const MINUTE_LIMIT = Number(process.env.FOOTBALL_MINUTE_LIMIT) || 300;
+
+// المباعدة أهم من العدّ: ثلاثمئة طلب في أول ثانيتين من الدقيقة
+// تحترم «٣٠٠ في الدقيقة» حسابياً ويرفضها المزوّد فعلياً، لأنه
+// يقيس التدفّق لا المجموع. فنحجز لكل طلب فتحةً زمنية.
+const MIN_GAP_MS = Math.ceil(60000 / MINUTE_LIMIT);
+
+// آخر فتحة محجوزة. الحجز متزامن (بلا await بين القراءة والكتابة)
+// فلا يمكن لطلبين أن يحجزا نفس الفتحة مهما تزامنا.
+let nextSlot = 0;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function pace() {
+  const now = Date.now();
+  const at = Math.max(now, nextSlot);
+  nextSlot = at + MIN_GAP_MS;
+  if (at > now) await sleep(at - now);
+}
+
+/** مفتاح دقيقة بعينها بتوقيت UTC — الحارس المشترك بين العمليات. */
+function minuteKey() {
+  return `ratelimit:football-api:min:${new Date().toISOString().slice(0, 16)}`;
+}
+
+/**
+ * الحارس المشترك: المباعدة أعلاه داخل العملية الواحدة، وهذا
+ * يحمي من عمليتين معاً (السيرفر يخدم طلباً بينما تعمل مزامنة
+ * يدوية على نفس المفتاح).
+ *
+ * وينتظر ولا يرمي: تجاوز حدّ الدقيقة ليس نفاد حصة بل سرعة
+ * زائدة، وعلاجه ثانيةٌ من الصبر لا إسقاط العمل.
+ */
+async function awaitMinuteSlot() {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const key = minuteKey();
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, 120);
+    if (count <= MINUTE_LIMIT) return;
+
+    // ما تبقّى من هذه الدقيقة، وثانيةٌ زيادة لاختلاف الساعات.
+    const wait = 60000 - (Date.now() % 60000) + 1000;
+    logger.warn(`[rateLimiter] minute limit (${MINUTE_LIMIT}) reached — waiting ${Math.round(wait / 1000)}s`);
+    await sleep(wait);
+  }
+  const err = new Error('Per-minute API request limit reached');
+  err.code = 'RATE_LIMIT_MINUTE';
+  throw err;
+}
+
 // نحذّر عند 80% من الحد أياً كان.
 const WARN_AT = Math.floor(DAILY_LIMIT * 0.8);
 
@@ -30,6 +87,11 @@ function todayKey() {
 
 // تُستدعى قبل كل طلب خارجي فعلي. ترمي خطأ لو الحصة انتهت.
 async function consume() {
+  // الدقيقة قبل اليوم: الأولى تؤخّر والثانية ترفض، فلا معنى
+  // لحرق طلبٍ من الحصة اليومية ثم انتظار فتحة له.
+  await pace();
+  await awaitMinuteSlot();
+
   const key = todayKey();
 
   // INCR ذرّية (atomic): حتى لو وصل طلبان في نفس اللحظة،
@@ -63,4 +125,4 @@ async function usedToday() {
   return Number(count) || 0;
 }
 
-module.exports = { consume, usedToday, DAILY_LIMIT };
+module.exports = { consume, usedToday, DAILY_LIMIT, MINUTE_LIMIT };

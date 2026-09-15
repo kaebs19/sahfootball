@@ -74,8 +74,23 @@ async function request(endpoint, params, { cacheKey, ttl, sampleFile }) {
   return items;
 }
 
-async function fetchFromApi(endpoint, params) {
-  // العدّاد قبل الطلب: يرمي خطأ لو استهلكنا حصة اليوم.
+/**
+ * محاولة ثانية بعد رفضٍ بسبب السرعة.
+ *
+ * المباعدة في rateLimiter تمنع التدفّق الزائد، لكنها لا تمنع
+ * التزامن: خمسة طلبات تنطلق متباعدة ويبقى ردّ كلٍّ منها ثانية في
+ * الهواء، فيرى المزوّد خمسة مفتوحة معاً وقد يرفض واحداً. قِيس:
+ * اثنا عشر طلباً بمباعدة ٢٠٠م.ث رُفض منها واحد رغم أن المتبقّي
+ * في الدقيقة كان ٢٨٦ من ٣٠٠.
+ *
+ * وواحدة تكفي: الرفض عابرٌ بطبعه، وحلقةُ محاولاتٍ على حدٍّ حقيقي
+ * تطيل الانتظار وتحرق الحصة معاً.
+ */
+const RETRY_AFTER_MS = 2000;
+
+async function fetchFromApi(endpoint, params, { retried = false } = {}) {
+  // العدّاد قبل الطلب: يرمي خطأ لو استهلكنا حصة اليوم، ويباعد
+  // الطلبات كي لا نتجاوز حدّ الدقيقة.
   await rateLimiter.consume();
 
   const url = new URL(`${BASE_URL}/${endpoint}`);
@@ -101,6 +116,11 @@ async function fetchFromApi(endpoint, params) {
   // خصوصية API-Football: أخطاء كثيرة (مفتاح خاطئ، تجاوز الحصة) تصل
   // بحالة HTTP 200 لكن مع حقل errors مملوء. يجب فحصه وإلا خزّنّا فراغاً.
   if (body.errors && Object.keys(body.errors).length > 0) {
+    if (body.errors.rateLimit && !retried) {
+      logger.warn(`[provider] rate-limited on ${endpoint} — retrying once`);
+      await new Promise((r) => setTimeout(r, RETRY_AFTER_MS));
+      return fetchFromApi(endpoint, params, { retried: true });
+    }
     throw new Error(`API-Football error: ${JSON.stringify(body.errors)}`);
   }
 
