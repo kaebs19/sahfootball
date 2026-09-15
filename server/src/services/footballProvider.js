@@ -32,6 +32,11 @@ const TTL = {
   // أحداث وإحصاءات مباراة **انتهت**: لن تتغيّر بعد الآن، وكاش
   // الدقيقة كان يعيد شراءها من المزوّد لكل من فتح مباراة الأمس.
   SETTLED: 6 * 3600,
+  // قوائم الأندية: تتغيّر في الميركاتو لا في الجولة. يومٌ كامل
+  // آمن، والمزامنة نفسها لا تُنادى إلا كل بضعة أيام.
+  SQUADS: 24 * 3600,
+  // إحصاء لاعبي مباراة جارية: كالأحداث تماماً — تتغيّر بالدقيقة.
+  PLAYER_STATS: 120,
 };
 
 // ---------------------------------------------------------------
@@ -235,6 +240,34 @@ function getTopScorers(options) {
   });
 }
 
+// قائمة نادٍ كاملة — أساس سوق الفانتازي (راجع FANTASY.md).
+//
+// players/squads لا players?league=: الثاني مقسّم صفحات بعشرين
+// لاعباً، فقائمة دوري من ٥٠٠ لاعب تكلّف ٢٥ طلباً وتحتاج تكراراً
+// لا يعرفه request() أصلاً. وهذا طلبٌ واحد لكل نادٍ — ثمانية عشر
+// للدوري كله، مرة كل بضعة أيام.
+function getTeamSquad(teamId) {
+  return request('players/squads', { team: teamId }, {
+    cacheKey: `football:squad:${teamId}`,
+    ttl: TTL.SQUADS,
+  });
+}
+
+// إحصاء كل لاعب شارك في مباراة: الدقائق والأهداف والصناعات
+// والبطاقات والتصديات وركلات الجزاء.
+//
+// هذا هو المصدر الوحيد لنقاط الفانتازي كلها. طلبٌ واحد يرجع
+// الفريقين معاً — تسعة طلبات للجولة.
+//
+// و settled من المستدعي لا من هنا، لنفس سبب getFixtureEvents:
+// الردّ لا يقول إن كانت المباراة انتهت، والمستدعي يحمل صفّها.
+function getFixturePlayerStats(fixtureId, { settled = false } = {}) {
+  return request('fixtures/players', { fixture: fixtureId }, {
+    cacheKey: `football:playerstats:${fixtureId}`,
+    ttl: settled ? TTL.SETTLED : TTL.PLAYER_STATS,
+  });
+}
+
 /**
  * حالة الاشتراك: الخطة، تاريخ الانتهاء، والمستهلك من الحصة اليومية.
  *
@@ -304,6 +337,8 @@ module.exports = {
   getFixtureLineups,
   getFixtureStatistics,
   getTopScorers,
+  getTeamSquad,
+  getFixturePlayerStats,
   getHeadToHead,
   getStatus,
   getTeams,
