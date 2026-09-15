@@ -50,6 +50,25 @@ router.get('/upcoming', async (req, res) => {
   res.json({ fixtures });
 });
 
+// GET /api/fixtures/current-round — مباريات الجولة الجارية وحدها
+//
+// مسارٌ جديد لا تغييرٌ في /upcoming: النسخة المنشورة في المتجرين
+// تستدعي /upcoming، وتبديل معناه تحتها يغيّر شاشتها بلا تحديث
+// ولا مراجعة. القديم يبقى لأصحابه، والجديد لمن حدّث.
+//
+// والفرق ليس عدداً: «القادمة» عشرون مباراة من جولات متتالية تبدو
+// قائمة بلا نهاية، والجولة الجارية وحدةٌ يفهمها متابع الكرة —
+// يتوقّعها كاملة ثم ينتظر التالية. راجع findCurrentRound لتعريف
+// «الجارية» ومتى تنتقل.
+router.get('/current-round', async (req, res) => {
+  const asked = String(req.query.leagues || '')
+    .split(',')
+    .filter((s) => /^\d+$/.test(s))
+    .map(Number);
+  const fixtures = await fixtureRepo.findCurrentRound(asked.length ? asked : null);
+  res.json({ fixtures });
+});
+
 // GET /api/fixtures/live — شاشة "مباشر": ما يحدث الآن + سياقه
 //
 // محمي بـ requireAuth خلافاً لبقية مسارات هذا الملف، والسبب ليس

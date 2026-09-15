@@ -436,6 +436,26 @@ class ApiClient {
     }
   }
 
+  /// مباريات الجولة الجارية في كل دوري مطلوب.
+  ///
+  /// بديل upcomingFixtures في شاشة المباريات: تلك تعطي عشرين مباراة
+  /// من جولات متتالية، وهذه تعطي الجولة وحدة واحدة كما يراها متابع
+  /// الكرة. الأولى باقية لأن النسخة المنشورة في المتجرين تستدعيها.
+  Future<List<Fixture>> currentRoundFixtures({List<int>? leagueIds}) async {
+    try {
+      final res =
+          await _dio.get('/api/fixtures/current-round', queryParameters: {
+        if (leagueIds != null && leagueIds.isNotEmpty)
+          'leagues': leagueIds.join(','),
+      });
+      return (res.data['fixtures'] as List)
+          .map((j) => Fixture.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
   /// مباريات يوم محدد. الصيغة YYYY-MM-DD واليوم محسوب بتوقيت الرياض
   /// في السيرفر — مباراة 12:30 فجراً تُنسب ليومها المحلي لا لـ UTC.
   Future<List<Fixture>> fixturesByDate(DateTime day) async {

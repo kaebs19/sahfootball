@@ -133,6 +133,52 @@ async function findUpcoming(limit = 20, leagueIds = null) {
   return rows;
 }
 
+/**
+ * مباريات الجولة الجارية في كل دوري مطلوب — الجولة كلها لا قادمها.
+ *
+ * «الجارية» = الجولة التي تنتمي إليها أقرب مباراة لم تُلعب بعد.
+ * وهي تنتقل وحدها إلى التالية حين تُصفَّر آخر مباراة في الحالية،
+ * لأن أقرب ما لم يُلعب يصير عندها من الجولة التالية. لا تاريخ
+ * محفوظ ولا حقل «الجولة الحالية» يحتاج من يحدّثه.
+ *
+ * والمقياس أقرب مباراة لا «أول جولة فيها ما لم يُلعب»: مباراة
+ * مؤجَّلة من الجولة الخامسة تُعاد جدولتها بعد الثانية عشرة كانت
+ * ستثبّت الشاشة على الخامسة شهراً كاملاً. أما وقد صار المقياس
+ * زمنياً فهي تظهر في موعدها الجديد ثم تمضي.
+ *
+ * ونعيد مباريات الجولة كلها بما فيها المنتهية: الجولة لا تنتهي
+ * قبل صافرة آخر مبارياتها، وحتى ذلك الحين يريد اللاعب أن يرى
+ * نتائجه فيها لا أن تختفي بطاقةٌ بطاقة.
+ *
+ * DISTINCT ON لكل دوري على حدة: «الكل» تعني جولةَ كل دوري يتابعه
+ * لا جولةً واحدة عابرة للدوريات — لكل دوري روزنامته.
+ *
+ * والمؤجَّلة والملغاة خارج حساب «ما لم يُلعب» عمداً: مباراة بلا
+ * موعد جديد تبقى كذلك أسابيع، ولو عُدَّت لأوقفت الشاشة عندها.
+ */
+async function findCurrentRound(leagueIds = null) {
+  const { rows } = await db.query(
+    `WITH next_up AS (
+       SELECT DISTINCT ON (f.league_id) f.league_id, f.season, f.round
+         FROM fixtures f
+         JOIN leagues l ON l.id = f.league_id AND l.in_app
+        WHERE f.round IS NOT NULL
+          AND f.season = l.season
+          AND f.status IN ('scheduled', 'live')
+          AND ($1::int[] IS NULL OR f.league_id = ANY($1))
+        ORDER BY f.league_id, f.kickoff_at
+     )
+     ${FIXTURE_SELECT}
+     JOIN next_up n
+       ON n.league_id = f.league_id
+      AND n.season    = f.season
+      AND n.round     = f.round
+     ORDER BY f.kickoff_at, f.id`,
+    [leagueIds]
+  );
+  return rows;
+}
+
 // ── استعلامات تبويب "مباشر" ─────────────────────────────────────
 
 // المباريات الجارية الآن.
@@ -315,6 +361,7 @@ module.exports = {
   upsertMany,
   findByDate,
   findUpcoming,
+  findCurrentRound,
   findLive,
   findByIdDetail,
   findNextKickoff,

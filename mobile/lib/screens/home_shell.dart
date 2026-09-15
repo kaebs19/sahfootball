@@ -5,7 +5,8 @@
 // البيانات. نفس سلوك TabView في SwiftUI.
 //
 // ترتيب التبويبات يتبع رحلة المستخدم لا عدد الشاشات: المباريات
-// (يتوقع) ← مباشر (يتابع) ← العرش (يقارن نفسه بالناس) ← ملفي
+// (يتوقع) ← فريقي (يتابع مبارياته الجارية) ← العرش (يقارن نفسه
+// بالناس) ← ملفي
 // (حسابه). وملفي في الطرف كما في كل تطبيق — الطرف هو المكان الذي
 // تبحث فيه اليد عن "أنا" بلا تفكير.
 //
@@ -99,7 +100,7 @@ class _ProfileTabIcon extends StatelessWidget {
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key});
 
-  static const _titles = ['المباريات', 'مباشر', 'العرش', 'ملفي'];
+  static const _titles = ['المباريات', 'فريقي', 'العرش', 'ملفي'];
   static const _profileTab = 3;
 
   @override
@@ -107,7 +108,7 @@ class HomeShell extends StatelessWidget {
     final session = context.watch<Session>();
     final user = session.user;
     // الضيف يرى الهيكل نفسه: المباريات والعرش مسارات عامة في
-    // الخادم تعمل بلا توكن، وما يحتاج حساباً (مباشر بتوقعاتك،
+    // الخادم تعمل بلا توكن، وما يحتاج حساباً (فريقي بتوقعاتك،
     // ملفك) يُستبدل بدعوة تسجيل في مكانه — التبويب يبقى ليعرف
     // الضيف ماذا سيكسب، ولا يختفي فيظن التطبيق ناقصاً.
     final guest = session.status == SessionStatus.guest;
@@ -150,9 +151,9 @@ class HomeShell extends StatelessWidget {
                   MatchesScreen(),
                   GuestGate(
                     icon: Icons.sensors,
-                    title: 'مباشر يحتاج حساباً',
+                    title: '«فريقي» يحتاج حساباً',
                     message:
-                        'تبويب مباشر يعرض ما يحدث لتوقّعك الآن — '
+                        'تبويب «فريقي» يعرض ما يحدث لتوقّعك الآن — '
                         'النتيجة لحظة بلحظة وماذا تعني لنقاطك. '
                         'سجّل وتوقّع لتكون لك مباراة تتابعها.',
                   ),
@@ -198,7 +199,7 @@ class HomeShell extends StatelessWidget {
                 const NavigationDestination(
                   icon: Icon(Icons.sensors),
                   selectedIcon: Icon(Icons.sensors),
-                  label: 'مباشر',
+                  label: 'فريقي',
                 ),
                 const NavigationDestination(
                   icon: Icon(Icons.workspace_premium_outlined),
