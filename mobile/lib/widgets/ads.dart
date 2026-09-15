@@ -46,6 +46,17 @@ class _BannerAdSlotState extends State<BannerAdSlot> {
   BannerAd? _ad;
   bool _loaded = false;
 
+  /// الارتفاع الذي رُسم به الإعلان فعلاً، كما تقوله المنصة بعد
+  /// التحميل — لا الارتفاع الذي طلبناه قبله.
+  ///
+  /// الفرق ليس تدقيقاً زائداً: حزمة google_mobile_ads تسأل عن مقاس
+  /// «التكيّفي الكبير» عند القياس، لكنها حين تحمّل الإعلان فعلاً
+  /// تمرّره إلى المنصة بالمقاس التكيّفي العادي (isLarge = false في
+  /// كلا الجسرين، أندرويد و iOS). فلو حجزنا الارتفاع المطلوب ظهر
+  /// شريطٌ أطول من الإعلان بعشرات النقاط، يقضم الشاشة ويترك فراغاً
+  /// أسود فوق الشريط السفلي — وهو ما كان يُرى.
+  double? _height;
+
   /// الوحدة التي حُمِّل بها الإعلان الحالي — نعيد التحميل إن تبدّلت
   /// (تغيير إعداد من اللوحة، أو انتهاء اشتراك في منتصف الاستعمال).
   String? _unit;
@@ -77,9 +88,13 @@ class _BannerAdSlotState extends State<BannerAdSlot> {
       size: size,
       request: const AdRequest(),
       listener: BannerAdListener(
-        onAdLoaded: (_) {
-          if (!mounted) return;
-          setState(() => _loaded = true);
+        onAdLoaded: (loaded) async {
+          final real = await (loaded as BannerAd).getPlatformAdSize();
+          if (!mounted || _unit != unit) return;
+          setState(() {
+            _loaded = true;
+            _height = (real ?? size).height.toDouble();
+          });
         },
         onAdFailedToLoad: (ad, error) {
           // الفشل حالة عادية لا عطل: جهاز بلا إعلانات متاحة، أو
@@ -102,6 +117,7 @@ class _BannerAdSlotState extends State<BannerAdSlot> {
     _ad?.dispose();
     _ad = null;
     _loaded = false;
+    _height = null;
   }
 
   @override
@@ -115,10 +131,11 @@ class _BannerAdSlotState extends State<BannerAdSlot> {
     final ad = _ad;
     // لا مساحة محجوزة قبل الوصول: شريطٌ فارغ يظهر ثم يمتلئ يقفز
     // بالمحتوى تحت إصبع المستخدم.
-    if (ad == null || !_loaded) return const SizedBox.shrink();
+    final height = _height;
+    if (ad == null || !_loaded || height == null) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
-      height: ad.size.height.toDouble(),
+      height: height,
       alignment: Alignment.center,
       // خط فاصل فوقه: الهوية تفصل الأسطح بالحدود لا بالظلال، والبانر
       // محتوى غريب عن التطبيق فيجب أن يُقرأ منفصلاً لا جزءاً منه.
