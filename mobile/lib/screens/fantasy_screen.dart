@@ -10,11 +10,13 @@
 // وقواعد اللعبة كلها في الخادم: هذه الشاشة لا تعرف أن التشكيلة
 // خمسة عشر ولا أن الميزانية مئة — تسأل وتعرض ما يُقال لها. نسخةٌ
 // ثانية من الأرقام هنا تعني شاشةً تمنع ما يقبله الخادم.
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../brand.dart';
+import '../config.dart';
 import '../format.dart';
 import '../models/fantasy.dart';
 import '../state/league_filter.dart';
@@ -22,6 +24,7 @@ import '../widgets/brand_widgets.dart';
 import '../widgets/fantasy_pitch.dart';
 import '../widgets/fantasy_market.dart';
 import '../widgets/fantasy_sounds.dart';
+import 'fantasy_setup_screen.dart';
 import 'leagues_screen.dart';
 
 class FantasyScreen extends StatefulWidget {
@@ -51,6 +54,15 @@ class _FantasyScreenState extends State<FantasyScreen> {
   double _savedValue = 0;
   FantasyTransfers? _transfers;
 
+  /// شعار النادي الذي اختاره — هوية فريقه على الشاشة.
+  String? _clubLogo;
+  String? _clubName;
+
+  /// الدوري المعروض. لا يأتي من شريط المباريات: التشكيلة مربوطة
+  /// بدوريٍ بعينه (تشكيلة لكل دوري)، وتبديلُ الشريط في تبويب آخر
+  /// كان سيقلب الفريق تحت يد صاحبه.
+  int? _leagueOverride;
+
   bool _loading = true;
   bool _saving = false;
   bool _dirty = false;
@@ -64,7 +76,8 @@ class _FantasyScreenState extends State<FantasyScreen> {
   List<FantasyRankRow>? _ranks;
 
   LeagueFilter get _filter => context.read<LeagueFilter>();
-  int? get _leagueId => _filter.selected ?? _filter.followed.firstOrNull?.id;
+  int? get _leagueId =>
+      _leagueOverride ?? _filter.selected ?? _filter.followed.firstOrNull?.id;
 
   @override
   void initState() {
@@ -106,6 +119,11 @@ class _FantasyScreenState extends State<FantasyScreen> {
         _wallet = squad.squad?.budgetLeft ?? market.rules.budget;
         _savedValue = squad.squad?.squadValue ?? 0;
         _transfers = squad.transfers;
+        final club = squad.squad?.players
+            .where((p) => p.teamId == squad.squad?.clubTeamId)
+            .firstOrNull;
+        _clubLogo = club?.teamLogo;
+        _clubName = club?.teamName;
         _dirty = false;
         _loading = false;
       });
@@ -293,6 +311,13 @@ class _FantasyScreenState extends State<FantasyScreen> {
       );
     }
 
+    // لا نادٍ مختار = لم يبدأ بعد. والملعب الفارغ بخمس عشرة خانة
+    // بلا أن يُسأل عن ناديه ولا يُقال له ما الميزانية يُقرأ
+    // نموذجَ إدخال لا لعبة — فيخرج قبل أن يفهم.
+    if (_clubTeamId == null && _squad.isEmpty) {
+      return _SetupInvite(onStart: _openSetup);
+    }
+
     return Column(
       children: [
         Padding(
@@ -316,6 +341,25 @@ class _FantasyScreenState extends State<FantasyScreen> {
         ),
       ],
     );
+  }
+
+  /// شاشة التهيئة: الدوري ثم النادي ثم القواعد.
+  Future<void> _openSetup() async {
+    final result = await Navigator.of(context).push<({int? league, int? club})>(
+      MaterialPageRoute(
+        builder: (_) => FantasySetupScreen(initialLeague: _leagueId),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _leagueOverride = result.league;
+      _clubTeamId = result.club;
+      // دوريٌ جديد = سوقٌ جديد وتشكيلةٌ أخرى: ما في اليد الآن
+      // لاعبون من دوري آخر، وإبقاؤهم يعني تشكيلةً ترفضها القاعدة.
+      _squad = [];
+      _dirty = false;
+    });
+    await _load();
   }
 
   Future<void> _loadRound() async {
@@ -350,6 +394,15 @@ class _FantasyScreenState extends State<FantasyScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
       children: [
+        if (_clubName != null || _clubTeamId != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _ClubBar(
+              logoUrl: _clubLogo,
+              name: _clubName,
+              onChange: _openSetup,
+            ),
+          ),
         _HeaderStats(
           wallet: _dirty ? _rules.budget - _spent : _wallet,
           value: _dirty ? _spent : _savedValue,
@@ -1239,6 +1292,105 @@ class _TransfersBar extends StatelessWidget {
                         fontWeight: FontWeight.w600)),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// دعوة البدء — تُعرض لمن لم يختر ناديه بعد.
+class _SetupInvite extends StatelessWidget {
+  final VoidCallback onStart;
+  const _SetupInvite({required this.onStart});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+      children: [
+        const Icon(Icons.shield_outlined, size: 52, color: Brand.crown),
+        const SizedBox(height: 18),
+        const Text(
+          'ابنِ فريقك',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Brand.text,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            fontFamily: Brand.displayFont,
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'اختر دوريك وناديك، ثم اجمع خمسة عشر لاعباً بميزانيتك. '
+          'ثلاثة من ناديك دائماً — وهذا ما يجعله فريقك لا قائمة أسماء.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Brand.textMuted, fontSize: 13.5, height: 1.7),
+        ),
+        const SizedBox(height: 26),
+        SizedBox(
+          height: 52,
+          child: FilledButton(
+            onPressed: onStart,
+            style: FilledButton.styleFrom(
+              backgroundColor: Brand.primaryButton,
+              foregroundColor: Brand.onAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Brand.radiusChip),
+              ),
+            ),
+            child: const Text('ابدأ',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// شريط هوية الفريق: شعار النادي واسمه، وبابٌ لتبديله.
+///
+/// الشعار في الأعلى لا في صفحة إعدادات: هو ما يجعل التشكيلة
+/// «فريقي» لا «تشكيلة رقم ٣»، ورؤيته في كل زيارة هي نصف الارتباط.
+class _ClubBar extends StatelessWidget {
+  final String? logoUrl;
+  final String? name;
+  final VoidCallback onChange;
+
+  const _ClubBar({required this.logoUrl, required this.name, required this.onChange});
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandCard(
+      onTap: onChange,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: logoUrl == null
+                ? const Icon(Icons.shield_outlined, color: Brand.crown, size: 22)
+                : CachedNetworkImage(
+                    imageUrl: AppConfig.absoluteUrl(logoUrl!),
+                    errorWidget: (_, _, _) => const Icon(Icons.shield_outlined,
+                        color: Brand.crown, size: 22),
+                  ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              name ?? 'فريقي',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: Brand.text, fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const Text('تبديل',
+              style: TextStyle(color: Brand.textFaint, fontSize: 11.5)),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_left, color: Brand.textFaint, size: 18),
         ],
       ),
     );

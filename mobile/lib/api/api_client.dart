@@ -439,6 +439,18 @@ class ApiClient {
 
   // ---------------------------- فريقي ----------------------------
 
+  /// ما تحتاجه شاشة التهيئة: دورياتي وأندية المختار منها والقواعد.
+  Future<FantasySetup> fantasySetup({int? leagueId}) async {
+    try {
+      final res = await _dio.get('/api/fantasy/setup', queryParameters: {
+        'league': ?leagueId,
+      });
+      return FantasySetup.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
   /// سوق اللاعبين مع حدود اللعبة — طلبٌ واحد يكفي لبناء الشاشة.
   Future<FantasyMarket> fantasyMarket({
     int? leagueId,

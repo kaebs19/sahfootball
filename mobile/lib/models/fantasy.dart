@@ -387,3 +387,71 @@ class FantasyTransfers {
   /// كم انتقالاً يبقى مجانياً.
   int get freeLeft => (free - used).clamp(0, free);
 }
+
+/// دوريٌ في شاشة التهيئة — واسمه وشعاره وهل بدأ فيه.
+class FantasySetupLeague {
+  final int id;
+  final String name;
+  final String logoUrl;
+  final bool hasSquad;
+
+  const FantasySetupLeague({
+    required this.id,
+    required this.name,
+    required this.logoUrl,
+    required this.hasSquad,
+  });
+
+  factory FantasySetupLeague.fromJson(Map<String, dynamic> j) =>
+      FantasySetupLeague(
+        id: j['id'] as int,
+        name: (j['name'] as String?) ?? 'دوري',
+        logoUrl: (j['logo_url'] as String?) ?? '',
+        hasSquad: j['has_squad'] == true,
+      );
+}
+
+/// نادٍ يُختار ليكون «فريقي».
+class FantasyClub {
+  final int id;
+  final String name;
+  final String? logoUrl;
+
+  const FantasyClub({required this.id, required this.name, this.logoUrl});
+
+  factory FantasyClub.fromJson(Map<String, dynamic> j) => FantasyClub(
+        id: j['id'] as int,
+        name: (j['name'] as String?) ?? 'نادٍ',
+        logoUrl: j['logo_url'] as String?,
+      );
+}
+
+/// حمولة شاشة التهيئة: الدوريات وأندية المختار منها والقواعد.
+class FantasySetup {
+  final List<FantasySetupLeague> leagues;
+  final List<FantasyClub> clubs;
+  final FantasyRules rules;
+  final int? leagueId;
+  final bool followRequired;
+
+  const FantasySetup({
+    required this.leagues,
+    required this.clubs,
+    required this.rules,
+    this.leagueId,
+    this.followRequired = false,
+  });
+
+  factory FantasySetup.fromJson(Map<String, dynamic> j) => FantasySetup(
+        leagues: ((j['leagues'] as List?) ?? const [])
+            .map((l) => FantasySetupLeague.fromJson(l as Map<String, dynamic>))
+            .toList(),
+        clubs: ((j['clubs'] as List?) ?? const [])
+            .map((c) => FantasyClub.fromJson(c as Map<String, dynamic>))
+            .toList(),
+        rules: FantasyRules.fromJson(
+            j['rules'] as Map<String, dynamic>?, null, null),
+        leagueId: (j['league'] as Map<String, dynamic>?)?['id'] as int?,
+        followRequired: j['follow_required'] == true,
+      );
+}

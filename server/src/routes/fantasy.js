@@ -13,6 +13,7 @@ const championRepo = require('../repositories/championRepo');
 const fixtureRepo = require('../repositories/fixtureRepo');
 const fantasyRepo = require('../repositories/fantasyRepo');
 const squadService = require('../services/fantasySquadService');
+const db = require('../config/db');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -55,6 +56,61 @@ async function openRoundOf(league) {
     rounds,
   };
 }
+
+// GET /api/fantasy/setup — ما يحتاجه أول دخول: دورياتي وأنديتها
+//
+// شاشة التهيئة تسأل سؤالين متتاليين (أي دوري؟ ثم أي نادٍ؟)،
+// وطلبان متتاليان يعنيان دوّارتين على شبكة بطيئة. وهذا طلبٌ
+// واحد: الدوريات كلها، وأندية المطلوب منها.
+//
+// وكل دوري يحمل `has_squad`: اللاعب قد يتابع الإسباني والسعودي،
+// وله في كلٍّ منهما تشكيلة مستقلة — فالشاشة يجب أن تقول له أين
+// بدأ وأين لم يبدأ بعد، لا أن تفتح على أوّلها وتصمت.
+router.get('/setup', async (req, res) => {
+  const followed = await championRepo.followedIds(req.userId);
+  const leagues = (await leagueRepo.findEnabled()).filter(
+    (l) => l.in_app && followed.includes(l.id)
+  );
+  if (!leagues.length) return res.json({ ...FOLLOW_REQUIRED, leagues: [], clubs: [] });
+
+  const asked = Number(req.query.league);
+  const league = leagues.find((l) => l.id === asked) || leagues[0];
+
+  const { rows: squads } = await db.query(
+    `SELECT league_id FROM fantasy_squads WHERE user_id = $1 AND season = ANY($2)`,
+    [req.userId, [...new Set(leagues.map((l) => l.season))]]
+  );
+  const started = new Set(squads.map((r) => r.league_id));
+
+  // الأندية من مبارياتنا لا من جدول الفرق كله: جدول الفرق يحمل
+  // أندية ثمانية دوريات، وقائمةٌ فيها ريال مدريد لمن يختار ناديه
+  // السعودي دعوةٌ لخطأ يرفضه الخادم بعد ثلاث ضغطات.
+  const { rows: clubs } = await db.query(
+    `SELECT DISTINCT t.id, COALESCE(t.name_ar, t.name_en) AS name, t.logo_url
+       FROM teams t
+       JOIN (
+         SELECT home_team_id AS team_id FROM fixtures
+          WHERE league_id = $1 AND season = $2
+         UNION
+         SELECT away_team_id FROM fixtures
+          WHERE league_id = $1 AND season = $2
+       ) f ON f.team_id = t.id
+      ORDER BY name`,
+    [league.id, league.season]
+  );
+
+  res.json({
+    leagues: leagues.map((l) => ({
+      id: l.id,
+      name: l.name_ar || l.name_en,
+      logo_url: `/logos/league-${l.id}.png`,
+      has_squad: started.has(l.id),
+    })),
+    league: { id: league.id, name: league.name_ar || league.name_en },
+    clubs,
+    rules: squadService.RULES,
+  });
+});
 
 // GET /api/fantasy/market — سوق اللاعبين
 router.get('/market', async (req, res) => {
