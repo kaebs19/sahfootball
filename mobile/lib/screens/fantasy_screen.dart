@@ -48,6 +48,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
   /// نعرض رقم الخادم، وحين تتغيّر نعرض تقديراً معلّماً.
   double _wallet = 0;
   double _savedValue = 0;
+  FantasyTransfers? _transfers;
 
   bool _loading = true;
   bool _saving = false;
@@ -85,8 +86,12 @@ class _FantasyScreenState extends State<FantasyScreen> {
       ]);
       if (!mounted) return;
 
-      final squad = results[0]
-          as ({FantasySquad? squad, FantasyRules rules, bool followRequired});
+      final squad = results[0] as ({
+        FantasySquad? squad,
+        FantasyRules rules,
+        bool followRequired,
+        FantasyTransfers? transfers,
+      });
       final market = results[1] as FantasyMarket;
 
       setState(() {
@@ -99,6 +104,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
         _totalPoints = squad.squad?.totalPoints ?? 0;
         _wallet = squad.squad?.budgetLeft ?? market.rules.budget;
         _savedValue = squad.squad?.squadValue ?? 0;
+        _transfers = squad.transfers;
         _dirty = false;
         _loading = false;
       });
@@ -294,6 +300,13 @@ class _FantasyScreenState extends State<FantasyScreen> {
           size: _rules.squadSize,
           totalPoints: _totalPoints,
         ),
+        if (_transfers != null) ...[
+          const SizedBox(height: 8),
+          _TransfersBar(
+            transfers: _transfers!,
+            onWildcard: _confirmWildcard,
+          ),
+        ],
         const SizedBox(height: 8),
         _FormationPicker(
           formations: _rules.formations,
@@ -328,6 +341,48 @@ class _FantasyScreenState extends State<FantasyScreen> {
         ),
       ],
     );
+  }
+
+  /// الوايلد كارد لا رجعة فيها — فتُؤكَّد قبل التفعيل.
+  ///
+  /// والتأكيد ليس حذراً زائداً: قرار استعمالها نصفُ قيمتها، ومن
+  /// فعّلها بضغطة عابرة يفقد رقاقة نصفِ موسمٍ كامل.
+  Future<void> _confirmWildcard() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Brand.surface,
+        title: const Text('تفعيل الوايلد كارد؟',
+            style: TextStyle(color: Brand.text, fontSize: 17)),
+        content: const Text(
+          'انتقالاتك هذا الأسبوع كلها بلا خصم — بدّل من شئت.\n'
+          'ولا يمكن التراجع، ولك واحدة في كل نصف موسم.',
+          style: TextStyle(color: Brand.textMuted, height: 1.6, fontSize: 13.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('ليس الآن',
+                style: TextStyle(color: Brand.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('فعّلها',
+                style: TextStyle(color: Brand.crown, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      await context.read<ApiClient>().useWildcard(leagueId: _leagueId);
+      if (!mounted) return;
+      _say('فُعِّلت الوايلد كارد — انتقالات هذا الأسبوع بلا خصم.');
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) _say(e.message, error: true);
+    }
   }
 
   Future<void> _onTapSlot(PitchSlot slot) async {
@@ -983,6 +1038,89 @@ class _RankRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// شريط الانتقالات: كم بقي مجانياً، وكم سيُخصم، والرقاقة.
+///
+/// فوق الملعب لا تحته: القرار الذي يكلّف نقاطاً يجب أن يُرى قبل
+/// أن تُلمس الخانات، لا بعد أن تُبدَّل خمسة لاعبين.
+class _TransfersBar extends StatelessWidget {
+  final FantasyTransfers transfers;
+  final VoidCallback onWildcard;
+
+  const _TransfersBar({required this.transfers, required this.onWildcard});
+
+  @override
+  Widget build(BuildContext context) {
+    final costly = transfers.cost < 0;
+
+    return BrandCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Icon(
+            transfers.wildcardActive ? Icons.auto_awesome : Icons.swap_horiz,
+            size: 17,
+            color: transfers.wildcardActive ? Brand.crown : Brand.textMuted,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              transfers.wildcardActive
+                  ? 'الوايلد كارد مُفعَّلة — بدّل بلا خصم'
+                  : costly
+                      ? '${Fmt.number(transfers.used)} انتقالات · '
+                          '${Fmt.number(transfers.freeLeft)} مجاني متبقٍّ'
+                      : '${Fmt.number(transfers.freeLeft)} انتقال مجاني متبقٍّ',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: transfers.wildcardActive ? Brand.crown : Brand.textMuted,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+          if (costly) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: Brand.wrong.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${Fmt.number(transfers.cost)} نقاط',
+                style: const TextStyle(
+                  color: Brand.wrong,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: Brand.tabular,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          if (!transfers.wildcardActive && transfers.wildcardAvailable)
+            GestureDetector(
+              onTap: onWildcard,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Brand.fill,
+                  borderRadius: BorderRadius.circular(Brand.radiusChip),
+                  border: Border.all(color: Brand.border),
+                ),
+                child: const Text('وايلد كارد',
+                    style: TextStyle(
+                        color: Brand.crown,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -352,3 +352,38 @@ class FantasyMarket {
         followRequired: j['follow_required'] == true,
       );
 }
+
+/// حال انتقالات هذا الأسبوع — يُقرأ قبل الإقفال لا بعده.
+///
+/// الخصم الذي يُكتشف بعد وقوعه عقوبة، والذي يُرى قبله قرار.
+class FantasyTransfers {
+  final String? round;
+  final int used;
+  final int free;
+
+  /// سالبة أو صفر — ما سيُخصم من نقاط الجولة.
+  final int cost;
+  final bool wildcardActive;
+  final bool wildcardAvailable;
+
+  const FantasyTransfers({
+    required this.used,
+    required this.free,
+    required this.cost,
+    required this.wildcardActive,
+    required this.wildcardAvailable,
+    this.round,
+  });
+
+  factory FantasyTransfers.fromJson(Map<String, dynamic> j) => FantasyTransfers(
+        round: j['round'] as String?,
+        used: (j['used'] as int?) ?? 0,
+        free: (j['free'] as int?) ?? 1,
+        cost: (j['cost'] as int?) ?? 0,
+        wildcardActive: j['wildcard_active'] == true,
+        wildcardAvailable: j['wildcard_available'] == true,
+      );
+
+  /// كم انتقالاً يبقى مجانياً.
+  int get freeLeft => (free - used).clamp(0, free);
+}

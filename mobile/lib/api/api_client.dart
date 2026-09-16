@@ -460,14 +460,19 @@ class ApiClient {
   }
 
   /// تشكيلتي — null لمن لم يبنِ واحدة بعد.
-  Future<({FantasySquad? squad, FantasyRules rules, bool followRequired})>
-      fantasySquad({int? leagueId}) async {
+  Future<({
+    FantasySquad? squad,
+    FantasyRules rules,
+    bool followRequired,
+    FantasyTransfers? transfers,
+  })> fantasySquad({int? leagueId}) async {
     try {
       final res = await _dio.get('/api/fantasy/squad', queryParameters: {
         'league': ?leagueId,
       });
       final data = res.data as Map<String, dynamic>;
       final squad = data['squad'] as Map<String, dynamic>?;
+      final transfers = data['transfers'] as Map<String, dynamic>?;
       return (
         squad: squad == null ? null : FantasySquad.fromJson(squad),
         rules: FantasyRules.fromJson(
@@ -476,6 +481,8 @@ class ApiClient {
           data['quota'] as Map<String, dynamic>?,
         ),
         followRequired: data['follow_required'] == true,
+        transfers:
+            transfers == null ? null : FantasyTransfers.fromJson(transfers),
       );
     } on DioException catch (e) {
       _throwReadable(e);
@@ -508,6 +515,15 @@ class ApiClient {
       });
       return FantasySquad.fromJson(
           (res.data as Map<String, dynamic>)['squad'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تفعيل الوايلد كارد للجولة الجارية — لا تُلغى بعدها.
+  Future<void> useWildcard({int? leagueId}) async {
+    try {
+      await _dio.post('/api/fantasy/wildcard', data: {'league': leagueId});
     } on DioException catch (e) {
       _throwReadable(e);
     }
