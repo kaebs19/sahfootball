@@ -215,16 +215,59 @@ async function lockRound(leagueId, season, round) {
 
     let locked = 0;
     for (const squad of squads) {
+      // كلفة الانتقالات تُحسب هنا لا عند الحفظ، ولهذا سببان:
+      //
+      // الأول أن الحفظ يتكرّر — من عدّل تشكيلته خمس مرات في
+      // الأسبوع لم ينتقل خمس مرات، والسجلّ يقول «حدث هذا الأسبوع»
+      // لا كم مرة حُفظ.
+      //
+      // والثاني أن الانتقال لا يصير نهائياً قبل الإقفال: من باع
+      // لاعباً ثم أعاده قبل صافرة البداية لم ينتقل شيء.
+      const { rows: counted } = await client.query(
+        `SELECT COUNT(DISTINCT player_id)::int AS used
+           FROM fantasy_transfers
+          WHERE squad_id = $1 AND round = $2 AND direction = 'in'`,
+        [squad.id, round]
+      );
+      const used = counted[0]?.used ?? 0;
+
+      const { rows: chip } = await client.query(
+        `SELECT 1 FROM fantasy_chips
+          WHERE squad_id = $1 AND chip = 'wildcard' AND round = $2`,
+        [squad.id, round]
+      );
+      const wildcard = chip.length > 0;
+
+      // المجانية أولاً ثم الخصم. والوايلد كارد تلغيه كلّه — وهذا
+      // كل معناها: إعادة بناء بلا ثمن.
+      const free = squad.free_transfers ?? 1;
+      const paid = wildcard ? 0 : Math.max(0, used - free);
+      const cost = paid * -4;
+
       const { rows: entry } = await client.query(
-        `INSERT INTO fantasy_round_entries (squad_id, round, formation, captain_id, vice_id)
+        `INSERT INTO fantasy_round_entries
+           (squad_id, round, formation, captain_id, vice_id,
+            transfers_cost, transfers_used, wildcard)
          SELECT $1, $2, $3,
                 (SELECT player_id FROM fantasy_squad_players WHERE squad_id = $1 AND is_captain),
-                (SELECT player_id FROM fantasy_squad_players WHERE squad_id = $1 AND is_vice)
+                (SELECT player_id FROM fantasy_squad_players WHERE squad_id = $1 AND is_vice),
+                $4, $5, $6
          ON CONFLICT (squad_id, round) DO NOTHING
          RETURNING squad_id`,
-        [squad.id, round, squad.formation]
+        [squad.id, round, squad.formation, cost, used, wildcard]
       );
       if (!entry.length) continue;
+
+      // المجانية للجولة القادمة: ما لم يُستعمل يتراكم حتى خمس.
+      // والتراكم هو ما يجعل الصبر خياراً — من لم يحتج انتقالاً
+      // هذا الأسبوع يملك اثنين الأسبوع القادم.
+      const nextFree = wildcard
+        ? 1
+        : Math.min(5, Math.max(1, free - Math.min(used, free) + 1));
+      await client.query(
+        'UPDATE fantasy_squads SET free_transfers = $2 WHERE id = $1',
+        [squad.id, nextFree]
+      );
 
       await client.query(
         `INSERT INTO fantasy_round_players (squad_id, round, player_id, on_bench, bench_order)
@@ -243,6 +286,39 @@ async function lockRound(leagueId, season, round) {
   } finally {
     client.release();
   }
+}
+
+/**
+ * تفعيل رقاقة. القيد في القاعدة (مفتاح squad+chip+half) لا هنا:
+ * مسارٌ ينسى الفحص يعطي صاحبه رقاقتين في نصفٍ واحد.
+ */
+async function useChip(squadId, chip, round, half) {
+  const { rowCount } = await db.query(
+    `INSERT INTO fantasy_chips (squad_id, chip, round, half)
+     VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+    [squadId, chip, round, half]
+  );
+  return rowCount > 0;
+}
+
+/** رقائق تشكيلةٍ المستعملة. */
+async function chipsFor(squadId) {
+  const { rows } = await db.query(
+    'SELECT chip, round, half FROM fantasy_chips WHERE squad_id = $1',
+    [squadId]
+  );
+  return rows;
+}
+
+/** كم انتقالاً سُجّل في هذه الجولة — يُعرض قبل الإقفال. */
+async function transfersThisRound(squadId, round) {
+  const { rows } = await db.query(
+    `SELECT COUNT(DISTINCT player_id)::int AS used
+       FROM fantasy_transfers
+      WHERE squad_id = $1 AND round = $2 AND direction = 'in'`,
+    [squadId, round]
+  );
+  return rows[0]?.used ?? 0;
 }
 
 /** مدخلات جولة لم تُسوَّ بعد. */
@@ -329,6 +405,9 @@ async function leaderboard(leagueId, season, limit = 100) {
 module.exports = {
   market,
   planTransaction,
+  useChip,
+  chipsFor,
+  transfersThisRound,
   playersByIds,
   findSquad,
   squadPlayers,

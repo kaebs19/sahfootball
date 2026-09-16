@@ -37,6 +37,25 @@ async function resolveLeague(req) {
 
 const FOLLOW_REQUIRED = { follow_required: true, league: null, squad: null };
 
+/**
+ * الجولة المفتوحة للتعديل الآن، ونصف الموسم الذي تقع فيه.
+ *
+ * النصف يُحسب من ترتيب الجولة في الموسم لا من التاريخ: المواسم
+ * تختلف أطوالاً وتتأجّل جولاتٌ، و«منتصف الموسم» بالتقويم قد يقع
+ * في الجولة الثامنة أو العشرين.
+ */
+async function openRoundOf(league) {
+  const rounds = await fixtureRepo.roundsFor(league.id, league.season);
+  if (!rounds.length) return { round: null, half: 1, rounds: [] };
+  const index = rounds.findIndex((r) => r.open > 0);
+  const at = index === -1 ? rounds.length - 1 : index;
+  return {
+    round: rounds[at].round,
+    half: at < rounds.length / 2 ? 1 : 2,
+    rounds,
+  };
+}
+
 // GET /api/fantasy/market — سوق اللاعبين
 router.get('/market', async (req, res) => {
   const league = await resolveLeague(req);
@@ -64,6 +83,25 @@ router.get('/squad', async (req, res) => {
   if (!league) return res.json(FOLLOW_REQUIRED);
 
   const squad = await fantasyRepo.findSquad(req.userId, league.id, league.season);
+  const { round: openRound, half } = await openRoundOf(league);
+
+  let pending = null;
+  if (squad) {
+    const used = await fantasyRepo.transfersThisRound(squad.id, openRound);
+    const chips = await fantasyRepo.chipsFor(squad.id);
+    const wildcardNow = chips.some((c) => c.chip === 'wildcard' && c.round === openRound);
+    pending = {
+      round: openRound,
+      used,
+      free: squad.free_transfers,
+      cost: wildcardNow ? 0 : Math.max(0, used - squad.free_transfers) * -4,
+      wildcard_active: wildcardNow,
+      // متاحة إن لم تُستعمل في هذا النصف.
+      wildcard_available:
+        !chips.some((c) => c.chip === 'wildcard' && c.half === half),
+    };
+  }
+
   res.json({
     league: { id: league.id, name: league.name },
     rules: squadService.RULES,
@@ -79,10 +117,13 @@ router.get('/squad', async (req, res) => {
       // يشتري ما لا يستطيعه غيره.
       squad_value: Number(squad.squad_value),
       free_transfers: squad.free_transfers,
-      wildcards_used: squad.wildcards_used,
       total_points: squad.total_points,
       players: await fantasyRepo.squadPlayers(squad.id),
     },
+    // ما ستكلّفه انتقالاتُ هذا الأسبوع لو أُقفلت الجولة الآن.
+    // يُعرض قبل الإقفال لا بعده: خصمٌ يُكتشف بعد وقوعه عقوبةٌ،
+    // وخصمٌ يُرى قبله قرار.
+    transfers: pending,
   });
 });
 
@@ -135,8 +176,7 @@ router.put('/squad', async (req, res) => {
 
     // الجولة التي تُسجَّل فيها الانتقالات: الجارية — وهي نافذة
     // السوق المفتوحة الآن.
-    const rounds = await fixtureRepo.roundsFor(league.id, league.season);
-    const openRound = (rounds.find((r) => r.open > 0) || rounds[rounds.length - 1])?.round;
+    const { round: openRound } = await openRoundOf(league);
 
     await fantasyRepo.saveSquad({
       userId: req.userId,
@@ -182,6 +222,33 @@ router.put('/squad', async (req, res) => {
   }
 });
 
+// POST /api/fantasy/wildcard — تفعيل الوايلد كارد للجولة الجارية
+//
+// تُفعَّل قبل الإقفال وتسري على انتقالات هذا الأسبوع كلها: من
+// فعّلها ثم بدّل عشرة لاعبين لا يُخصم منه شيء.
+//
+// ولا تُلغى بعد التفعيل: قرارُ استعمالها هو نصف قيمتها، وزرُّ
+// تراجعٍ يجعلها بلا ثمن — يفعّلها الجميع كل أسبوع ثم يتراجعون
+// عمّا لم يحتاجوه.
+router.post('/wildcard', async (req, res) => {
+  const league = await resolveLeague(req);
+  if (!league) return res.status(400).json({ error: 'تابِع دورياً أولاً.' });
+
+  const squad = await fantasyRepo.findSquad(req.userId, league.id, league.season);
+  if (!squad) return res.status(400).json({ error: 'ابنِ تشكيلتك أولاً.' });
+
+  const { round, half } = await openRoundOf(league);
+  if (!round) return res.status(400).json({ error: 'لا جولة مفتوحة الآن.' });
+
+  const ok = await fantasyRepo.useChip(squad.id, 'wildcard', round, half);
+  if (!ok) {
+    return res.status(400).json({
+      error: 'استعملت الوايلد كارد في هذا النصف من الموسم.',
+    });
+  }
+  res.json({ wildcard: { round, half } });
+});
+
 // GET /api/fantasy/round — نقاط الجولة، لاعباً لاعباً
 //
 // من الجولة المجمّدة لا من التشكيلة الحالية: من بدّل كابتنه بعد
@@ -203,10 +270,21 @@ router.get('/round', async (req, res) => {
   const names = await fantasyRepo.squadPlayers(squad.id);
   const byId = new Map(names.map((n) => [n.player_id, n]));
 
+  const { rows: entries } = await require('../config/db').query(
+    'SELECT transfers_cost, transfers_used, wildcard FROM fantasy_round_entries WHERE squad_id = $1 AND round = $2',
+    [squad.id, round]
+  );
+  const entry = entries[0] || null;
+
   res.json({
     league: { id: league.id, name: league.name },
     round,
     rounds: rounds.map((r) => r.round),
+    // الكلفة مفصولة عن المجموع لا مدموجة فيه: «٥٤ نقطة، −٤
+    // انتقالات» تُفهم، ورقمٌ واحد لا يُفسَّر.
+    transfers_cost: entry?.transfers_cost ?? 0,
+    transfers_used: entry?.transfers_used ?? 0,
+    wildcard: entry?.wildcard ?? false,
     total: lineup.reduce((sum, l) => sum + l.points, 0),
     players: lineup.map((l) => ({ ...l, ...(byId.get(l.player_id) || {}) })),
   });
