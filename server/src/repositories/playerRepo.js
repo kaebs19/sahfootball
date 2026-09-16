@@ -148,6 +148,10 @@ async function statsForFixtures(fixtureIds) {
  * العمود مخزّن لا محسوب لسببين: بطاقة اللاعب في السوق ترتّب به
  * (وجمعُه لكل لاعب في كل فتحة استعلامٌ ثقيل)، وشاشةُ الجولة يجب
  * أن تبقى ثابتة بعد أشهر حتى لو عُدّل الجدول من اللوحة.
+ *
+ * والإضافة (bps و bonus) تُكتب معها في نفس الجملة لا بعدها:
+ * النقاط محسوبةٌ بالإضافة داخلها، وكتابتُهما في مرّتين تترك نافذةً
+ * يُقرأ فيها صفٌّ نقاطُه تقول ٩ وإضافته تقول صفراً.
  */
 async function writeStatPoints(rows) {
   if (!rows.length) return 0;
@@ -156,8 +160,10 @@ async function writeStatPoints(rows) {
     await client.query('BEGIN');
     for (const r of rows) {
       await client.query(
-        'UPDATE player_fixture_stats SET points = $3 WHERE fixture_id = $1 AND player_id = $2',
-        [r.fixture_id, r.player_id, r.points]
+        `UPDATE player_fixture_stats
+            SET points = $3, bps = $4, bonus = $5
+          WHERE fixture_id = $1 AND player_id = $2`,
+        [r.fixture_id, r.player_id, r.points, r.bps ?? 0, r.bonus ?? 0]
       );
     }
     await client.query('COMMIT');

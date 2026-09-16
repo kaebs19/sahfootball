@@ -119,11 +119,11 @@ class _FantasyScreenState extends State<FantasyScreen> {
         _wallet = squad.squad?.budgetLeft ?? market.rules.budget;
         _savedValue = squad.squad?.squadValue ?? 0;
         _transfers = squad.transfers;
-        final club = squad.squad?.players
-            .where((p) => p.teamId == squad.squad?.clubTeamId)
-            .firstOrNull;
-        _clubLogo = club?.teamLogo;
-        _clubName = club?.teamName;
+        // هوية النادي من الخادم لا من اللاعبين: من ثبّت ناديه ولم
+        // يشترِ بعد لا لاعب له يُستنبط منه الشعار، وهي بالضبط
+        // اللحظة التي يجب أن يرى فيها فريقه.
+        _clubLogo = squad.squad?.clubLogo;
+        _clubName = squad.squad?.clubName;
         _dirty = false;
         _loading = false;
       });
@@ -359,6 +359,9 @@ class _FantasyScreenState extends State<FantasyScreen> {
       _squad = [];
       _dirty = false;
     });
+    // والشاشة لا تعتمد على ما وُضع أعلاه: التهيئة ثبّتت النادي في
+    // الخادم قبل أن تعود، فالتحميل يعيده معه — وهذا ما يجعله
+    // يبقى بعد إغلاق التطبيق لا إلى آخر الجلسة وحدها.
     await _load();
   }
 

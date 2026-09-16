@@ -35,6 +35,7 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
   int? _club;
   String? _error;
   bool _loading = true;
+  bool _saving = false;
 
   /// شبكة الأندية تطول (١٨ نادياً = خمسة صفوف)، فالخطوة الثالثة
   /// تقع تحت حافة الشاشة. ومن اختار ناديه فلم يرَ بعده شيئاً ظنّ
@@ -96,6 +97,40 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
     }
   }
 
+  /// تثبيت النادي في الخادم ثم العودة إلى الملعب.
+  ///
+  /// الحفظ هنا لا عند اكتمال الخمسة عشر: بينهما رحلةٌ في السوق،
+  /// ومن خرج في منتصفها كان يعود فيجد «ابنِ فريقك» كأنه لم يختر
+  /// شيئاً — وهذا هو العيب الذي أُصلح.
+  ///
+  /// ولا نعود قبل أن يُقبل الحفظ: العودة أولاً تعني ملعباً يحمل
+  /// شعار نادٍ لم يُثبَّت، وهي كذبةٌ تظهر عند أول تحديث.
+  Future<void> _confirm() async {
+    final league = _league;
+    final club = _club;
+    if (league == null || club == null) return;
+
+    setState(() => _saving = true);
+    try {
+      await context
+          .read<ApiClient>()
+          .setFantasyClub(leagueId: league, clubTeamId: club);
+      if (!mounted) return;
+      FantasySounds.play(Sfx.save);
+      Navigator.of(context).pop((league: league, club: club));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      FantasySounds.play(Sfx.error);
+      // رسالة الخادم كما هي: هو من يعرف القاعدة المكسورة.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message),
+        backgroundColor: Brand.wrong,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,20 +144,25 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
               child: SizedBox(
                 height: 52,
                 child: FilledButton(
-                  onPressed: () {
-                    FantasySounds.play(Sfx.save);
-                    Navigator.of(context).pop((league: _league, club: _club));
-                  },
+                  onPressed: _saving ? null : _confirm,
                   style: FilledButton.styleFrom(
                     backgroundColor: Brand.primaryButton,
                     foregroundColor: Brand.onAccent,
+                    disabledBackgroundColor: Brand.fillStrong,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(Brand.radiusChip),
                     ),
                   ),
-                  child: const Text('ابنِ تشكيلتي',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  child: _saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.2, color: Brand.onAccent),
+                        )
+                      : const Text('ابنِ تشكيلتي',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700)),
                 ),
               ),
             ),

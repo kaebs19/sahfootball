@@ -15,6 +15,10 @@ const fixtureRepo = require('../repositories/fixtureRepo');
 const leagueRepo = require('../repositories/leagueRepo');
 const squadService = require('../services/fantasySquadService');
 const fantasyScoring = require('../services/fantasyScoring');
+// حركة الأسعار بعد التسوية تحتاجه. وغيابه كان يرمي ReferenceError
+// في آخر سطر من الحلقة — بعد كتابة التسوية وقبل تحريك الأسعار،
+// فتُسوّى الجولة ولا يتحرّك سعرٌ واحد ولا تُسوّى التي بعدها.
+const fantasyMarket = require('../services/fantasyMarket');
 const { syncFixtureStats } = require('./syncPlayers');
 const db = require('../config/db');
 const logger = require('../utils/logger');
@@ -56,7 +60,9 @@ async function lockStartedRounds() {
     );
     if (!rows[0].started) continue;
 
-    const n = await fantasyRepo.lockRound(league.id, league.season, round);
+    const n = await fantasyRepo.lockRound(league.id, league.season, round, {
+      minPlayers: squadService.RULES.squad_size,
+    });
     if (n) logger.info(`[fantasy] locked ${n} squads — league ${league.id} ${round}`);
     locked += n;
   }
@@ -106,13 +112,11 @@ async function settleFinishedRounds() {
       // نقاط كل إحصاء أولاً: مجموع الموسم في players.total_points
       // يُجمع منها، ولو تُركت صفراً لخرج السوق كله بصفر نقطة —
       // رقمٌ يبدو حقيقياً ولا يشتكي منه أحد.
-      await playerRepo.writeStatPoints(
-        stats.map((s) => ({
-          fixture_id: s.fixture_id,
-          player_id: s.player_id,
-          points: fantasyScoring.computePlayerPoints(s, s.position, cfg).points,
-        }))
-      );
+      //
+      // وnقاط الإضافة توزَّع داخلها على كل مباراة قبل الحساب،
+      // فتصل إلى صفوف statsByPlayer نفسها — وهي التي تقرأها
+      // settleRound بعد سطور.
+      await playerRepo.writeStatPoints(fantasyScoring.scoreFixtureStats(stats, cfg));
 
       const entries = (await fantasyRepo.unsettledEntries(round))
         .filter((e) => e.league_id === league.id);

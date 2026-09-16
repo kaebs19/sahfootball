@@ -93,8 +93,13 @@ function priceMove(demand, form, { hasMarket = true } = {}) {
  */
 async function moveLeaguePrices(leagueId, season, round) {
   const { rows: counts } = await db.query(
+    // المدرّبون هم من بنى تشكيلة. ومن ثبّت ناديه ولم يبنِ بعد له
+    // صفٌّ في الجدول (راجع fantasyRepo.setClub)، وعدُّه يكبّر قاسم
+    // الطلب بمن لا ينتقل أصلاً — فيبدو السوق ساكناً وهو يتحرّك.
     `SELECT COUNT(*)::int AS managers
-       FROM fantasy_squads WHERE league_id = $1 AND season = $2`,
+       FROM fantasy_squads s
+      WHERE s.league_id = $1 AND s.season = $2
+        AND EXISTS (SELECT 1 FROM fantasy_squad_players sp WHERE sp.squad_id = s.id)`,
     [leagueId, season]
   );
   const managers = counts[0]?.managers ?? 0;

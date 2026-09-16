@@ -125,6 +125,14 @@ class FantasySquad {
   final String id;
   final String? name;
   final int? clubTeamId;
+
+  /// هوية «فريقي» كما يقولها الخادم — لا تُستنبط من اللاعبين.
+  ///
+  /// استنباطها من أول لاعبٍ ناديه هو النادي كان يعمل ما دامت
+  /// التشكيلة مبنيّة، ويسكت في اللحظة الوحيدة التي تهمّ: من ثبّت
+  /// ناديه ولم يشترِ بعد لا لاعب له يُستنبط منه شيء.
+  final String? clubName;
+  final String? clubLogo;
   final String formation;
   final double budgetLeft;
 
@@ -144,6 +152,8 @@ class FantasySquad {
     this.squadValue = 0,
     this.name,
     this.clubTeamId,
+    this.clubName,
+    this.clubLogo,
     this.freeTransfers = 1,
     this.totalPoints = 0,
   });
@@ -152,6 +162,8 @@ class FantasySquad {
         id: '${j['id']}',
         name: j['name'] as String?,
         clubTeamId: j['club_team_id'] as int?,
+        clubName: j['club_name'] as String?,
+        clubLogo: j['club_logo'] as String?,
         formation: (j['formation'] as String?) ?? '4-4-2',
         budgetLeft: double.tryParse('${j['budget_left']}') ?? 0,
         squadValue: double.tryParse('${j['squad_value']}') ?? 0,

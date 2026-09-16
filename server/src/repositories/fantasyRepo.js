@@ -50,11 +50,44 @@ async function playersByIds(ids) {
 
 async function findSquad(userId, leagueId, season) {
   const { rows } = await db.query(
-    `SELECT * FROM fantasy_squads
-      WHERE user_id = $1 AND league_id = $2 AND season = $3`,
+    `SELECT s.*,
+            COALESCE(t.name_ar, t.name_en) AS club_name,
+            t.logo_url AS club_logo,
+            (SELECT COUNT(*) FROM fantasy_squad_players sp
+              WHERE sp.squad_id = s.id)::int AS player_count
+       FROM fantasy_squads s
+       LEFT JOIN teams t ON t.id = s.club_team_id
+      WHERE s.user_id = $1 AND s.league_id = $2 AND s.season = $3`,
     [userId, leagueId, season]
   );
   return rows[0] ?? null;
+}
+
+/**
+ * تثبيت النادي وحده — قبل أن يوجد لاعبٌ واحد في التشكيلة.
+ *
+ * ولماذا صفٌّ في القاعدة لا حالةٌ في التطبيق؟ لأن «فريقي» أول
+ * قرار في اللعبة وأبعدها أثراً: منه ثلاثة لاعبين في كل تشكيلة
+ * وشعارُه شعارُ الفريق في العرش. وحملُه في ذاكرة الشاشة حتى يكتمل
+ * الخمسة عشر يعني أن من اختار ناديه ثم أغلق التطبيق — أو ردّ على
+ * رسالة — يعود فيجد شاشة «ابنِ فريقك» كأنه لم يفعل شيئاً.
+ *
+ * والصفّ الناتج تشكيلةٌ بلا لاعبين: لا تُجمَّد عند الإقفال ولا
+ * تظهر في العرش (راجع lockRound و leaderboard) — فهي نيّةٌ لا
+ * مشاركة.
+ */
+async function setClub({ userId, leagueId, season, clubTeamId, budget }) {
+  const { rows } = await db.query(
+    `INSERT INTO fantasy_squads
+       (user_id, league_id, season, club_team_id, budget_left, updated_at)
+     VALUES ($1,$2,$3,$4,$5, now())
+     ON CONFLICT (user_id, league_id, season) DO UPDATE SET
+       club_team_id = EXCLUDED.club_team_id,
+       updated_at   = now()
+     RETURNING id`,
+    [userId, leagueId, season, clubTeamId, budget]
+  );
+  return rows[0];
 }
 
 async function squadPlayers(squadId) {
@@ -204,13 +237,19 @@ async function saveSquad({
  * وإعادة النداء بعدها (نبضة ثانية، إعادة تشغيل) يجب ألا تكتب
  * التشكيلة الحالية فوق المجمّدة — وإلا صار التجميد بلا معنى.
  */
-async function lockRound(leagueId, season, round) {
+async function lockRound(leagueId, season, round, { minPlayers = 15 } = {}) {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
+    // التشكيلات الكاملة وحدها. ومن ثبّت ناديه ولم يبنِ بعد له صفٌّ
+    // بلا لاعبين (راجع setClub)، وتجميدُه يصنع جولةً فارغة تُسوّى
+    // بصفر وتضع صاحبها في العرش بلا أن يلعب.
     const { rows: squads } = await client.query(
-      'SELECT * FROM fantasy_squads WHERE league_id = $1 AND season = $2',
-      [leagueId, season]
+      `SELECT s.* FROM fantasy_squads s
+        WHERE s.league_id = $1 AND s.season = $2
+          AND (SELECT COUNT(*) FROM fantasy_squad_players sp
+                WHERE sp.squad_id = s.id) >= $3`,
+      [leagueId, season, minPlayers]
     );
 
     let locked = 0;
@@ -395,6 +434,7 @@ async function leaderboard(leagueId, season, limit = 100) {
        JOIN users u ON u.id = s.user_id
        LEFT JOIN teams t ON t.id = s.club_team_id
       WHERE s.league_id = $1 AND s.season = $2
+        AND EXISTS (SELECT 1 FROM fantasy_squad_players sp WHERE sp.squad_id = s.id)
       ORDER BY s.total_points DESC
       LIMIT $3`,
     [leagueId, season, limit]
@@ -410,6 +450,7 @@ module.exports = {
   transfersThisRound,
   playersByIds,
   findSquad,
+  setClub,
   squadPlayers,
   saveSquad,
   lockRound,

@@ -501,6 +501,31 @@ class ApiClient {
     }
   }
 
+  /// تثبيت النادي وحده — أول قرار في اللعبة، ويُحفظ لحظتَه.
+  ///
+  /// طلبٌ مستقلّ عن حفظ التشكيلة عمداً: بينهما ربعُ ساعة في
+  /// السوق، ومن خرج في المنتصف كان يعود فلا يجد ناديه.
+  Future<({int id, String? name, String? logoUrl})> setFantasyClub({
+    required int leagueId,
+    required int clubTeamId,
+  }) async {
+    try {
+      final res = await _dio.put('/api/fantasy/club', data: {
+        'league': leagueId,
+        'club_team_id': clubTeamId,
+      });
+      final club = (res.data as Map<String, dynamic>)['club']
+          as Map<String, dynamic>;
+      return (
+        id: (club['id'] as int?) ?? clubTeamId,
+        name: club['name'] as String?,
+        logoUrl: club['logo_url'] as String?,
+      );
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
   /// حفظ التشكيلة كاملة. الخادم يرفض بما يخالف القواعد برسالة
   /// عربية جاهزة — تُعرض كما هي ولا تُترجم هنا.
   Future<FantasySquad> saveFantasySquad({

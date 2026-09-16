@@ -76,8 +76,13 @@ router.get('/setup', async (req, res) => {
   const asked = Number(req.query.league);
   const league = leagues.find((l) => l.id === asked) || leagues[0];
 
+  // «لك فريق هنا» للتشكيلات المبنيّة وحدها: من ثبّت ناديه ولم
+  // يكمل الخمسة عشر له صفٌّ في الجدول (راجع setClub)، وعدُّه
+  // بداية يقول للاعب إنه بدأ حيث لم يبدأ.
   const { rows: squads } = await db.query(
-    `SELECT league_id FROM fantasy_squads WHERE user_id = $1 AND season = ANY($2)`,
+    `SELECT s.league_id FROM fantasy_squads s
+      WHERE s.user_id = $1 AND s.season = ANY($2)
+        AND EXISTS (SELECT 1 FROM fantasy_squad_players sp WHERE sp.squad_id = s.id)`,
     [req.userId, [...new Set(leagues.map((l) => l.season))]]
   );
   const started = new Set(squads.map((r) => r.league_id));
@@ -166,6 +171,11 @@ router.get('/squad', async (req, res) => {
       id: squad.id,
       name: squad.name,
       club_team_id: squad.club_team_id,
+      // اسم النادي وشعاره من الخادم لا من لاعبي التشكيلة: من ثبّت
+      // ناديه ولم يشترِ بعد لا لاعب له يُستنبط منه الشعار، وشريط
+      // «فريقي» عندها يظهر بلا هوية في أهمّ لحظة — أول دخول.
+      club_name: squad.club_name,
+      club_logo: squad.club_logo,
       formation: squad.formation,
       budget_left: Number(squad.budget_left),
       // قيمة اللاعبين بأسعار اليوم. مع المحفظة تعطي «قيمة فريقك»،
@@ -180,6 +190,72 @@ router.get('/squad', async (req, res) => {
     // يُعرض قبل الإقفال لا بعده: خصمٌ يُكتشف بعد وقوعه عقوبةٌ،
     // وخصمٌ يُرى قبله قرار.
     transfers: pending,
+  });
+});
+
+// PUT /api/fantasy/club — تثبيت «فريقي» قبل بناء التشكيلة
+//
+// مسارٌ مستقلّ عن حفظ التشكيلة لأن القرارين مستقلان في الزمن:
+// النادي يُختار في الثانية الأولى، والتشكيلة تكتمل بعد ربع ساعة
+// من المفاضلة في السوق. وربطُ حفظ النادي بحفظ الخمسة عشر يعني أن
+// كل من خرج في المنتصف يعود فلا يجد شيئاً — وهو ما كان يحدث.
+router.put('/club', async (req, res) => {
+  const league = await resolveLeague(req);
+  if (!league) return res.status(400).json({ error: 'تابِع دورياً أولاً كي تبني تشكيلتك.' });
+
+  const clubTeamId = Number(req.body?.club_team_id);
+  if (!Number.isInteger(clubTeamId)) {
+    return res.status(400).json({ error: 'اختر ناديك.' });
+  }
+
+  // ناديه من أندية هذا الدوري: قائمة الشاشة تُبنى من مبارياتنا،
+  // ومعرّفٌ من خارجها يعني تشكيلةً لا يمكن أن تُبنى أصلاً —
+  // ولاعباً يكتشف ذلك بعد خمسة عشر اختياراً.
+  const { rows: inLeague } = await db.query(
+    `SELECT 1 FROM fixtures
+      WHERE league_id = $1 AND season = $2
+        AND (home_team_id = $3 OR away_team_id = $3)
+      LIMIT 1`,
+    [league.id, league.season, clubTeamId]
+  );
+  if (!inLeague.length) {
+    return res.status(400).json({ error: 'هذا النادي ليس من هذا الدوري.' });
+  }
+
+  // تبديل النادي بعد البناء: التشكيلة القائمة يجب أن تحتمله.
+  //
+  // القاعدة نفسها التي يفحصها الحفظ (ثلاثة من ناديك)، لكنها
+  // تُفحص هنا لا هناك: من بدّل ناديه ثم فتح الملعب سيجد تشكيلةً
+  // ترفض الحفظ بلا أن يكون غيّر فيها شيئاً، ورسالةُ خطأ على فعلٍ
+  // لم يفعله تُقرأ عطلاً لا قاعدة.
+  const current = await fantasyRepo.findSquad(req.userId, league.id, league.season);
+  if (current && current.player_count > 0 && current.club_team_id !== clubTeamId) {
+    const owned = await fantasyRepo.squadPlayers(current.id);
+    const have = owned.filter((p) => p.team_id === clubTeamId).length;
+    if (have < squadService.RULES.min_from_club) {
+      return res.status(400).json({
+        error: `في تشكيلتك ${have} من هذا النادي، والمطلوب `
+          + `${squadService.RULES.min_from_club} — بدّل لاعبيك أولاً ثم بدّل ناديك.`,
+      });
+    }
+  }
+
+  await fantasyRepo.setClub({
+    userId: req.userId,
+    leagueId: league.id,
+    season: league.season,
+    clubTeamId,
+    budget: squadService.RULES.budget,
+  });
+
+  const squad = await fantasyRepo.findSquad(req.userId, league.id, league.season);
+  res.json({
+    league: { id: league.id, name: league.name_ar || league.name_en || league.name },
+    club: {
+      id: squad.club_team_id,
+      name: squad.club_name,
+      logo_url: squad.club_logo,
+    },
   });
 });
 
@@ -265,6 +341,8 @@ router.put('/squad', async (req, res) => {
         id: squad.id,
         formation: squad.formation,
         club_team_id: squad.club_team_id,
+        club_name: squad.club_name,
+        club_logo: squad.club_logo,
         budget_left: Number(squad.budget_left),
         squad_value: Number(squad.squad_value),
         free_transfers: squad.free_transfers,

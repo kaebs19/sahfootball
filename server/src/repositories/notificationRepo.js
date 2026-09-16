@@ -189,6 +189,11 @@ async function squadsNeedingDeadline(leadMinutes) {
         AND r.starts_at > now()
         AND r.starts_at <= now() + ($1 || ' minutes')::interval
         AND EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id)
+        -- «له تشكيلة» تعني لاعبين لا صفّاً: من ثبّت ناديه ولم يبنِ
+        -- بعد له صفٌّ في الجدول (راجع fantasyRepo.setClub)، وتذكيرُه
+        -- بإقفال تشكيلةٍ لا يملكها يقول له إنه على وشك خسارة شيء.
+        AND EXISTS (
+              SELECT 1 FROM fantasy_squad_players sp WHERE sp.squad_id = s.id)
         -- الجولة المجمَّدة لا تُذكَّر: التجميد يقع عند الانطلاق،
         -- ووجودُ الصفّ يعني أن الباب أُغلق فعلاً.
         AND NOT EXISTS (

@@ -54,14 +54,10 @@ async function backfill({ leagueId = null } = {}) {
     }
 
     // نقاط كل إحصاء — منها يُحتسب السعر ومنها حصيلة الموسم.
+    // وبنقاط الإضافة: من كان أفضل ثلاثة في مباريات مضت يجب أن
+    // يبدأ الموسم بسعرٍ يقول ذلك.
     const stats = await playerRepo.statsForFixtures(rows.map((r) => r.id));
-    await playerRepo.writeStatPoints(
-      stats.map((s) => ({
-        fixture_id: s.fixture_id,
-        player_id: s.player_id,
-        points: fantasyScoring.computePlayerPoints(s, s.position, cfg).points,
-      }))
-    );
+    await playerRepo.writeStatPoints(fantasyScoring.scoreFixtureStats(stats, cfg));
 
     priced += await fantasyPricing.repriceLeague(league.id, league.season);
   }
