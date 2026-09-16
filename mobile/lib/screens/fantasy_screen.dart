@@ -21,6 +21,7 @@ import '../state/league_filter.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/fantasy_pitch.dart';
 import '../widgets/fantasy_market.dart';
+import '../widgets/fantasy_sounds.dart';
 import 'leagues_screen.dart';
 
 class FantasyScreen extends StatefulWidget {
@@ -158,6 +159,37 @@ class _FantasyScreenState extends State<FantasyScreen> {
     });
   }
 
+  /// تبديل مكانَي لاعبين — من الملعب إلى الدكّة أو داخل الملعب.
+  ///
+  /// التبديل لا النقل: التشكيلة خمسة عشر ثابتاً بأحد عشر أساسياً،
+  /// ونقلُ لاعبٍ إلى الأساسي بلا إخراج غيره يجعلهم اثني عشر —
+  /// حالةٌ ترفضها القاعدة، وكان يجب ألا تُبنى أصلاً.
+  void _swap(FantasyPlayer dragged, PitchSlot onto) {
+    final target = onto.player;
+    setState(() {
+      _squad = _squad.map((p) {
+        if (p.id == dragged.id) {
+          return p.copyWith(
+            onBench: target?.onBench ?? false,
+            // الشارة تبقى مع صاحبها ما دام أساسياً، وتسقط عنه إن
+            // نزل الدكّة: كابتنٌ على الدكّة لا يضاعف شيئاً.
+            isCaptain: (target?.onBench ?? false) ? false : p.isCaptain,
+            isVice: (target?.onBench ?? false) ? false : p.isVice,
+          );
+        }
+        if (target != null && p.id == target.id) {
+          return p.copyWith(
+            onBench: dragged.onBench,
+            isCaptain: dragged.onBench ? false : p.isCaptain,
+            isVice: dragged.onBench ? false : p.isVice,
+          );
+        }
+        return p;
+      }).toList();
+      _dirty = true;
+    });
+  }
+
   void _toggleBench(FantasyPlayer player) {
     setState(() {
       _squad = _squad
@@ -195,10 +227,12 @@ class _FantasyScreenState extends State<FantasyScreen> {
         _saving = false;
         _dirty = false;
       });
+      FantasySounds.play(Sfx.save);
       _say('حُفظت تشكيلتك.');
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
+      FantasySounds.play(Sfx.error);
       // رسالة الخادم تُعرض كما هي: هو من يعرف القاعدة المكسورة،
       // وترجمتها هنا تعني نصّين يفترقان عند أول تعديل في القواعد.
       _say(e.message, error: true);
@@ -317,7 +351,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
           }),
         ),
         const SizedBox(height: 10),
-        FantasyPitch(lines: lines, onTapSlot: _onTapSlot),
+        FantasyPitch(lines: lines, onTapSlot: _onTapSlot, onSwap: _swap),
         const SizedBox(height: 16),
         const BrandSectionLabel('الدكّة'),
         const SizedBox(height: 8),
@@ -325,6 +359,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
           bench: bench,
           quota: _rules.squadSize - _rules.starters,
           onTap: (p) => p == null ? _pickForBench() : _playerMenu(p),
+          onSwap: _swap,
         ),
         const SizedBox(height: 18),
         _SaveButton(
@@ -407,6 +442,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
       budgetLeft: _rules.budget - _spent + (slot?.player?.price ?? 0),
     );
     if (picked != null && mounted) {
+      FantasySounds.play(Sfx.pop);
       _assign(slot ?? PitchSlot(position: picked.position), picked,
           onBench: onBench);
     }
@@ -785,8 +821,14 @@ class _BenchRow extends StatelessWidget {
   final List<FantasyPlayer> bench;
   final int quota;
   final void Function(FantasyPlayer?) onTap;
+  final void Function(FantasyPlayer dragged, PitchSlot onto)? onSwap;
 
-  const _BenchRow({required this.bench, required this.quota, required this.onTap});
+  const _BenchRow({
+    required this.bench,
+    required this.quota,
+    required this.onTap,
+    this.onSwap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -795,10 +837,59 @@ class _BenchRow extends StatelessWidget {
       children: [
         for (var i = 0; i < quota; i++)
           Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onTap(i < bench.length ? bench[i] : null),
-              child: Column(
+            child: _wrap(
+              i < bench.length ? bench[i] : null,
+              _tile(i),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// نفس قواعد الملعب: يُسحب ويُستقبل، وبنفس شرط المركز.
+  Widget _wrap(FantasyPlayer? player, Widget child) {
+    if (onSwap == null || player == null) return child;
+    return DragTarget<FantasyPlayer>(
+      onWillAcceptWithDetails: (d) =>
+          d.data.id != player.id && d.data.position == player.position,
+      onAcceptWithDetails: (d) {
+        FantasySounds.play(Sfx.pop);
+        onSwap!(d.data, PitchSlot(position: player.position, player: player));
+      },
+      builder: (context, candidate, _) => AnimatedScale(
+        duration: const Duration(milliseconds: 140),
+        scale: candidate.isNotEmpty ? 1.12 : 1.0,
+        child: LongPressDraggable<FantasyPlayer>(
+          data: player,
+          delay: const Duration(milliseconds: 180),
+          onDragStarted: () => FantasySounds.play(Sfx.swoosh),
+          feedback: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Brand.surface,
+                border: Border.all(color: Brand.crown),
+              ),
+              child: Text(player.position.short,
+                  style: const TextStyle(color: Brand.text, fontSize: 11)),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.3, child: child),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _tile(int i) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onTap(i < bench.length ? bench[i] : null),
+      child: Column(
                 children: [
                   Container(
                     width: 42,
@@ -822,11 +913,8 @@ class _BenchRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Brand.textFaint, fontSize: 10.5),
                   ),
-                ],
-              ),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

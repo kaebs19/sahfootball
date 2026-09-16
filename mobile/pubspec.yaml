@@ -47,6 +47,10 @@ dependencies:
   share_plus: ^13.3.0
   google_mobile_ads: ^9.1.0
   in_app_purchase: ^3.3.0
+  # أصوات «فريقي» (نقرة الوضع، رنّة الحفظ، نغمة الرفض). حزمةٌ
+  # إضافية لأن فلاتر لا تشغّل ملفاً صوتياً بلا واحدة — SystemSound
+  # لا تعرف إلا نقرة النظام. وهي أخفّ ما وُجد لهذا الغرض.
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:

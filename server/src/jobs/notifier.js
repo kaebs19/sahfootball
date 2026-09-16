@@ -153,14 +153,40 @@ function resultText(rows) {
  * بهذا الترتيب أسوأ ما يحدث هو تكرار نادر لو انهار السيرفر في
  * الثانية الفاصلة — وتكرار نادر أهون من صمت دائم.
  */
+/**
+ * اسم الجولة بالعربية — نسخةٌ مصغّرة مما يفعله التطبيق.
+ *
+ * المزوّد يرسلها إنجليزيةً حرّة ("Regular Season - 8")، وإشعارٌ
+ * يقولها كما هي داخل جملة عربية يُقرأ عطلاً. والمجهول يُعاد كما
+ * هو: إنجليزيةٌ نادرة خيرٌ من إخفاء معلومة صحيحة.
+ */
+function roundLabel(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return 'الجولة';
+  const number = value.match(/-\s*(\d+)\s*$/)?.[1];
+  const head = value.replace(/-\s*\d+\s*$/, '').trim().toLowerCase();
+  const names = {
+    'regular season': 'الجولة',
+    'group stage': 'دور المجموعات',
+    'round of 16': 'دور الـ16',
+    'quarter-finals': 'ربع النهائي',
+    'semi-finals': 'نصف النهائي',
+    final: 'النهائي',
+  };
+  const arabic = names[head];
+  if (!arabic) return value;
+  return number ? `${arabic} ${number}` : arabic;
+}
+
 async function tick() {
   if (running) return;
   running = true;
   try {
-    const [reminders, kickoffs, results] = await Promise.all([
+    const [reminders, kickoffs, results, deadlines] = await Promise.all([
       notificationRepo.usersNeedingReminder(LEAD_MINUTES),
       notificationRepo.usersNeedingKickoff(KICKOFF_MINUTES),
       notificationRepo.unnotifiedResults(),
+      notificationRepo.squadsNeedingDeadline(LEAD_MINUTES),
     ]);
 
     for (const [userId, rows] of groupByUser(reminders)) {
@@ -195,9 +221,23 @@ async function tick() {
       }
     }
 
-    if (reminders.length || kickoffs.length || results.length) {
+    // إقفال «فريقي»: واحدٌ لكل جولة، ولمن بنى تشكيلة وحده.
+    for (const row of deadlines) {
+      const delivered = await pushService.sendToUser(row.user_id, {
+        title: 'تُقفل تشكيلتك قريباً',
+        body: `${roundLabel(row.round)} في ${row.league_name} تبدأ بعد قليل — `
+            + 'راجع كابتنك وبدلاءك.',
+        data: { type: 'fantasy_deadline', league: row.league_id },
+      });
+      if (delivered > 0) {
+        await notificationRepo.markSent(row.user_id, 'fantasy_deadline', [row.round]);
+      }
+    }
+
+    if (reminders.length || kickoffs.length || results.length || deadlines.length) {
       logger.info(
-        `[notifier] tick: ${reminders.length} reminder, ${kickoffs.length} kickoff, ${results.length} result rows`
+        `[notifier] tick: ${reminders.length} reminder, ${kickoffs.length} kickoff, ` +
+          `${results.length} result, ${deadlines.length} fantasy-deadline rows`
       );
     }
 
@@ -226,4 +266,4 @@ function start() {
   setInterval(tick, TICK_MS);
 }
 
-module.exports = { start, tick, reminderText, kickoffText, resultText };
+module.exports = { start, tick, reminderText, kickoffText, resultText, roundLabel };

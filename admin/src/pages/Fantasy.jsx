@@ -6,7 +6,7 @@
 // خطأ نسخٍ هناك يفسد اللعبتين معاً.
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { Card, Notice, PageHead } from '../components/ui';
+import { Card, Notice, PageHead, Stat } from '../components/ui';
 
 const POSITIONS = [
   { key: 'Goalkeeper', label: 'حارس' },
@@ -47,6 +47,7 @@ export default function Fantasy() {
   const [position, setPosition] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const [squads, setSquads] = useState(null);
 
   useEffect(() => {
     api.get('/admin/fantasy/scoring')
@@ -64,6 +65,7 @@ export default function Fantasy() {
   useEffect(() => {
     if (!league) return;
     loadPlayers();
+    loadSquads();
     // البحث يُعاد تحميله من الخادم لا يُصفّى محلياً: القائمة ٣٠٠
     // صفّ من أصل آلاف، والتصفية المحلية تبحث في المعروض وحده
     // فتبدو وكأن اللاعب غير موجود.
@@ -77,6 +79,15 @@ export default function Fantasy() {
       setPlayers(data.players || []);
     } catch (err) {
       setMessage({ type: 'error', text: err.response?.data?.error || 'تعذّر تحميل اللاعبين' });
+    }
+  }
+
+  async function loadSquads() {
+    try {
+      const { data } = await api.get('/admin/fantasy/squads', { params: { league } });
+      setSquads(data);
+    } catch {
+      setSquads(null);
     }
   }
 
@@ -186,6 +197,58 @@ export default function Fantasy() {
           <button disabled={busy}>حفظ الجدول</button>
         </div>
       </form>
+
+      {squads && (
+        <Card title="المدرّبون">
+          <p className="muted" style={{ marginBottom: 8 }}>
+            السؤال الأول يوم الإطلاق: هل بدأ الناس فعلاً؟ والتشكيلات
+            الناقصة تقول إنهم يبدأون ولا يُكملون — وهي أهمّ من عددهم.
+          </p>
+          <div className="grid cols-4">
+            <Stat label="مدرّبون" value={squads.summary.managers} />
+            <Stat label="تشكيلات كاملة" value={squads.summary.complete}
+                  tone={squads.summary.complete ? 'good' : undefined} />
+            <Stat label="ناقصة" value={squads.summary.incomplete}
+                  tone={squads.summary.incomplete ? 'alert' : 'good'} />
+            <Stat label="متوسط النقاط" value={squads.summary.avg_points} />
+          </div>
+
+          {squads.squads.length > 0 && (
+            <table style={{ marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>المدرّب</th>
+                  <th>ناديه</th>
+                  <th>الخطة</th>
+                  <th>لاعبون</th>
+                  <th>النقاط</th>
+                  <th>المحفظة</th>
+                  <th>قيمة الفريق</th>
+                  <th>رقائق</th>
+                </tr>
+              </thead>
+              <tbody>
+                {squads.squads.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.name || s.display_name || s.email}</td>
+                    <td className="muted">{s.club_name || '—'}</td>
+                    <td dir="ltr">{s.formation}</td>
+                    <td dir="ltr" className={s.players < 15 ? 'alert' : undefined}>
+                      {s.players}/15
+                    </td>
+                    <td dir="ltr">{s.total_points}</td>
+                    <td dir="ltr">{s.budget_left}</td>
+                    <td dir="ltr">
+                      {(Number(s.budget_left) + Number(s.squad_value)).toFixed(1)}
+                    </td>
+                    <td dir="ltr">{s.wildcards}/2</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      )}
 
       <Card title="اللاعبون والأسعار">
         <p className="muted" style={{ marginBottom: 8 }}>

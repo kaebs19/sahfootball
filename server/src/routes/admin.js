@@ -821,6 +821,49 @@ router.put('/fantasy/players/:id', async (req, res) => {
   res.json({ player: rows[0] });
 });
 
+// GET /api/admin/fantasy/squads?league=307 — من يلعب «فريقي»
+//
+// السؤال الأول يوم الإطلاق: هل بدأ الناس فعلاً؟ ولا جواب له في
+// اللوحة قبل هذه الشاشة — كانت تعرض اللاعبين ولا تعرض المدرّبين.
+router.get('/fantasy/squads', async (req, res) => {
+  const league = Number(req.query.league);
+  const row = (await leagueRepo.findEnabled()).find((l) => l.id === league);
+  if (!row) return res.status(400).json({ error: 'اختر دورياً' });
+
+  const { rows } = await db.query(
+    `SELECT s.id, s.name, s.total_points, s.budget_left, s.squad_value,
+            s.free_transfers, s.formation, s.created_at, s.updated_at,
+            u.display_name, u.email,
+            COALESCE(t.name_ar, t.name_en) AS club_name,
+            (SELECT COUNT(*)::int FROM fantasy_squad_players sp
+              WHERE sp.squad_id = s.id) AS players,
+            (SELECT COUNT(*)::int FROM fantasy_chips c
+              WHERE c.squad_id = s.id AND c.chip = 'wildcard') AS wildcards
+       FROM fantasy_squads s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN teams t ON t.id = s.club_team_id
+      WHERE s.league_id = $1 AND s.season = $2
+      ORDER BY s.total_points DESC, s.created_at
+      LIMIT 200`,
+    [league, row.season]
+  );
+
+  // ملخّصٌ فوق القائمة: العدد وحده لا يقول إن كانت اللعبة تُلعب،
+  // ونصفُ التشكيلات الناقصة يعني أن الناس يبدأون ولا يُكملون.
+  const complete = rows.filter((r) => r.players === 15).length;
+  res.json({
+    summary: {
+      managers: rows.length,
+      complete,
+      incomplete: rows.length - complete,
+      avg_points: rows.length
+        ? Math.round(rows.reduce((a, r) => a + r.total_points, 0) / rows.length)
+        : 0,
+    },
+    squads: rows,
+  });
+});
+
 // POST /api/admin/fantasy/reprice — إعادة تسعير دوري من الأداء
 router.post('/fantasy/reprice', async (req, res) => {
   const league = Number(req.body?.league);

@@ -155,6 +155,54 @@ async function usersNeedingReminder(leadMinutes) {
  * يُبلَّغ عنها"، فينهال على المستخدم إشعار لكل مباراة لعبها منذ
  * إطلاق التطبيق. الشرط يقصر الأمر على ما احتُسب فعلاً هذه الأيام.
  */
+/**
+ * من له تشكيلة «فريقي» وجولتُه تُقفل قريباً.
+ *
+ * أهمّ إشعار في لعبة فانتازي، ولا شبيه له في التوقّعات: من نسي
+ * كابتناً مصاباً أو بديلاً موقوفاً يخسر جولةً كاملة بلا أن يفعل
+ * شيئاً — والخسارة بالنسيان هي ما يجعل اللاعبين يتركون اللعبة.
+ *
+ * ولا يُرسل إلا مرة لكل جولة (`markSent` بـ ref اسم الجولة).
+ *
+ * والشرط «له تشكيلة»: من لم يبنِ واحدة لا يُذكَّر بإقفالٍ لا
+ * يعنيه — دعوتُه للبناء مكانها الشاشة لا الإشعار.
+ */
+async function squadsNeedingDeadline(leadMinutes) {
+  const { rows } = await db.query(
+    `SELECT s.user_id, s.id AS squad_id, r.round, r.starts_at, l.id AS league_id,
+            COALESCE(l.name_ar, l.name_en) AS league_name
+       FROM fantasy_squads s
+       JOIN leagues l ON l.id = s.league_id AND l.in_app
+       JOIN users u ON u.id = s.user_id
+       -- أول انطلاقة في الجولة هي الإقفال (راجع FANTASY.md).
+       JOIN LATERAL (
+         SELECT f.round, MIN(f.kickoff_at) AS starts_at
+           FROM fixtures f
+          WHERE f.league_id = s.league_id AND f.season = s.season
+            AND f.round IS NOT NULL AND f.status = 'scheduled'
+          GROUP BY f.round
+          ORDER BY MIN(f.kickoff_at)
+          LIMIT 1
+       ) r ON true
+      WHERE u.notify_reminders
+        AND u.suspended_at IS NULL
+        AND r.starts_at > now()
+        AND r.starts_at <= now() + ($1 || ' minutes')::interval
+        AND EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id)
+        -- الجولة المجمَّدة لا تُذكَّر: التجميد يقع عند الانطلاق،
+        -- ووجودُ الصفّ يعني أن الباب أُغلق فعلاً.
+        AND NOT EXISTS (
+              SELECT 1 FROM fantasy_round_entries e
+               WHERE e.squad_id = s.id AND e.round = r.round)
+        AND NOT EXISTS (
+              SELECT 1 FROM sent_notifications n
+               WHERE n.user_id = s.user_id AND n.kind = 'fantasy_deadline'
+                 AND n.ref = r.round)`,
+    [leadMinutes]
+  );
+  return rows;
+}
+
 async function unnotifiedResults() {
   const { rows } = await db.query(
     `SELECT u.id AS user_id, p.fixture_id, p.points,
@@ -344,6 +392,7 @@ module.exports = {
   getPrefs,
   updatePrefs,
   usersNeedingReminder,
+  squadsNeedingDeadline,
   unnotifiedResults,
   markSent,
   purgeOldSent,

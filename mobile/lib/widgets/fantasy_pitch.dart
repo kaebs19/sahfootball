@@ -11,6 +11,7 @@ import '../brand.dart';
 import '../config.dart';
 import '../format.dart';
 import '../models/fantasy.dart';
+import 'fantasy_sounds.dart';
 
 /// خانة على الملعب: لاعبٌ أو فراغٌ ينتظر.
 class PitchSlot {
@@ -25,6 +26,12 @@ class FantasyPitch extends StatelessWidget {
   final List<List<PitchSlot>> lines;
   final void Function(PitchSlot slot)? onTapSlot;
 
+  /// سحبُ لاعبٍ وإفلاته على آخر — تبديلُ مكانيهما.
+  ///
+  /// السحب لا الضغط هو ما يجعل الملعب ملعباً: توزيع لاعبٍ بإصبعك
+  /// يشعر أنه فريقك، واختياره من قائمة يشعر أنه نموذج إدخال.
+  final void Function(FantasyPlayer dragged, PitchSlot onto)? onSwap;
+
   /// نقاط اللاعب في الجولة بدل سعره — تُمرَّر في شاشة النقاط وحدها.
   final Map<int, int>? pointsByPlayer;
 
@@ -32,6 +39,7 @@ class FantasyPitch extends StatelessWidget {
     super.key,
     required this.lines,
     this.onTapSlot,
+    this.onSwap,
     this.pointsByPlayer,
   });
 
@@ -74,6 +82,7 @@ class FantasyPitch extends StatelessWidget {
                           onTap: onTapSlot == null
                               ? null
                               : () => onTapSlot!(slot),
+                          onSwap: onSwap,
                         ),
                       ),
                   ],
@@ -90,13 +99,67 @@ class _PitchCard extends StatelessWidget {
   final PitchSlot slot;
   final int? points;
   final VoidCallback? onTap;
+  final void Function(FantasyPlayer dragged, PitchSlot onto)? onSwap;
 
-  const _PitchCard({required this.slot, this.points, this.onTap});
+  const _PitchCard({required this.slot, this.points, this.onTap, this.onSwap});
 
   @override
   Widget build(BuildContext context) {
     final player = slot.player;
+    final card = _card(context, player);
+    if (onSwap == null) return card;
 
+    // الخانة هدفٌ للإفلات دائماً — حتى الفارغة: من سحب بديلاً إلى
+    // خانة فارغة يقصد أن يضعه فيها، ورفضُ الإفلات هناك يجعل
+    // الحركة تبدو معطّلة لا ممنوعة.
+    return DragTarget<FantasyPlayer>(
+      onWillAcceptWithDetails: (d) {
+        // لاعبٌ على نفسه ليس تبديلاً.
+        if (d.data.id == player?.id) return false;
+        // المركز شرطٌ لا تشدّد: مهاجمٌ في خانة حارس يكسر الخطة،
+        // والقاعدة سترفض التشكيلة كلها عند الحفظ — والرفض هناك
+        // متأخّرٌ عن اللحظة التي أخطأ فيها.
+        return d.data.position == slot.position;
+      },
+      onAcceptWithDetails: (d) {
+        FantasySounds.play(Sfx.pop);
+        onSwap!(d.data, slot);
+      },
+      builder: (context, candidate, _) {
+        final hovering = candidate.isNotEmpty;
+        final body = player == null
+            ? card
+            : LongPressDraggable<FantasyPlayer>(
+                // ضغطةٌ مطوّلة لا سحبٌ فوري: القائمة تُمرَّر رأسياً
+                // والملعب داخلها، فسحبٌ فوري يخطف كل تمريرة.
+                data: player,
+                delay: const Duration(milliseconds: 180),
+                onDragStarted: () => FantasySounds.play(Sfx.swoosh),
+                feedback: Material(
+                  color: Colors.transparent,
+                  child: Opacity(
+                    opacity: 0.9,
+                    child: SizedBox(
+                      width: 46,
+                      height: 46,
+                      child: _PlayerFace(player: player),
+                    ),
+                  ),
+                ),
+                childWhenDragging: Opacity(opacity: 0.3, child: card),
+                child: card,
+              );
+
+        return AnimatedScale(
+          duration: const Duration(milliseconds: 140),
+          scale: hovering ? 1.12 : 1.0,
+          child: body,
+        );
+      },
+    );
+  }
+
+  Widget _card(BuildContext context, FantasyPlayer? player) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
