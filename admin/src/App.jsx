@@ -20,6 +20,7 @@ import Users from './pages/Users';
 import UserDetail from './pages/UserDetail';
 import Groups from './pages/Groups';
 import Leaderboard from './pages/Leaderboard';
+import Fantasy from './pages/Fantasy';
 import Scoring from './pages/Scoring';
 import Profile from './pages/Profile';
 import SiteContent from './pages/SiteContent';
@@ -62,6 +63,7 @@ const NAV = [
     section: 'الإعدادات',
     items: [
       { to: '/scoring', label: 'نظام النقاط', icon: Icon.scoring },
+      { to: '/fantasy', label: 'فريقي', icon: Icon.shield },
       { to: '/profile', label: 'حسابي', icon: Icon.shield },
     ],
   },
@@ -167,6 +169,7 @@ function Shell({ onLogout }) {
           <Route path="/groups" element={<Groups />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/scoring" element={<Scoring />} />
+          <Route path="/fantasy" element={<Fantasy />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/site/content" element={<SiteContent />} />
           <Route path="/site/settings" element={<SiteSettings />} />

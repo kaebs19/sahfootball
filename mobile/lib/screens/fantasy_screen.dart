@@ -280,7 +280,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
           size: _rules.squadSize,
           totalPoints: _totalPoints,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         _FormationPicker(
           formations: _rules.formations,
           selected: _formation,
@@ -499,9 +499,12 @@ class _HeaderStats extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final left = budget - spent;
+    // بطاقةٌ نحيفة: هذه أرقامٌ تُلمَح لا تُقرأ — يكفي أن تقول
+    // «كم بقي» بطرف العين، والملعب تحتها هو ما جاء لأجله. وكل
+    // نقطة ارتفاع هنا تُقتطع من الملعب على شاشة صغيرة.
     return BrandCard(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         child: Row(
           children: [
             _Stat(
@@ -514,7 +517,7 @@ class _HeaderStats extends StatelessWidget {
             const _Divider(),
             _Stat(value: '${Fmt.number(picked)}/${Fmt.number(size)}', label: 'اللاعبون'),
             const _Divider(),
-            _Stat(value: Fmt.number(totalPoints), label: 'نقاط الموسم'),
+            _Stat(value: Fmt.number(totalPoints), label: 'الموسم'),
           ],
         ),
       ),
@@ -535,14 +538,15 @@ class _Stat extends StatelessWidget {
             Text(value,
                 style: TextStyle(
                   color: color ?? Brand.text,
-                  fontSize: 19,
+                  fontSize: 15,
+                  height: 1.15,
                   fontWeight: FontWeight.w700,
                   fontFamily: Brand.displayFont,
                   fontFeatures: Brand.tabular,
                 )),
-            const SizedBox(height: 2),
             Text(label,
-                style: const TextStyle(color: Brand.textFaint, fontSize: 11)),
+                style: const TextStyle(
+                    color: Brand.textFaint, fontSize: 9.5, height: 1.3)),
           ],
         ),
       );
@@ -552,7 +556,7 @@ class _Divider extends StatelessWidget {
   const _Divider();
   @override
   Widget build(BuildContext context) =>
-      Container(width: 1, height: 30, color: Brand.borderSoft);
+      Container(width: 1, height: 22, color: Brand.borderSoft);
 }
 
 class _FormationPicker extends StatelessWidget {

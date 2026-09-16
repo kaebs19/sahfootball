@@ -26,6 +26,7 @@ const footballProvider = require('../services/footballProvider');
 const { mapFixture } = require('../mappers/fixtureMapper');
 const fixtureRepo = require('../repositories/fixtureRepo');
 const scoringService = require('../services/scoringService');
+const settleFantasy = require('./settleFantasy');
 const { syncAll } = require('./syncFixtures');
 const liveActivityService = require('../services/liveActivityService');
 const logger = require('../utils/logger');
@@ -95,6 +96,19 @@ async function liveTick() {
     // احتساب فوري لما انتهى للتو — المتوقعون يرون نقاطهم خلال
     // دقائق من صافرة النهاية، لا بعد المزامنة الكاملة التالية.
     await scoringService.settleFinished();
+
+    // و«فريقي» على نفس النبضة لا نبضةٍ ثانية: كلتاهما تسأل «هل
+    // انتهت مباراة؟»، ونبضتان متجاورتان تضاعفان استهلاك الحصة
+    // على نفس الجواب. وفشلها لا يُسقط احتساب التوقّعات — لعبتان
+    // منفصلتان، وتعطّل إحداهما يجب ألا يوقف الأخرى.
+    try {
+      const { locked, settled } = await settleFantasy.tick();
+      if (locked || settled) {
+        logger.info(`[scheduler] fantasy: locked ${locked}, settled ${settled}`);
+      }
+    } catch (err) {
+      logger.error('[scheduler] fantasy tick failed:', err.message);
+    }
   } catch (err) {
     logger.error('[scheduler] live tick failed:', err.message);
   } finally {

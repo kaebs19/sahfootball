@@ -5,6 +5,8 @@ const express = require('express');
 const requireAuth = require('../middleware/requireAuth');
 const requireAdmin = require('../middleware/requireAdmin');
 const settingsRepo = require('../repositories/settingsRepo');
+const fantasyScoring = require('../services/fantasyScoring');
+const fantasyPricing = require('../services/fantasyPricing');
 const scoringService = require('../services/scoringService');
 const teamRepo = require('../repositories/teamRepo');
 const userRepo = require('../repositories/userRepo');
@@ -682,6 +684,151 @@ router.put('/settings/scoring', async (req, res) => {
   const scoring = { exact, diff, outcome };
   await settingsRepo.set('scoring', scoring);
   res.json({ scoring });
+});
+
+// ---------------------------------------------------------------
+// «فريقي»: جدول النقاط، الأسعار، وأسماء اللاعبين
+// ---------------------------------------------------------------
+
+// GET /api/admin/fantasy/scoring — جدول نقاط الفانتازي
+router.get('/fantasy/scoring', async (req, res) => {
+  res.json({
+    scoring: await fantasyScoring.config(),
+    defaults: fantasyScoring.DEFAULT_FANTASY_SCORING,
+  });
+});
+
+// PUT /api/admin/fantasy/scoring
+//
+// دمجٌ فوق المحفوظ لا استبدال: اللوحة قد ترسل حقلاً واحداً،
+// واستبدالُ الكائن كلّه يمحو بقية الجدول فتصير كل البطاقات بلا
+// عقوبة والشباك النظيفة بلا مكافأة — بلا خطأ في أي سجل.
+//
+// ولا يعيد حساب ما مضى: نقاط الجولات المسوّاة مخزّنة عمداً كي
+// تبقى شاشة اللاعب ثابتة بعد أشهر. التعديل يسري على ما يأتي.
+router.put('/fantasy/scoring', async (req, res) => {
+  const current = await fantasyScoring.config();
+  const next = { ...current };
+
+  for (const [key, value] of Object.entries(req.body || {})) {
+    if (!(key in fantasyScoring.DEFAULT_FANTASY_SCORING)) {
+      return res.status(400).json({ error: `حقل غير معروف: ${key}` });
+    }
+    const shape = fantasyScoring.DEFAULT_FANTASY_SCORING[key];
+
+    if (typeof shape === 'number') {
+      if (!Number.isFinite(Number(value))) {
+        return res.status(400).json({ error: `${key} يجب أن يكون رقماً` });
+      }
+      next[key] = Number(value);
+      continue;
+    }
+
+    // كائن بالمراكز: نأخذ المراكز المعروفة وحدها، فلا يتسرّب
+    // مفتاحٌ غريب إلى الإعدادات المخزّنة ويبقى فيها للأبد.
+    const merged = { ...shape, ...(current[key] || {}) };
+    for (const [position, v] of Object.entries(value || {})) {
+      if (!(position in shape)) {
+        return res.status(400).json({ error: `مركز غير معروف: ${position}` });
+      }
+      if (!Number.isFinite(Number(v))) {
+        return res.status(400).json({ error: `${key}.${position} يجب أن يكون رقماً` });
+      }
+      merged[position] = Number(v);
+    }
+    next[key] = merged;
+  }
+
+  await settingsRepo.set('fantasy_scoring', next);
+  res.json({ scoring: next });
+});
+
+// GET /api/admin/fantasy/players?league=307&q=&position=
+router.get('/fantasy/players', async (req, res) => {
+  const league = Number(req.query.league);
+  if (!Number.isInteger(league)) {
+    return res.status(400).json({ error: 'اختر دورياً' });
+  }
+  const leagues = await leagueRepo.findEnabled();
+  const row = leagues.find((l) => l.id === league);
+  if (!row) return res.status(404).json({ error: 'الدوري غير موجود' });
+
+  const { rows } = await db.query(
+    `SELECT p.id, p.name_en, p.name_ar, p.position, p.price, p.manual_price,
+            p.total_points, p.available, p.photo_url,
+            COALESCE(t.name_ar, t.name_en) AS team_name,
+            COUNT(s.fixture_id)::int AS apps
+       FROM players p
+       LEFT JOIN teams t ON t.id = p.team_id
+       LEFT JOIN player_fixture_stats s ON s.player_id = p.id
+      WHERE p.league_id = $1 AND p.season = $2
+        AND ($3::text IS NULL OR p.position = $3)
+        AND ($4::text IS NULL
+             OR p.name_en ILIKE '%' || $4 || '%'
+             OR p.name_ar ILIKE '%' || $4 || '%')
+      GROUP BY p.id, t.name_ar, t.name_en
+      ORDER BY p.price DESC, p.total_points DESC
+      LIMIT 300`,
+    [league, row.season,
+     ['Goalkeeper', 'Defender', 'Midfielder', 'Attacker'].includes(req.query.position)
+       ? req.query.position : null,
+     String(req.query.q || '').trim() || null]
+  );
+  res.json({ players: rows });
+});
+
+// PUT /api/admin/fantasy/players/:id — { price?, name_ar?, available? }
+//
+// ضبط السعر يرفع manual_price: إعادة التسعير الآلية تقرأ الأداء
+// وحده وهي عمياء عن السياق (صفقةٌ لم تلعب، عودةٌ من إصابة)، وبلا
+// الراية تمحو تصحيحَ الأدمن في أول تشغيل بلا أن يعرف لماذا.
+router.put('/fantasy/players/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'معرّف غير صالح' });
+
+  const sets = [];
+  const values = [id];
+  const body = req.body || {};
+
+  if (body.price !== undefined) {
+    const price = Number(body.price);
+    if (!Number.isFinite(price) || price < 0 || price > 99.9) {
+      return res.status(400).json({ error: 'السعر بين 0 و 99.9' });
+    }
+    values.push(Math.round(price * 10) / 10);
+    sets.push(`price = $${values.length}`, 'manual_price = true');
+  }
+  if (body.name_ar !== undefined) {
+    const name = String(body.name_ar || '').trim();
+    if (name.length > 100) return res.status(400).json({ error: 'الاسم أطول من المسموح' });
+    values.push(name || null);
+    sets.push(`name_ar = $${values.length}`);
+  }
+  if (body.available !== undefined) {
+    values.push(!!body.available);
+    sets.push(`available = $${values.length}`);
+  }
+  if (body.manual_price === false) sets.push('manual_price = false');
+
+  if (!sets.length) return res.status(400).json({ error: 'لا شيء لتغييره' });
+
+  const { rows } = await db.query(
+    `UPDATE players SET ${sets.join(', ')}, updated_at = now()
+      WHERE id = $1 RETURNING id, name_ar, price, manual_price, available`,
+    values
+  );
+  if (!rows.length) return res.status(404).json({ error: 'اللاعب غير موجود' });
+  res.json({ player: rows[0] });
+});
+
+// POST /api/admin/fantasy/reprice — إعادة تسعير دوري من الأداء
+router.post('/fantasy/reprice', async (req, res) => {
+  const league = Number(req.body?.league);
+  const row = (await leagueRepo.findEnabled()).find((l) => l.id === league);
+  if (!row) return res.status(400).json({ error: 'اختر دورياً' });
+
+  const priced = await fantasyPricing.repriceLeague(row.id, row.season);
+  res.json({ priced });
 });
 
 // ---------------------------------------------------------------
