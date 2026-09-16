@@ -190,24 +190,31 @@ class _MarketSheetState extends State<_MarketSheet> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-            child: Row(
+          // شريطٌ يُمرَّر أفقياً لا صفٌّ ثابت: ستّ شرائح (أربعة
+          // مراكز + الترتيب + «ما أقدر عليه») تفيض عن ٤٠٢ نقطة،
+          // وقد فاضت فعلاً — خرج شريط فلاتر الأصفر على المحاكي
+          // وابتُلعت شريحة «حراسة» تحته، فاستحال اختيار حارسٍ
+          // بديل من خانة الدكّة.
+          //
+          // والتمرير أصحّ من التصغير: الشرائح قد تزيد (نادٍ، سعر)،
+          // وحلٌّ يقصّ حرفاً من كل شريحة يؤجّل الفيض ولا يمنعه.
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               children: [
-                if (widget.position == null) ...[
+                if (widget.position == null)
                   // بلا مركز مطلوب (خانة دكّة): يختار هو.
-                  for (final p in FantasyPosition.values)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: _MiniChip(
-                        label: p.label,
-                        selected: _position == p,
-                        onTap: () => setState(
-                            () => _position = _position == p ? null : p),
-                      ),
+                  for (final p in FantasyPosition.values) ...[
+                    _MiniChip(
+                      label: p.label,
+                      selected: _position == p,
+                      onTap: () => setState(
+                          () => _position = _position == p ? null : p),
                     ),
-                ],
-                const Spacer(),
+                    const SizedBox(width: 6),
+                  ],
                 _MiniChip(
                   label: _byPrice ? 'الأرخص' : 'الأعلى نقاطاً',
                   selected: _byPrice,
@@ -342,6 +349,7 @@ class _MiniChip extends StatelessWidget {
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
+          alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
           decoration: BoxDecoration(
             color: selected ? Brand.fillStrong : Brand.fill,
