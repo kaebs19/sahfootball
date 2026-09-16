@@ -166,6 +166,30 @@ class _FantasyScreenState extends State<FantasyScreen> {
   /// حالةٌ ترفضها القاعدة، وكان يجب ألا تُبنى أصلاً.
   void _swap(FantasyPlayer dragged, PitchSlot onto) {
     final target = onto.player;
+
+    // لاعبان في نفس الحال (كلاهما أساسي أو كلاهما بديل): التبديل
+    // ترتيبٌ لا حال. وبلا هذا الفرع لا يحدث شيء عند سحب أساسيٍّ
+    // على أساسي — جُرّب على المحاكي فوقع: الراية واحدة عندهما،
+    // فالسحب يبدو معطّلاً وهو ينفّذ تبديلاً لا أثر له.
+    //
+    // وترتيب الأساسيين ليس تجميلاً بحتاً: هو ترتيب دخولهم في
+    // الخطوط على الملعب، ومن أراد قلبيْ دفاعه في الطرفين يقلبهما.
+    if (target != null && dragged.onBench == target.onBench) {
+      setState(() {
+        final next = [..._squad];
+        final a = next.indexWhere((p) => p.id == dragged.id);
+        final b = next.indexWhere((p) => p.id == target.id);
+        if (a >= 0 && b >= 0) {
+          final tmp = next[a];
+          next[a] = next[b];
+          next[b] = tmp;
+        }
+        _squad = next;
+        _dirty = true;
+      });
+      return;
+    }
+
     setState(() {
       _squad = _squad.map((p) {
         if (p.id == dragged.id) {
