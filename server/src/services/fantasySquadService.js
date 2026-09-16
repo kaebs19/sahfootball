@@ -67,7 +67,14 @@ class SquadError extends Error {
  * يصلح واحداً في كل مرة على أي حال، وقائمةٌ من ستة أسطر تبدو
  * حائطاً لا إرشاداً.
  */
-function validateSquad(picks, players, { formation, clubTeamId, leagueId, budget = RULES.budget }) {
+function validateSquad(picks, players, {
+  formation,
+  clubTeamId,
+  leagueId,
+  budget = RULES.budget,
+  /** ما يبقى في المحفظة بعد هذا الحفظ — null لتخطّي الفحص. */
+  wallet = null,
+}) {
   const shape = FORMATIONS[formation];
   if (!shape) throw new SquadError('خطة غير معروفة.');
 
@@ -145,10 +152,20 @@ function validateSquad(picks, players, { formation, clubTeamId, leagueId, budget
   if (captains[0].on_bench) throw new SquadError('الكابتن من الأساسيين.');
   if (vices[0].on_bench) throw new SquadError('نائب الكابتن من الأساسيين.');
 
-  // ٥) الميزانية
-  const spent = rows.reduce((sum, r) => sum + Number(r.price), 0);
-  if (spent > budget + 1e-9) {
-    throw new SquadError(`الميزانية ${budget} وأنفقت ${spent.toFixed(1)}.`);
+  // ٥) المحفظة — لا «مجموع الأسعار ≤ الميزانية».
+  //
+  // الفرق جوهري بعد أول أسبوع: السعر يتحرّك، فمن اشترى بـ٧
+  // وارتفع لاعبه إلى ٩ يملك تشكيلةً قيمتُها أعلى من ميزانيته
+  // الابتدائية — ومقارنةُ مجموع أسعار اليوم بـ١٠٠ ترفض تشكيلته
+  // الرابحة وتعاقبه على حسن اختياره.
+  //
+  // الصحيح: محفظةٌ تُنقَص بالشراء وتُزاد بالبيع، ويُفحص أن تبقى
+  // موجبة. والحساب في المستودع لأنه يحتاج أسعار الشراء المحفوظة؛
+  // هنا نفحص النتيجة التي يعطيها.
+  if (wallet !== null && wallet < -1e-9) {
+    throw new SquadError(
+      `تنقصك ${Math.abs(wallet).toFixed(1)} — بِع لاعباً أو اختر أرخص.`
+    );
   }
 
   // ترتيب الدكّة: الحارس البديل لا يدخل إلا مكان حارس، فيُستثنى
@@ -158,12 +175,16 @@ function validateSquad(picks, players, { formation, clubTeamId, leagueId, budget
     ...bench.filter((r) => r.position === 'Goalkeeper'),
   ];
 
+  // قيمة التشكيلة بأسعار اليوم — تُعرض بجوار المحفظة، ومجموعهما
+  // هو «قيمة فريقك»: الرقم الذي ينمو بالذكاء في السوق.
+  const value = rows.reduce((sum, r) => sum + Number(r.price), 0);
+
   return {
     rows,
     starters,
     bench: orderedBench,
-    spent: Number(spent.toFixed(1)),
-    budget_left: Number((budget - spent).toFixed(1)),
+    value: Number(value.toFixed(1)),
+    wallet: wallet === null ? Number((budget - value).toFixed(1)) : wallet,
   };
 }
 
@@ -194,11 +215,20 @@ function settleRound(entry, lineup, statsByPlayer, players, cfg) {
   const shape = FORMATIONS[entry.formation] || FORMATIONS['4-4-2'];
 
   const played = (id) => (statsByPlayer.get(id) || []).some((s) => (s.minutes ?? 0) > 0);
-  const pointsOf = (id) =>
-    (statsByPlayer.get(id) || []).reduce(
-      (sum, s) => sum + fantasyScoring.computePlayerPoints(s, players.get(id)?.position, scoring).points,
-      0
-    );
+  // النقاط وسطورها معاً: «من أين جاءت؟» سؤالٌ تجيبه الشاشة بلا
+  // أن تحسب، وحسابُه مرتين (هنا وفي العميل) هو الطريق إلى شاشةٍ
+  // تقول ٩ وخادمٍ يقول ٨.
+  const breakdownOf = (id) => {
+    const position = players.get(id)?.position;
+    const lines = [];
+    let points = 0;
+    for (const s of statsByPlayer.get(id) || []) {
+      const one = fantasyScoring.computePlayerPoints(s, position, scoring);
+      points += one.points;
+      lines.push(...one.lines);
+    }
+    return { points, lines };
+  };
 
   const starters = lineup.filter((l) => !l.on_bench);
   const bench = lineup
@@ -237,12 +267,15 @@ function settleRound(entry, lineup, statsByPlayer, players, cfg) {
 
   const rows = lineup.map((l) => {
     const counts = active.has(l.player_id);
-    const base = counts ? pointsOf(l.player_id) : 0;
+    const { points: base, lines } = counts
+      ? breakdownOf(l.player_id)
+      : { points: 0, lines: [] };
     const multiplier = counts && l.player_id === captainId ? scoring.captain_multiplier : 1;
     return {
       player_id: l.player_id,
       points: base * multiplier,
       multiplier,
+      lines,
       auto_subbed: subbedIn.has(l.player_id),
       // البديل الذي دخل يُحتسب، والأساسي الذي غاب لا — والعمود
       // on_bench يبقى كما جُمّد كي تعرف الشاشة من كان أين.

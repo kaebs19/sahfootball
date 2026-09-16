@@ -1,5 +1,6 @@
 // fantasyRepo — كل تعامل جدولي «فريقي» مع القاعدة.
 const db = require('../config/db');
+const fantasyMarket = require('../services/fantasyMarket');
 
 // أعمدة اللاعب كما يراها السوق والتشكيلة: اسمٌ واحد جاهز للعرض،
 // ونادٍ باسمه لا بمعرّفه — الشاشة لا يجب أن تبحث عن اسم نادٍ
@@ -74,6 +75,39 @@ async function squadPlayers(squadId) {
 }
 
 /**
+ * ما ستؤول إليه المحفظة لو حُفظت هذه التشكيلة.
+ *
+ * يُحسب **قبل** التحقّق لا بعده: قاعدة المحفظة لا تُفحص بجمع
+ * أسعار اليوم (راجع validateSquad)، بل بحركة بيعٍ وشراء من
+ * محفظةٍ قائمة. ومن باع رابحاً يستردّ سعر شرائه ونصف ربحه.
+ *
+ * ويعيد المبيعين والمشترين كذلك: هما سجلّ الانتقالات الذي تتحرّك
+ * به أسعار الأسبوع القادم.
+ */
+async function planTransaction({ userId, leagueId, season, picks, prices, budget }) {
+  const squad = await findSquad(userId, leagueId, season);
+  const owned = squad ? await squadPlayers(squad.id) : [];
+  const ownedById = new Map(owned.map((p) => [p.player_id, p]));
+  const wanted = new Set(picks.map((p) => p.player_id));
+
+  const sold = owned.filter((p) => !wanted.has(p.player_id));
+  const bought = picks.filter((p) => !ownedById.has(p.player_id));
+
+  const opening = squad ? Number(squad.budget_left) : budget;
+  const proceeds = sold.reduce(
+    (sum, p) => sum + fantasyMarket.sellPrice(p.bought_price, p.price), 0);
+  const outlay = bought.reduce(
+    (sum, p) => sum + Number(prices.get(p.player_id)?.price ?? 0), 0);
+
+  return {
+    squad,
+    sold,
+    bought,
+    wallet: Number((opening + proceeds - outlay).toFixed(1)),
+  };
+}
+
+/**
  * حفظ التشكيلة كاملة — استبدالٌ لا تعديل جزئي.
  *
  * كل حفظ يمسح الخمسة عشر ويكتبهم من جديد داخل معاملة واحدة.
@@ -84,23 +118,28 @@ async function squadPlayers(squadId) {
  * والسعر يُثبَّت هنا: من كان في التشكيلة يحتفظ بسعر شرائه، ومن
  * دخل الآن يُشترى بسعر اليوم.
  */
-async function saveSquad({ userId, leagueId, season, clubTeamId, formation, name, rows, budgetLeft }) {
+async function saveSquad({
+  userId, leagueId, season, clubTeamId, formation, name,
+  rows, wallet, value, sold = [], bought = [], round = null,
+}) {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
 
     const { rows: squadRows } = await client.query(
       `INSERT INTO fantasy_squads
-         (user_id, league_id, season, club_team_id, formation, name, budget_left, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+         (user_id, league_id, season, club_team_id, formation, name,
+          budget_left, squad_value, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
        ON CONFLICT (user_id, league_id, season) DO UPDATE SET
          club_team_id = EXCLUDED.club_team_id,
          formation    = EXCLUDED.formation,
          name         = COALESCE(EXCLUDED.name, fantasy_squads.name),
          budget_left  = EXCLUDED.budget_left,
+         squad_value  = EXCLUDED.squad_value,
          updated_at   = now()
        RETURNING *`,
-      [userId, leagueId, season, clubTeamId, formation, name || null, budgetLeft]
+      [userId, leagueId, season, clubTeamId, formation, name || null, wallet, value]
     );
     const squad = squadRows[0];
 
@@ -121,6 +160,29 @@ async function saveSquad({ userId, leagueId, season, clubTeamId, formation, name
         [squad.id, r.player_id, !!r.on_bench, r.bench_order ?? 0,
          !!r.is_captain, !!r.is_vice, boughtAt.get(r.player_id) ?? r.price]
       );
+    }
+
+    // سجلّ الانتقالات: مصدر الطلب الذي تتحرّك به أسعار الأسبوع
+    // القادم، وأساس حساب الكلفة عند الإقفال.
+    //
+    // ON CONFLICT DO NOTHING لا UPDATE: من حفظ تشكيلته خمس مرات
+    // في الأسبوع لم ينتقل خمس مرات، ولاعبٌ دخل ثم خرج ثم عاد لم
+    // ينتقل أصلاً — السجلّ يقول «حدث هذا الأسبوع» لا كم مرة.
+    if (round) {
+      for (const p of sold) {
+        await client.query(
+          `INSERT INTO fantasy_transfers (squad_id, round, player_id, direction, price)
+           VALUES ($1,$2,$3,'out',$4) ON CONFLICT DO NOTHING`,
+          [squad.id, round, p.player_id, p.price]
+        );
+      }
+      for (const p of bought) {
+        await client.query(
+          `INSERT INTO fantasy_transfers (squad_id, round, player_id, direction, price)
+           VALUES ($1,$2,$3,'in',$4) ON CONFLICT DO NOTHING`,
+          [squad.id, round, p.player_id, p.price]
+        );
+      }
     }
 
     await client.query('COMMIT');
@@ -197,7 +259,7 @@ async function unsettledEntries(round) {
 
 async function roundLineup(squadId, round) {
   const { rows } = await db.query(
-    `SELECT player_id, on_bench, bench_order, points, multiplier, auto_subbed
+    `SELECT player_id, on_bench, bench_order, points, multiplier, auto_subbed, lines
        FROM fantasy_round_players WHERE squad_id = $1 AND round = $2
       ORDER BY on_bench, bench_order`,
     [squadId, round]
@@ -213,9 +275,10 @@ async function writeSettlement(squadId, round, rows, totalPoints) {
     for (const r of rows) {
       await client.query(
         `UPDATE fantasy_round_players
-            SET points = $3, multiplier = $4, auto_subbed = $5
+            SET points = $3, multiplier = $4, auto_subbed = $5, lines = $7
           WHERE squad_id = $1 AND round = $2 AND player_id = $6`,
-        [squadId, round, r.points, r.multiplier, r.auto_subbed, r.player_id]
+        [squadId, round, r.points, r.multiplier, r.auto_subbed, r.player_id,
+         JSON.stringify(r.lines || [])]
       );
     }
     await client.query(
@@ -265,6 +328,7 @@ async function leaderboard(leagueId, season, limit = 100) {
 
 module.exports = {
   market,
+  planTransaction,
   playersByIds,
   findSquad,
   squadPlayers,

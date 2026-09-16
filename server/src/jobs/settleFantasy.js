@@ -136,6 +136,12 @@ async function settleFinishedRounds() {
       if (entries.length) {
         logger.info(`[fantasy] settled ${entries.length} squads — league ${league.id} ${round}`);
       }
+
+      // حركة الأسعار بعد التسوية لا قبلها: الطلب يُقرأ من انتقالات
+      // هذه الجولة، والأداء من نقاطها — وكلاهما لا يكتمل قبل أن
+      // تُحتسب. والحارس هو settled_at نفسه: الجولة لا تُسوّى مرتين
+      // فلا تتحرّك أسعارها مرتين.
+      await fantasyMarket.moveLeaguePrices(league.id, league.season, round);
     }
   }
 

@@ -74,7 +74,12 @@ router.get('/squad', async (req, res) => {
       club_team_id: squad.club_team_id,
       formation: squad.formation,
       budget_left: Number(squad.budget_left),
+      // قيمة اللاعبين بأسعار اليوم. مع المحفظة تعطي «قيمة فريقك»،
+      // وهي المقياس الثاني في اللعبة بعد النقاط: من ينمو فريقه
+      // يشتري ما لا يستطيعه غيره.
+      squad_value: Number(squad.squad_value),
       free_transfers: squad.free_transfers,
+      wildcards_used: squad.wildcards_used,
       total_points: squad.total_points,
       players: await fantasyRepo.squadPlayers(squad.id),
     },
@@ -98,21 +103,40 @@ router.put('/squad', async (req, res) => {
   const rows = await fantasyRepo.playersByIds(ids);
   const byId = new Map(rows.map((r) => [r.player_id, r]));
 
+  const cleaned = picks.map((p) => ({
+    player_id: Number(p.player_id),
+    on_bench: !!p.on_bench,
+    is_captain: !!p.is_captain,
+    is_vice: !!p.is_vice,
+  }));
+
   try {
-    const result = squadService.validateSquad(
-      picks.map((p) => ({
-        player_id: Number(p.player_id),
-        on_bench: !!p.on_bench,
-        is_captain: !!p.is_captain,
-        is_vice: !!p.is_vice,
-      })),
-      byId,
-      { formation, clubTeamId, leagueId: league.id }
-    );
+    // المحفظة قبل التحقّق: قاعدتها حركةُ بيعٍ وشراء لا مجموع
+    // أسعار اليوم، فلا يمكن للفحص أن يعرفها وحده.
+    const plan = await fantasyRepo.planTransaction({
+      userId: req.userId,
+      leagueId: league.id,
+      season: league.season,
+      picks: cleaned,
+      prices: byId,
+      budget: squadService.RULES.budget,
+    });
+
+    const result = squadService.validateSquad(cleaned, byId, {
+      formation,
+      clubTeamId,
+      leagueId: league.id,
+      wallet: plan.wallet,
+    });
 
     // ترتيب الدكّة من الخدمة لا من العميل: هي من تعرف أن الحارس
     // البديل يبقى آخراً، والعميل قد يرسل ترتيباً يكسر التبديل.
     const benchOrder = new Map(result.bench.map((b, i) => [b.player_id, i]));
+
+    // الجولة التي تُسجَّل فيها الانتقالات: الجارية — وهي نافذة
+    // السوق المفتوحة الآن.
+    const rounds = await fixtureRepo.roundsFor(league.id, league.season);
+    const openRound = (rounds.find((r) => r.open > 0) || rounds[rounds.length - 1])?.round;
 
     await fantasyRepo.saveSquad({
       userId: req.userId,
@@ -121,7 +145,14 @@ router.put('/squad', async (req, res) => {
       clubTeamId,
       formation,
       name: req.body?.name,
-      budgetLeft: result.budget_left,
+      wallet: plan.wallet,
+      value: result.value,
+      sold: plan.sold,
+      bought: plan.bought.map((p) => ({
+        player_id: p.player_id,
+        price: byId.get(p.player_id)?.price ?? 0,
+      })),
+      round: openRound,
       rows: result.rows.map((r) => ({
         player_id: r.player_id,
         on_bench: r.on_bench,
@@ -139,6 +170,8 @@ router.put('/squad', async (req, res) => {
         formation: squad.formation,
         club_team_id: squad.club_team_id,
         budget_left: Number(squad.budget_left),
+        squad_value: Number(squad.squad_value),
+        free_transfers: squad.free_transfers,
         total_points: squad.total_points,
         players: await fantasyRepo.squadPlayers(squad.id),
       },
