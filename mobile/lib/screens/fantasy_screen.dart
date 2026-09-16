@@ -458,12 +458,19 @@ class _FantasyScreenState extends State<FantasyScreen> {
 
   Future<void> _openMarket(PitchSlot? slot, {required bool onBench}) async {
     final taken = _squad.map((p) => p.id).toSet();
+    // الخانات الباقية بعد هذه: كلٌّ منها يحتاج أرخص لاعب على
+    // الأقل، فيُحجز ثمنها قبل أن يُنفَق على واحد.
+    final filling = slot?.player == null ? 1 : 0;
+    final remaining = (_rules.squadSize - _squad.length - filling)
+        .clamp(0, _rules.squadSize);
+
     final picked = await showFantasyMarket(
       context,
       players: _market,
       position: slot?.position,
       taken: taken,
       budgetLeft: _rules.budget - _spent + (slot?.player?.price ?? 0),
+      remainingSlots: remaining,
     );
     if (picked != null && mounted) {
       FantasySounds.play(Sfx.pop);

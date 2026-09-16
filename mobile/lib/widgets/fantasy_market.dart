@@ -20,6 +20,9 @@ Future<FantasyPlayer?> showFantasyMarket(
   required Set<int> taken,
   FantasyPosition? position,
   double? budgetLeft,
+  /// كم خانة تبقى بعد هذه — يُحجز لكل منها أرخص سعر ممكن.
+  int remainingSlots = 0,
+  double minPrice = 4.0,
 }) {
   return showModalBottomSheet<FantasyPlayer>(
     context: context,
@@ -34,6 +37,8 @@ Future<FantasyPlayer?> showFantasyMarket(
       taken: taken,
       position: position,
       budgetLeft: budgetLeft,
+      remainingSlots: remainingSlots,
+      minPrice: minPrice,
     ),
   );
 }
@@ -43,13 +48,30 @@ class _MarketSheet extends StatefulWidget {
   final Set<int> taken;
   final FantasyPosition? position;
   final double? budgetLeft;
+  final int remainingSlots;
+  final double minPrice;
 
   const _MarketSheet({
     required this.players,
     required this.taken,
     this.position,
     this.budgetLeft,
+    this.remainingSlots = 0,
+    this.minPrice = 4.0,
   });
+
+  /// أغلى ما يجوز شراؤه هنا: المحفظة ناقص ما يلزم لملء بقية
+  /// الخانات بأرخص لاعب ممكن.
+  ///
+  /// بلا هذا الحساب تُبنى تشكيلةٌ مستحيلة بلا أن تقول الشاشة
+  /// شيئاً: جُرّب على المحاكي فوقع — أربعة لاعبي وسط غالين
+  /// تركوا ٢٣ لستّ خانات، وأرخص لاعب ٤٫٠ فالمطلوب ٢٤. عندها لا
+  /// حلّ إلا بيعُ من اشتُري، والشاشة تُقرأ معطّلةً لا محذّرة.
+  double? get ceiling {
+    final wallet = budgetLeft;
+    if (wallet == null) return null;
+    return wallet - (remainingSlots * minPrice);
+  }
 
   @override
   State<_MarketSheet> createState() => _MarketSheetState();
@@ -58,6 +80,7 @@ class _MarketSheet extends StatefulWidget {
 class _MarketSheetState extends State<_MarketSheet> {
   String _query = '';
   bool _affordableOnly = false;
+  bool _byPrice = false;
   late FantasyPosition? _position = widget.position;
 
   List<FantasyPlayer> get _filtered {
@@ -68,13 +91,18 @@ class _MarketSheetState extends State<_MarketSheet> {
       if (q.isNotEmpty && !p.name.contains(q) && !p.teamName.contains(q)) {
         return false;
       }
-      if (_affordableOnly &&
-          widget.budgetLeft != null &&
-          p.price > widget.budgetLeft!) {
+      final ceiling = widget.ceiling;
+      if (_affordableOnly && ceiling != null && p.price > ceiling) {
         return false;
       }
       return true;
-    }).toList();
+    }).toList()
+      // الترتيب بالسعر خيارٌ لا افتراض: من يبني أول تشكيلته يريد
+      // أن يرى النجوم، ومن ضاقت محفظته يريد أن يرى ما يقدر عليه.
+      // والافتراض الأول لأنه سؤال أول مرة.
+      ..sort((a, b) => _byPrice
+          ? a.price.compareTo(b.price)
+          : b.totalPoints.compareTo(a.totalPoints));
   }
 
   @override
@@ -112,14 +140,30 @@ class _MarketSheetState extends State<_MarketSheet> {
                 ),
                 const Spacer(),
                 if (widget.budgetLeft != null)
-                  Text(
-                    'المتبقّي ${Fmt.number(widget.budgetLeft!, decimals: 1)}',
-                    style: TextStyle(
-                      color: widget.budgetLeft! < 0 ? Brand.wrong : Brand.crown,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: Brand.tabular,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'المتبقّي ${Fmt.number(widget.budgetLeft!, decimals: 1)}',
+                        style: TextStyle(
+                          color:
+                              widget.budgetLeft! < 0 ? Brand.wrong : Brand.crown,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: Brand.tabular,
+                        ),
+                      ),
+                      // السقف يُقال صراحةً لا يُفهم من التعتيم: من
+                      // رأى «أقصى ٦٫٥» عرف لماذا شحب نجمٌ يقدر على
+                      // سعره ظاهرياً.
+                      if (widget.remainingSlots > 0 && widget.ceiling != null)
+                        Text(
+                          'أقصى ${Fmt.number(widget.ceiling!, decimals: 1)} '
+                          '(${Fmt.number(widget.remainingSlots)} خانات بعدها)',
+                          style: const TextStyle(
+                              color: Brand.textFaint, fontSize: 10.5),
+                        ),
+                    ],
                   ),
               ],
             ),
@@ -164,13 +208,20 @@ class _MarketSheetState extends State<_MarketSheet> {
                     ),
                 ],
                 const Spacer(),
-                if (widget.budgetLeft != null)
+                _MiniChip(
+                  label: _byPrice ? 'الأرخص' : 'الأعلى نقاطاً',
+                  selected: _byPrice,
+                  onTap: () => setState(() => _byPrice = !_byPrice),
+                ),
+                if (widget.budgetLeft != null) ...[
+                  const SizedBox(width: 6),
                   _MiniChip(
                     label: 'ما أقدر عليه',
                     selected: _affordableOnly,
                     onTap: () =>
                         setState(() => _affordableOnly = !_affordableOnly),
                   ),
+                ],
               ],
             ),
           ),
@@ -190,8 +241,8 @@ class _MarketSheetState extends State<_MarketSheet> {
                       // الأغلى من المتبقّي يُعرض رماديّاً ولا يُخفى:
                       // إخفاؤه يجعل اللاعب يظنّ أن نجم الدوري غير
                       // موجود، ورؤيته وهو بعيد المنال هي نصف اللعبة.
-                      affordable: widget.budgetLeft == null ||
-                          list[i].price <= widget.budgetLeft!,
+                      affordable: widget.ceiling == null ||
+                          list[i].price <= widget.ceiling!,
                       onTap: () => Navigator.of(context).pop(list[i]),
                     ),
                   ),
