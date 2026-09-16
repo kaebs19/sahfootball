@@ -32,17 +32,27 @@ function reference(values) {
 }
 
 /**
- * سعرٌ ابتدائي حسب المركز، لمن لا تاريخ له بعد.
+ * بند السعر لكل مركز: أرخص ما فيه وأغلى ما فيه.
  *
- * المهاجمون أغلى من المدافعين عند الصفر لا تحيّزاً بل لأن جدول
- * النقاط يعطيهم فرصاً أكثر للتسجيل، والسوق بلا فروق ابتدائية
- * يجعل أول جولة في الموسم قرعةً لا اختياراً.
+ * ولماذا لا يشترك المراكز في بندٍ واحد ٤–١٥؟ لأن السقف يجب أن
+ * يعكس **ما يستطيع المركز أن يعطيه**، لا ترتيب صاحبه بين أقرانه
+ * وحدهم. أفضل حارس في الدوري هو الأفضل بين الحرّاس، لكنه لن يصنع
+ * جولةً كما يصنعها مهاجمٌ يسجّل ثلاثة — فسعرهما المتساوي يعني أن
+ * من اشترى الحارس دفع ثمن نجمٍ وأخذ حارساً.
+ *
+ * والبنود هنا تصنع اقتصاد اللعبة: الميزانية ١٠٠ لخمسة عشر، وهذه
+ * الأسقف تجعل تشكيلةً متوازنة (حارسان رخيصان، دفاعٌ معقول، نجمٌ
+ * أو اثنان في الأمام) ممكنةً بالكاد — وهو بالضبط ما يجعل كل
+ * اختيار مؤلماً.
+ *
+ * والحدّ الأدنى واحدٌ في الجميع: اللاعب الذي لا يلعب لا يساوي
+ * شيئاً في أي مركز.
  */
-const BASE_BY_POSITION = {
-  Goalkeeper: 4.5,
-  Defender: 4.5,
-  Midfielder: 5.5,
-  Attacker: 6.0,
+const POSITION_BANDS = {
+  Goalkeeper: { min: 4.0, max: 6.5, base: 4.5 },
+  Defender: { min: 4.0, max: 8.0, base: 4.5 },
+  Midfielder: { min: 4.5, max: 13.0, base: 5.5 },
+  Attacker: { min: 4.5, max: 15.0, base: 6.0 },
 };
 
 /**
@@ -61,11 +71,11 @@ const BASE_BY_POSITION = {
  * @param position مركزه — يحدّد نقطة البداية لمن لا تاريخ له
  */
 function priceFor(perGame, best, position, { minutes = 0 } = {}) {
-  const base = BASE_BY_POSITION[position] ?? 5.0;
+  const band = POSITION_BANDS[position] ?? { min: MIN_PRICE, max: MAX_PRICE, base: 5.0 };
 
   // أقلّ من مباراة كاملة في الموسم: لا حصيلة يُحكم بها، فيبقى
   // على سعر مركزه. والحكم بعيّنة من عشر دقائق أسوأ من ألا نحكم.
-  if (!best || minutes < 90) return round(base);
+  if (!best || minutes < 90) return round(band.base, band);
 
   const ratio = Math.max(0, Math.min(1, perGame / best));
   // أسٌّ فوق الواحد لا جذرٌ تحته. جُرّب الجذر أولاً فخرج اللاعب
@@ -76,12 +86,12 @@ function priceFor(perGame, best, position, { minutes = 0 } = {}) {
   // متوسطاً مقصوداً ٦٫٧، فيُضبط الأسّ ليضع من أداؤه نصفُ الأفضل
   // عند ٦٫٥ تقريباً. لو تغيّرت الميزانية وجب أن يتغيّر معها.
   const scaled = Math.pow(ratio, PRICE_CURVE);
-  return round(MIN_PRICE + scaled * (MAX_PRICE - MIN_PRICE));
+  return round(band.min + scaled * (band.max - band.min), band);
 }
 
 /** إلى أقرب نصف نقطة: ٧٫٥ لا ٧٫٣ — هكذا تُقرأ الأسعار في كل فانتازي. */
-function round(value) {
-  const clamped = Math.max(MIN_PRICE, Math.min(MAX_PRICE, value));
+function round(value, band = { min: MIN_PRICE, max: MAX_PRICE }) {
+  const clamped = Math.max(band.min, Math.min(band.max, value));
   return Math.round(clamped * 2) / 2;
 }
 
@@ -107,17 +117,38 @@ async function repriceLeague(leagueId, season) {
   if (!rows.length) return 0;
 
   const perGame = (r) => (r.apps ? r.points / r.apps : 0);
-  // المرجع من اللاعبين المنتظمين وحدهم (٣ مباريات فأكثر): من لعب
-  // مباراة أو اثنتين معدّله ضجيج، وإقحامه في المرجع يزيح السلّم.
-  const best = reference(
-    rows.filter((r) => r.apps >= 3).map(perGame)
-  ) || Math.max(...rows.map(perGame), 0);
+
+  // مرجعٌ **لكل مركز على حدة**، لا مرجعٌ واحد للدوري.
+  //
+  // جُرّب المرجع الواحد وظهر عيبه في السوق فوراً: كل الحرّاس
+  // الجيدين بسقف السعر (١٥)، أغلى من المهاجمين. والسبب بنيوي لا
+  // عابر — الحارس يجمع نقاطه **بانتظام** (حضور وشباك نظيفة
+  // وتصدّيات في كل مباراة) والمهاجم يجمعها **دفعات** (هدفان في
+  // مباراة ثم أربع مباريات صفر)، فمعدّل الحارس أعلى وإن كان أقلّ
+  // نفعاً في لعبةٍ تكافئ الأهداف.
+  //
+  // والأهم أن المقارنة عبر المراكز بلا معنى أصلاً: الخطة تُلزمك
+  // بحارس واحد، فأنت تفاضل بين حارسٍ وحارس لا بين حارسٍ ومهاجم.
+  // السعر جوابٌ عن «كم يساوي هذا مقارنةً بمن قد يشغل مكانه».
+  const regular = rows.filter((r) => r.apps >= 3);
+  const bestByPosition = {};
+  for (const position of Object.keys(POSITION_BANDS)) {
+    const inPosition = regular.filter((r) => r.position === position);
+    bestByPosition[position] =
+      reference(inPosition.map(perGame)) ||
+      Math.max(...rows.filter((r) => r.position === position).map(perGame), 0);
+  }
 
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
     for (const r of rows) {
-      const price = priceFor(perGame(r), best, r.position, { minutes: r.minutes });
+      const price = priceFor(
+        perGame(r),
+        bestByPosition[r.position] ?? 0,
+        r.position,
+        { minutes: r.minutes }
+      );
       await client.query('UPDATE players SET price = $2 WHERE id = $1', [r.id, price]);
     }
     await client.query('COMMIT');
@@ -129,7 +160,10 @@ async function repriceLeague(leagueId, season) {
   }
 
   logger.info(
-    `[pricing] league ${leagueId}: ${rows.length} players, best ${best.toFixed(2)}/game`
+    `[pricing] league ${leagueId}: ${rows.length} players — ` +
+      Object.entries(bestByPosition)
+        .map(([k, v]) => `${k[0]}${v.toFixed(1)}`)
+        .join(' ')
   );
   return rows.length;
 }
@@ -137,7 +171,7 @@ async function repriceLeague(leagueId, season) {
 module.exports = {
   priceFor,
   repriceLeague,
-  BASE_BY_POSITION,
+  POSITION_BANDS,
   MIN_PRICE,
   MAX_PRICE,
   reference,
