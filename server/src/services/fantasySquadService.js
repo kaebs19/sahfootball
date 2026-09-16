@@ -188,6 +188,134 @@ function validateSquad(picks, players, {
   };
 }
 
+/**
+ * تشكيلةٌ كاملة تُبنى تلقائياً من السوق — للملّ لا للكسل.
+ *
+ * ولماذا في الخادم لا في التطبيق؟ لأنها قواعد اللعبة كلها في
+ * دالةٍ واحدة (الحصص، الخطة، حدّ النادي، الميزانية)، ونسخةٌ
+ * ثانية منها في Dart تفترق عند أول تعديل فتبني تشكيلةً يرفضها
+ * الحفظ — وهي أسوأ أداةٍ ممكنة: زرٌّ يصنع خطأً بضغطة.
+ *
+ * وهي **اقتراحٌ لا حفظ**: تُعاد إلى الشاشة فيراها صاحبها ويبدّل
+ * ما شاء ثم يحفظ. البناء التلقائي الذي يحفظ نفسه يسرق من اللاعب
+ * القرار الذي جاء من أجله.
+ *
+ * الترتيب: ثلاثةٌ من ناديه أولاً (قاعدةٌ تقيّد غيرها فتُقضى قبله)،
+ * ثم الباقي بالأفضل سعراً — نقاطٌ لكل نقطة سعر.
+ */
+function autoPick(pool, { clubTeamId, formation = '4-4-2', budget = RULES.budget }) {
+  const shape = FORMATIONS[formation] || FORMATIONS['4-4-2'];
+  const usable = pool.filter((p) => p.available && SQUAD_QUOTA[p.position] != null);
+
+  const need = { ...SQUAD_QUOTA };
+  const picked = [];
+  const fromClub = new Map();
+  let spend = 0;
+
+  // أرخص سعرٍ في كل مركز: به يُحجز ثمن الخانات الباقية قبل أن
+  // يُشترى نجم. نفس قاعدة السوق في الشاشة (راجع FANTASY.md) —
+  // وبلاها تُبنى تشكيلةٌ من أحد عشر غالياً وأربع خانات مستحيلة.
+  const floor = {};
+  for (const position of Object.keys(SQUAD_QUOTA)) {
+    const prices = usable
+      .filter((p) => p.position === position)
+      .map((p) => Number(p.price));
+    floor[position] = prices.length ? Math.min(...prices) : 0;
+  }
+  const reserve = () =>
+    Object.entries(need).reduce((sum, [position, n]) => sum + n * floor[position], 0);
+
+  const take = (p) => {
+    picked.push(p);
+    need[p.position] -= 1;
+    fromClub.set(p.team_id, (fromClub.get(p.team_id) || 0) + 1);
+    spend += Number(p.price);
+  };
+
+  const affordable = (p) =>
+    // بعد شرائه: ما تبقّى يكفي لأرخص ما يملأ باقي الخانات.
+    spend + Number(p.price) + (reserve() - floor[p.position]) <= budget + 1e-9;
+
+  const eligible = (p) =>
+    need[p.position] > 0
+    && !picked.some((q) => q.player_id === p.player_id)
+    && (fromClub.get(p.team_id) || 0) < RULES.max_from_club
+    && affordable(p);
+
+  // الأفضل قيمةً: نقاطٌ لكل نقطة سعر، ثم النقاط المطلقة عند
+  // التساوي — الرخيص عديم النقاط ليس صفقة.
+  const value = (p) =>
+    (Number(p.total_points) || 0) / Math.max(1, Number(p.price)) * 1000
+    + (Number(p.total_points) || 0);
+
+  const best = (candidates) =>
+    candidates.filter(eligible).sort((a, b) => value(b) - value(a))[0] || null;
+
+  // ١) ثلاثةٌ من ناديه — القاعدة التي تقيّد ما بعدها.
+  if (clubTeamId) {
+    const mine = usable.filter((p) => p.team_id === clubTeamId);
+    for (let i = 0; i < RULES.min_from_club; i += 1) {
+      const pick = best(mine);
+      if (!pick) {
+        throw new SquadError(
+          'لا يكفي لاعبو ناديك لبناء تشكيلة تلقائية — اختر بنفسك.'
+        );
+      }
+      take(pick);
+    }
+  }
+
+  // ٢) الباقي: المراكز الأشحّ أولاً (الحرّاس قبل المهاجمين مثلاً)
+  // كي لا تُستنفد الميزانية قبل أن يبقى مركزٌ بلا خيار مقبول.
+  while (Object.values(need).some((n) => n > 0)) {
+    const pick = best(usable);
+    if (!pick) throw new SquadError('السوق لا يكفي لبناء تشكيلة كاملة.');
+    take(pick);
+  }
+
+  // ٣) الأساسيون حسب الخطة: الأعلى نقاطاً في كل خط، وحارسٌ واحد.
+  const byPoints = (a, b) => (b.total_points || 0) - (a.total_points || 0);
+  const starters = new Set();
+  const inPosition = (position) =>
+    picked.filter((p) => p.position === position).sort(byPoints);
+
+  starters.add(inPosition('Goalkeeper')[0].player_id);
+  for (const [position, count] of Object.entries(shape)) {
+    for (const p of inPosition(position).slice(0, count)) starters.add(p.player_id);
+  }
+
+  // ٤) الشارتان لأعلى أساسيَّين نقاطاً **من غير الحرّاس**.
+  //
+  // واستثناء الحارس ليس ذوقاً: هو يجمع نقاطه بانتظام كل مباراة
+  // (حضور ونظافة وتصدّيات) فمعدّله الأعلى في الدوري دائماً —
+  // وهو السبب نفسه الذي جعل لكل مركز بند سعر (راجع FANTASY.md).
+  // فترتيبٌ بالنقاط المطلقة يجعل الكابتن حارساً في كل اقتراح،
+  // ومضاعفةُ حارسٍ تضيّع ما جاءت من أجله: الانفجار الذي يقلب
+  // الجولة لا النقطتان المضمونتان.
+  const ranked = picked
+    .filter((p) => starters.has(p.player_id) && p.position !== 'Goalkeeper')
+    .sort(byPoints);
+
+  const rows = picked.map((p) => ({
+    player_id: p.player_id,
+    on_bench: !starters.has(p.player_id),
+    is_captain: p.player_id === ranked[0]?.player_id,
+    is_vice: p.player_id === ranked[1]?.player_id,
+  }));
+
+  // والتحقّق على ما بُني قبل أن يُسلَّم: خللٌ في الاختيار يجب أن
+  // يظهر هنا لا في شاشة اللاعب بعد ضغطة حفظ.
+  validateSquad(rows, new Map(picked.map((p) => [p.player_id, p])), {
+    formation,
+    clubTeamId,
+    leagueId: picked[0]?.league_id,
+    budget,
+    wallet: Number((budget - spend).toFixed(1)),
+  });
+
+  return { rows, spend: Number(spend.toFixed(1)) };
+}
+
 function arabicPosition(position) {
   return {
     Goalkeeper: 'حرّاس',
@@ -296,6 +424,7 @@ module.exports = {
   RULES,
   SquadError,
   validateSquad,
+  autoPick,
   settleRound,
   arabicPosition,
 };

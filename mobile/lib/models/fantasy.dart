@@ -303,6 +303,9 @@ class FantasyRoundRow {
 /// صفٌّ في عرش «فريقي».
 class FantasyRankRow {
   final int rank;
+
+  /// معرّف صاحبه — الصفّ بابٌ إلى تشكيلته لا سطرٌ يُقرأ.
+  final String? userId;
   final String name;
   final String? avatarUrl;
   final String? clubName;
@@ -315,6 +318,7 @@ class FantasyRankRow {
     required this.name,
     required this.totalPoints,
     required this.isMe,
+    this.userId,
     this.avatarUrl,
     this.clubName,
     this.clubLogo,
@@ -322,6 +326,7 @@ class FantasyRankRow {
 
   factory FantasyRankRow.fromJson(Map<String, dynamic> j) => FantasyRankRow(
         rank: (j['rank'] as int?) ?? 0,
+        userId: j['user_id']?.toString(),
         name: (j['name'] as String?) ?? 'مشجع',
         avatarUrl: j['avatar_url'] as String?,
         clubName: j['club_name'] as String?,
@@ -444,6 +449,10 @@ class FantasySetup {
   final List<FantasyClub> clubs;
   final FantasyRules rules;
   final int? leagueId;
+
+  /// النادي المثبَّت في هذا الدوري — لا يتغيّر بعد اختياره، فالشبكة
+  /// تعرضه مقفلاً بدل أن تدعو إلى اختيارٍ يرفضه الخادم.
+  final int? club;
   final bool followRequired;
 
   const FantasySetup({
@@ -451,6 +460,7 @@ class FantasySetup {
     required this.clubs,
     required this.rules,
     this.leagueId,
+    this.club,
     this.followRequired = false,
   });
 
@@ -464,6 +474,64 @@ class FantasySetup {
         rules: FantasyRules.fromJson(
             j['rules'] as Map<String, dynamic>?, null, null),
         leagueId: (j['league'] as Map<String, dynamic>?)?['id'] as int?,
+        club: j['club'] as int?,
         followRequired: j['follow_required'] == true,
       );
+}
+
+/// تشكيلة مدرّبٍ آخر كما تُعرض في ملفه.
+///
+/// **مجمَّدة لا حيّة** (راجع FANTASY.md): ما يُعرض هو تشكيلة آخر
+/// جولةٍ أُقفلت. ورؤية التشكيلة الحيّة قبل صافرة البداية تعني أن
+/// من يتصدّر يُنسَخ، فتموت المفاضلة التي هي اللعبة كلها.
+class FantasyManagerView {
+  final String? name;
+  final String? avatarUrl;
+  final String? clubName;
+  final String? clubLogo;
+  final String formation;
+  final int? rank;
+  final int totalPoints;
+  final double teamValue;
+
+  /// الجولة المعروضة — null لمن لم تُقفل له جولة بعد.
+  final String? round;
+  final int roundPoints;
+  final List<FantasyRoundRow> players;
+
+  const FantasyManagerView({
+    required this.formation,
+    required this.totalPoints,
+    required this.teamValue,
+    required this.players,
+    this.name,
+    this.avatarUrl,
+    this.clubName,
+    this.clubLogo,
+    this.rank,
+    this.round,
+    this.roundPoints = 0,
+  });
+
+  /// لا تشكيلة بعد — إمّا لم يبنِ، أو لم تُقفل له جولة.
+  bool get isEmpty => players.isEmpty;
+
+  factory FantasyManagerView.fromJson(Map<String, dynamic> j) {
+    final m = (j['manager'] as Map<String, dynamic>?) ?? const {};
+    return FantasyManagerView(
+      name: m['name'] as String?,
+      avatarUrl: m['avatar_url'] as String?,
+      clubName: m['club_name'] as String?,
+      clubLogo: m['club_logo'] as String?,
+      formation: (m['formation'] as String?) ?? '4-4-2',
+      rank: m['rank'] as int?,
+      totalPoints: (m['total_points'] as int?) ?? 0,
+      teamValue: double.tryParse('${m['squad_value']}') ?? 0,
+      round: j['round'] as String?,
+      roundPoints: (j['total'] as int?) ?? 0,
+      players: ((j['players'] as List?) ?? const [])
+          .map((p) => FantasyRoundRow.fromJson(p as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 }

@@ -372,6 +372,76 @@ async function unsettledEntries(round) {
   return rows;
 }
 
+/**
+ * الجولة المجمَّدة بأسماء لاعبيها وأنديتهم — لا بمعرّفاتهم وحدها.
+ *
+ * ولماذا لا نصل الأسماء من التشكيلة الحالية كما كان؟ لأن من باع
+ * لاعباً بعد الجولة يفقد اسمه منها: الصفّ المجمَّد يبقى ويظهر بلا
+ * اسم ولا صورة، وهي أول جولةٍ يفتحها بعد انتقالاته. والأسماء من
+ * جدول اللاعبين نفسه تبقى ما بقي الصفّ.
+ */
+async function roundLineupDetailed(squadId, round) {
+  const { rows } = await db.query(
+    `SELECT rp.player_id, rp.on_bench, rp.bench_order, rp.points,
+            rp.multiplier, rp.auto_subbed, rp.lines, ${MARKET_COLUMNS}
+       FROM fantasy_round_players rp
+       JOIN players p ON p.id = rp.player_id
+       LEFT JOIN teams t ON t.id = p.team_id
+      WHERE rp.squad_id = $1 AND rp.round = $2
+      ORDER BY rp.on_bench, rp.bench_order,
+               CASE p.position WHEN 'Goalkeeper' THEN 0 WHEN 'Defender' THEN 1
+                               WHEN 'Midfielder' THEN 2 ELSE 3 END,
+               p.id`,
+    [squadId, round]
+  );
+  return rows;
+}
+
+/**
+ * آخر جولةٍ أُقفلت لتشكيلةٍ بعينها — نافذةُ من يشاهد غيرَه.
+ *
+ * تشكيلة غيرك لا تُرى حيّةً بل مجمَّدةً (راجع FANTASY.md): من رأى
+ * تشكيلة المتصدّر قبل صافرة البداية نسخها، فتموت المفاضلة التي
+ * هي اللعبة كلها.
+ */
+async function lastLockedRound(squadId) {
+  const { rows } = await db.query(
+    `SELECT round FROM fantasy_round_entries
+      WHERE squad_id = $1 ORDER BY locked_at DESC LIMIT 1`,
+    [squadId]
+  );
+  return rows[0]?.round ?? null;
+}
+
+/** ترتيب تشكيلةٍ في عرش دوريها — رقمٌ واحد بلا جلب العرش كله. */
+async function rankOf(squadId, leagueId, season) {
+  const { rows } = await db.query(
+    `SELECT rank FROM (
+       SELECT s.id, RANK() OVER (ORDER BY s.total_points DESC) AS rank
+         FROM fantasy_squads s
+        WHERE s.league_id = $1 AND s.season = $2
+          AND EXISTS (SELECT 1 FROM fantasy_squad_players sp WHERE sp.squad_id = s.id)
+     ) r WHERE r.id = $3`,
+    [leagueId, season, squadId]
+  );
+  return rows[0] ? Number(rows[0].rank) : null;
+}
+
+/** تشكيلة مستخدمٍ آخر في دوري — للاطّلاع لا للتعديل. */
+async function squadOfUser(userId, leagueId, season) {
+  const { rows } = await db.query(
+    `SELECT s.*, u.display_name, u.avatar_url,
+            COALESCE(t.name_ar, t.name_en) AS club_name, t.logo_url AS club_logo
+       FROM fantasy_squads s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN teams t ON t.id = s.club_team_id
+      WHERE s.user_id = $1 AND s.league_id = $2 AND s.season = $3
+        AND EXISTS (SELECT 1 FROM fantasy_squad_players sp WHERE sp.squad_id = s.id)`,
+    [userId, leagueId, season]
+  );
+  return rows[0] ?? null;
+}
+
 async function roundLineup(squadId, round) {
   const { rows } = await db.query(
     `SELECT player_id, on_bench, bench_order, points, multiplier, auto_subbed, lines
@@ -456,6 +526,10 @@ module.exports = {
   lockRound,
   unsettledEntries,
   roundLineup,
+  roundLineupDetailed,
+  lastLockedRound,
+  rankOf,
+  squadOfUser,
   writeSettlement,
   leaderboard,
 };

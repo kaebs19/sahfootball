@@ -100,7 +100,10 @@ class _ProfileTabIcon extends StatelessWidget {
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key});
 
-  static const _titles = ['المباريات', 'فريقي', 'العرش', 'ملفي'];
+  // و«فريقي» بلا اسم في الشريط: الشاشة تحته تحمل شعار ناديك،
+  // وهو يقول «فريقي» أصدق من كلمة — بل يقول أيَّ فريق. والفراغ
+  // الناتج ليس ضياعاً: أدوات التشكيلة تجلس فيه.
+  static const _titles = ['المباريات', '', 'العرش', 'ملفي'];
   static const _profileTab = 3;
 
   @override

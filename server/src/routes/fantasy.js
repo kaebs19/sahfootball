@@ -104,6 +104,11 @@ router.get('/setup', async (req, res) => {
     [league.id, league.season]
   );
 
+  // النادي المثبَّت في هذا الدوري إن وُجد: لا يتغيّر بعد اختياره،
+  // فالشاشة يجب أن تعرضه مقفلاً بدل أن تعرض شبكةً تدعو إلى اختيارٍ
+  // يرفضه الخادم.
+  const mine = await fantasyRepo.findSquad(req.userId, league.id, league.season);
+
   res.json({
     leagues: leagues.map((l) => ({
       id: l.id,
@@ -112,6 +117,7 @@ router.get('/setup', async (req, res) => {
       has_squad: started.has(l.id),
     })),
     league: { id: league.id, name: league.name_ar || league.name_en },
+    club: mine?.club_team_id || null,
     clubs,
     rules: squadService.RULES,
   });
@@ -222,22 +228,25 @@ router.put('/club', async (req, res) => {
     return res.status(400).json({ error: 'هذا النادي ليس من هذا الدوري.' });
   }
 
-  // تبديل النادي بعد البناء: التشكيلة القائمة يجب أن تحتمله.
+  // **والنادي لا يتغيّر بعد اختياره.** هذه قاعدة لعبة لا قيد
+  // تقني: «فريقي» هوية لا إعداد، ومن يبدّل ناديه كل أسبوع يتبع
+  // النجوم لا ناديه — فتذوب القاعدة التي تميّز اللعبة كلها
+  // (ثلاثة من ناديك) وتصير قيداً شكلياً يُلتفّ عليه بضغطتين.
   //
-  // القاعدة نفسها التي يفحصها الحفظ (ثلاثة من ناديك)، لكنها
-  // تُفحص هنا لا هناك: من بدّل ناديه ثم فتح الملعب سيجد تشكيلةً
-  // ترفض الحفظ بلا أن يكون غيّر فيها شيئاً، ورسالةُ خطأ على فعلٍ
-  // لم يفعله تُقرأ عطلاً لا قاعدة.
+  // والقيد في الخادم لا في الشاشة وحدها: زرٌّ مخفيٌّ ليس قاعدة.
   const current = await fantasyRepo.findSquad(req.userId, league.id, league.season);
-  if (current && current.player_count > 0 && current.club_team_id !== clubTeamId) {
-    const owned = await fantasyRepo.squadPlayers(current.id);
-    const have = owned.filter((p) => p.team_id === clubTeamId).length;
-    if (have < squadService.RULES.min_from_club) {
-      return res.status(400).json({
-        error: `في تشكيلتك ${have} من هذا النادي، والمطلوب `
-          + `${squadService.RULES.min_from_club} — بدّل لاعبيك أولاً ثم بدّل ناديك.`,
-      });
-    }
+  if (current?.club_team_id && current.club_team_id !== clubTeamId) {
+    return res.status(400).json({
+      error: `ناديك في هذا الدوري ${current.club_name || 'مختار'} — `
+        + 'ولا يتغيّر هذا الموسم.',
+    });
+  }
+  // نفس النادي مرة أخرى: ليس خطأً، ولا حاجة لكتابةٍ ثانية.
+  if (current?.club_team_id === clubTeamId) {
+    return res.json({
+      league: { id: league.id, name: league.name_ar || league.name_en || league.name },
+      club: { id: clubTeamId, name: current.club_name, logo_url: current.club_logo },
+    });
   }
 
   await fantasyRepo.setClub({
@@ -356,6 +365,88 @@ router.put('/squad', async (req, res) => {
   }
 });
 
+// POST /api/fantasy/autopick — تشكيلةٌ مقترحة تُملأ بها الخانات
+//
+// **تقترح ولا تحفظ.** الردّ خمسة عشر لاعباً يراهم صاحبها على
+// الملعب فيبدّل ما شاء ثم يحفظ بنفسه. وبناءٌ يحفظ نفسه يسرق من
+// اللاعب القرار الذي فتح اللعبة من أجله — ويجعل التراجع انتقالات
+// لها ثمن.
+router.post('/autopick', async (req, res) => {
+  const league = await resolveLeague(req);
+  if (!league) return res.status(400).json({ error: 'تابِع دورياً أولاً كي تبني تشكيلتك.' });
+
+  const squad = await fantasyRepo.findSquad(req.userId, league.id, league.season);
+  const clubTeamId = squad?.club_team_id || null;
+  if (!clubTeamId) return res.status(400).json({ error: 'اختر ناديك أولاً.' });
+
+  // من بنى تشكيلةً لا يُقترح عليه غيرها: الاستبدال الكامل بعد
+  // الإقفال الأول انتقالاتٌ ثمنها ـ٤ لكل لاعب، وزرٌّ يفعلها بضغطة
+  // بلا أن يقول ثمنها فخّ لا أداة.
+  if (squad && squad.player_count > 0) {
+    return res.status(400).json({
+      error: 'تشكيلتك مبنيّة — بدّل لاعبيك من السوق.',
+    });
+  }
+
+  const pool = await fantasyRepo.market(league.id, league.season, {});
+  try {
+    const { rows } = squadService.autoPick(pool, {
+      clubTeamId,
+      formation: String(req.body?.formation || '4-4-2'),
+    });
+    const byId = new Map(pool.map((p) => [p.player_id, p]));
+    res.json({
+      players: rows.map((r) => ({ ...byId.get(r.player_id), ...r })),
+    });
+  } catch (err) {
+    if (err.code === 'FANTASY_RULE') return res.status(400).json({ error: err.message });
+    throw err;
+  }
+});
+
+// GET /api/fantasy/manager/:userId — تشكيلة مدرّبٍ آخر وترتيبه
+//
+// **المجمَّدة لا الحيّة** (راجع FANTASY.md): من رأى تشكيلة
+// المتصدّر قبل صافرة البداية نسخها، فتموت المفاضلة التي هي اللعبة
+// كلها. وقبل أول إقفال لا تُعرض تشكيلة أصلاً — ويُقال ذلك بدل
+// ملعبٍ فارغ لا يشرح صمته.
+router.get('/manager/:userId', async (req, res) => {
+  const league = await resolveLeague(req);
+  if (!league) return res.json({ ...FOLLOW_REQUIRED, manager: null, players: [] });
+
+  const squad = await fantasyRepo.squadOfUser(req.params.userId, league.id, league.season);
+  if (!squad) {
+    return res.json({
+      league: { id: league.id, name: league.name },
+      manager: null,
+      round: null,
+      players: [],
+    });
+  }
+
+  const round = await fantasyRepo.lastLockedRound(squad.id);
+  const players = round ? await fantasyRepo.roundLineupDetailed(squad.id, round) : [];
+  const rank = await fantasyRepo.rankOf(squad.id, league.id, league.season);
+
+  res.json({
+    league: { id: league.id, name: league.name },
+    manager: {
+      user_id: squad.user_id,
+      name: squad.display_name,
+      avatar_url: squad.avatar_url,
+      club_name: squad.club_name,
+      club_logo: squad.club_logo,
+      formation: squad.formation,
+      rank,
+      total_points: squad.total_points,
+      squad_value: Number(squad.squad_value) + Number(squad.budget_left),
+    },
+    round,
+    total: players.reduce((sum, p) => sum + (p.on_bench ? 0 : p.points), 0),
+    players,
+  });
+});
+
 // POST /api/fantasy/wildcard — تفعيل الوايلد كارد للجولة الجارية
 //
 // تُفعَّل قبل الإقفال وتسري على انتقالات هذا الأسبوع كلها: من
@@ -400,9 +491,9 @@ router.get('/round', async (req, res) => {
     ? asked
     : (rounds.find((r) => r.open > 0) || rounds[rounds.length - 1])?.round || null;
 
-  const lineup = round ? await fantasyRepo.roundLineup(squad.id, round) : [];
-  const names = await fantasyRepo.squadPlayers(squad.id);
-  const byId = new Map(names.map((n) => [n.player_id, n]));
+  // بأسمائها من جدول اللاعبين لا من التشكيلة الحالية: من باع
+  // لاعباً بعد الجولة كان يراه في جولته بلا اسمٍ ولا صورة.
+  const lineup = round ? await fantasyRepo.roundLineupDetailed(squad.id, round) : [];
 
   const { rows: entries } = await require('../config/db').query(
     'SELECT transfers_cost, transfers_used, wildcard FROM fantasy_round_entries WHERE squad_id = $1 AND round = $2',
@@ -420,7 +511,7 @@ router.get('/round', async (req, res) => {
     transfers_used: entry?.transfers_used ?? 0,
     wildcard: entry?.wildcard ?? false,
     total: lineup.reduce((sum, l) => sum + l.points, 0),
-    players: lineup.map((l) => ({ ...l, ...(byId.get(l.player_id) || {}) })),
+    players: lineup,
   });
 });
 
@@ -435,6 +526,9 @@ router.get('/leaderboard', async (req, res) => {
     me: entries.find((e) => e.user_id === req.userId) || null,
     entries: entries.map((e) => ({
       rank: Number(e.rank),
+      // معرّفه معه: الصفّ بابٌ إلى تشكيلته وترتيبه، و«من هذا الذي
+      // يتصدّرني؟» سؤالٌ يُسأل من داخل العرش لا من مكان آخر.
+      user_id: e.user_id,
       name: e.name || e.display_name || 'مشجع',
       avatar_url: e.avatar_url,
       club_name: e.club_name,

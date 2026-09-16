@@ -336,11 +336,17 @@ class _Chip extends StatelessWidget {
 /// كانتا ستكتبانه مرتين فتفترقان عند أول تعديل.
 List<List<PitchSlot>> pitchLines(String formation, List<FantasyPlayer> starters) {
   final shape = FantasyRules.shapeOf(formation);
+  // من الهجوم إلى المرمى: الحارس **أسفل** الشاشة والمهاجمون
+  // أعلاها، كما يقف فريقك حين تكون الكاميرا خلفه لا أمامه — وهي
+  // الزاوية التي يرى بها المشجّع مرماه في المدرّج.
+  //
+  // والملعب في الصورة كاملٌ بمرميين، فالحارس يقف في منطقة جزاء
+  // حقيقية بلا أن تُقلب الصورة.
   final order = [
-    FantasyPosition.goalkeeper,
-    FantasyPosition.defender,
-    FantasyPosition.midfielder,
     FantasyPosition.attacker,
+    FantasyPosition.midfielder,
+    FantasyPosition.defender,
+    FantasyPosition.goalkeeper,
   ];
 
   final pool = {

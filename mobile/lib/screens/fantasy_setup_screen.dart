@@ -33,6 +33,9 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
   FantasySetup? _setup;
   int? _league;
   int? _club;
+
+  /// نادٍ مثبَّت سلفاً في هذا الدوري — يُعرض ولا يُبدَّل.
+  int? _locked;
   String? _error;
   bool _loading = true;
   bool _saving = false;
@@ -90,6 +93,10 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
         // تبديل الدوري يمسح النادي: نادي الدوري السابق لا وجود له
         // في القائمة الجديدة، وتركُه يعني تشكيلةً ترفضها القاعدة.
         if (league != null) _club = null;
+        // وكل دوري وناديه: من ثبّت ناديه في السعودي يجد الإسباني
+        // مفتوحاً له.
+        _locked = setup.club;
+        if (_locked != null) _club = _locked;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -109,6 +116,42 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
     final league = _league;
     final club = _club;
     if (league == null || club == null) return;
+
+    // النادي لا يتغيّر بعد تثبيته (قاعدة لعبة يفرضها الخادم)،
+    // فيُقال ذلك **قبل** لا بعد: من يكتشف أن اختياره نهائي بعد
+    // وقوعه يقرأ القاعدة عقوبةً، ومن يقرأها قبله يقرأها قراراً.
+    if (_locked == null) {
+      final name = _setup?.clubs
+          .where((c) => c.id == club)
+          .map((c) => c.name)
+          .firstOrNull;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: Brand.surface,
+          title: Text('${name ?? 'هذا النادي'} فريقك؟',
+              style: const TextStyle(color: Brand.text, fontSize: 16)),
+          content: const Text(
+            'شعاره يصير شعار فريقك، وثلاثة من لاعبيه في تشكيلتك '
+            'دائماً — ولا يتغيّر هذا الموسم.',
+            style: TextStyle(color: Brand.textMuted, fontSize: 13, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('أعيد النظر',
+                  style: TextStyle(color: Brand.textMuted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('هو فريقي',
+                  style: TextStyle(color: Brand.crown)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -209,14 +252,17 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
         const _Step(number: 2, title: 'اختر ناديك'),
         const SizedBox(height: 4),
         Text(
-          'شعاره يصير شعار فريقك، و${Fmt.number(setup.rules.minFromClub)} '
-          'من لاعبيه في تشكيلتك دائماً.',
+          _locked != null
+              ? 'ناديك في هذا الدوري مثبَّت — ولا يتغيّر هذا الموسم.'
+              : 'شعاره يصير شعار فريقك، و${Fmt.number(setup.rules.minFromClub)} '
+                  'من لاعبيه في تشكيلتك دائماً. واختياره نهائي.',
           style: const TextStyle(color: Brand.textMuted, fontSize: 12.5, height: 1.5),
         ),
         const SizedBox(height: 10),
         _ClubGrid(
           clubs: setup.clubs,
           selected: _club,
+          locked: _locked != null,
           onPick: (id) {
             FantasySounds.play(Sfx.pop);
             setState(() => _club = id);
@@ -342,12 +388,16 @@ class _LeagueTile extends StatelessWidget {
 class _ClubGrid extends StatelessWidget {
   final List<FantasyClub> clubs;
   final int? selected;
+
+  /// نادٍ مثبَّت: الشبكة تُعرض للقراءة، وغيرُ المختار يخفت.
+  final bool locked;
   final ValueChanged<int> onPick;
 
   const _ClubGrid({
     required this.clubs,
     required this.selected,
     required this.onPick,
+    this.locked = false,
   });
 
   @override
@@ -368,54 +418,70 @@ class _ClubGrid extends StatelessWidget {
       itemBuilder: (_, i) {
         final club = clubs[i];
         final isOn = club.id == selected;
+        // المقفل يبقى ظاهراً لا يختفي: من ثبّت ناديه يريد أن يراه،
+        // وشبكةٌ فيها ناديه وحده تبدو عطلاً.
+        if (locked && !isOn) {
+          return Opacity(opacity: 0.32, child: _ClubTile(club: club, isOn: false));
+        }
         return GestureDetector(
-          onTap: () => onPick(club.id),
+          onTap: locked ? null : () => onPick(club.id),
           behavior: HitTestBehavior.opaque,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            decoration: BoxDecoration(
-              color: isOn ? Brand.fillStrong : Brand.fill,
-              borderRadius: BorderRadius.circular(Brand.radiusSmall),
-              border: Border.all(
-                color: isOn ? Brand.crown : Brand.borderSoft,
-                width: isOn ? 1.5 : 1,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 34,
-                  height: 34,
-                  child: club.logoUrl == null
-                      ? const Icon(Icons.shield_outlined,
-                          color: Brand.textFaint, size: 26)
-                      : CachedNetworkImage(
-                          imageUrl: AppConfig.absoluteUrl(club.logoUrl!),
-                          errorWidget: (_, _, _) => const Icon(
-                              Icons.shield_outlined,
-                              color: Brand.textFaint,
-                              size: 26),
-                        ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  club.name,
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isOn ? Brand.text : Brand.textMuted,
-                    fontSize: 10,
-                    height: 1.25,
-                    fontWeight: isOn ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          child: _ClubTile(club: club, isOn: isOn),
         );
       },
+    );
+  }
+}
+
+/// مربّع نادٍ في الشبكة — شعارٌ واسم، والاختيار إطارٌ ذهبي.
+class _ClubTile extends StatelessWidget {
+  final FantasyClub club;
+  final bool isOn;
+
+  const _ClubTile({required this.club, required this.isOn});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: isOn ? Brand.fillStrong : Brand.fill,
+        borderRadius: BorderRadius.circular(Brand.radiusSmall),
+        border: Border.all(
+          color: isOn ? Brand.crown : Brand.borderSoft,
+          width: isOn ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: club.logoUrl == null
+                ? const Icon(Icons.shield_outlined,
+                    color: Brand.textFaint, size: 26)
+                : CachedNetworkImage(
+                    imageUrl: AppConfig.absoluteUrl(club.logoUrl!),
+                    errorWidget: (_, _, _) => const Icon(Icons.shield_outlined,
+                        color: Brand.textFaint, size: 26),
+                  ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            club.name,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isOn ? Brand.text : Brand.textMuted,
+              fontSize: 10,
+              height: 1.25,
+              fontWeight: isOn ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

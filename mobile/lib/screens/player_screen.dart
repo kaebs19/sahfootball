@@ -22,6 +22,7 @@ import '../widgets/badge_grid.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/league_stats_card.dart';
 import '../widgets/profile_hero.dart';
+import 'fantasy_manager_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
   final String userId;
@@ -93,6 +94,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         predictionsCount: p.predictionsCount,
                         settledPredictions: p.settledPredictions,
                       ),
+                      // «فريقه» قبل «حسب الدوري»: اللعبتان منفصلتان
+                      // (راجع FANTASY.md)، ومن يفتح ملف غيره يسأل
+                      // أولاً «بمن يلعب؟» لا «كم جمع في الإسباني؟».
+                      // وبطاقةٌ تفتح تشكيلته لا تشكيلةٌ كاملة هنا:
+                      // الملف ملفّ توقّعات، والفانتازي ضيفٌ فيه.
+                      const SizedBox(height: 14),
+                      _FantasyCard(
+                        userId: widget.userId,
+                        displayName: p.displayName,
+                      ),
                       const SizedBox(height: 22),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 2),
@@ -129,6 +140,48 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+/// بابٌ إلى «فريقي» الخاص به — بطاقةٌ لا شاشة داخل شاشة.
+class _FantasyCard extends StatelessWidget {
+  final String userId;
+  final String? displayName;
+
+  const _FantasyCard({required this.userId, this.displayName});
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandCard(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => FantasyManagerScreen(
+          userId: userId,
+          displayName: displayName,
+        ),
+      )),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          const Icon(Icons.shield_outlined, color: Brand.crown, size: 20),
+          const SizedBox(width: 11),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('فريقه في «فريقي»',
+                    style: TextStyle(
+                        color: Brand.text,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600)),
+                Text('تشكيلته المجمّدة وترتيبه',
+                    style: TextStyle(color: Brand.textFaint, fontSize: 11)),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_left, color: Brand.textFaint, size: 18),
+        ],
+      ),
     );
   }
 }

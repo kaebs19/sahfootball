@@ -23,7 +23,9 @@ import '../state/league_filter.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/fantasy_pitch.dart';
 import '../widgets/fantasy_market.dart';
+import '../widgets/fantasy_share_card.dart';
 import '../widgets/fantasy_sounds.dart';
+import 'fantasy_manager_screen.dart';
 import 'fantasy_setup_screen.dart';
 import 'leagues_screen.dart';
 
@@ -65,6 +67,12 @@ class _FantasyScreenState extends State<FantasyScreen> {
 
   bool _loading = true;
   bool _saving = false;
+
+  /// هل في الخادم تشكيلةٌ مبنيّة؟ أدواتٌ كاملة تتوقّف عليه: المسح
+  /// والبناء التلقائي يجوزان قبل أول حفظ وحده — وبعده يصير كلاهما
+  /// انتقالاتٍ لها ثمن (ـ٤ لكل لاعب فوق المجاني)، وزرٌّ يفعلها
+  /// بضغطة بلا أن يقول ثمنها فخٌّ لا أداة.
+  bool _built = false;
   bool _dirty = false;
   bool _followRequired = false;
   String? _error;
@@ -113,6 +121,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
         _market = market.players;
         _followRequired = squad.followRequired || market.followRequired;
         _squad = squad.squad?.players ?? [];
+        _built = (squad.squad?.players ?? const []).isNotEmpty;
         _formation = squad.squad?.formation ?? '4-4-2';
         _clubTeamId = squad.squad?.clubTeamId;
         _totalPoints = squad.squad?.totalPoints ?? 0;
@@ -397,15 +406,20 @@ class _FantasyScreenState extends State<FantasyScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
       children: [
-        if (_clubName != null || _clubTeamId != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _ClubBar(
-              logoUrl: _clubLogo,
-              name: _clubName,
-              onChange: _openSetup,
-            ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _Toolbar(
+            logoUrl: _clubLogo,
+            canShare: _squad.isNotEmpty,
+            canAutoPick: !_built && _clubTeamId != null,
+            canClear: !_built && _squad.isNotEmpty,
+            canSwitchLeague: _filter.followed.length > 1,
+            onShare: _shareCard,
+            onAutoPick: _autoPick,
+            onClear: _clearSquad,
+            onSwitchLeague: _openSetup,
           ),
+        ),
         _HeaderStats(
           wallet: _dirty ? _rules.budget - _spent : _wallet,
           value: _dirty ? _spent : _savedValue,
@@ -456,6 +470,87 @@ class _FantasyScreenState extends State<FantasyScreen> {
         ),
       ],
     );
+  }
+
+  /// بطاقة التشكيلة صورةً — تُعاين ثم تُشارَك.
+  void _shareCard() {
+    FantasySounds.play(Sfx.pop);
+    showFantasyShareCard(
+      context,
+      formation: _formation,
+      squad: _squad,
+      clubName: _clubName,
+      clubLogo: _clubLogo,
+      totalPoints: _totalPoints,
+      teamValue: _dirty ? _rules.budget : _wallet + _savedValue,
+    );
+  }
+
+  /// تشكيلةٌ يبنيها الخادم — تُعرض ولا تُحفظ.
+  ///
+  /// ولماذا لا تُحفظ؟ لأنها اقتراحٌ لا قرار: صاحبها يراها على
+  /// الملعب فيبدّل ما شاء ثم يحفظ بنفسه. وبناءٌ يحفظ نفسه يسرق
+  /// منه القرار الذي فتح اللعبة من أجله.
+  Future<void> _autoPick() async {
+    final league = _leagueId;
+    if (league == null) return;
+    setState(() => _saving = true);
+    try {
+      final picks = await context.read<ApiClient>().fantasyAutoPick(
+            leagueId: league,
+            formation: _formation,
+          );
+      if (!mounted) return;
+      setState(() {
+        _squad = picks;
+        _saving = false;
+        _dirty = true;
+      });
+      FantasySounds.play(Sfx.pop);
+      _say('اقتراحٌ جاهز — بدّل ما شئت ثم احفظ.');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      FantasySounds.play(Sfx.error);
+      _say(e.message, error: true);
+    }
+  }
+
+  /// تفريغ الخانات قبل أول حفظ — بلا أثرٍ في الخادم.
+  ///
+  /// ويُؤكَّد: خمس عشرة مفاضلةً تضيع بضغطةٍ عابرة، ولا زرّ تراجع
+  /// بعدها.
+  Future<void> _clearSquad() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Brand.surface,
+        title: const Text('تفريغ الخانات؟',
+            style: TextStyle(color: Brand.text, fontSize: 16)),
+        content: const Text(
+          'يعود الملعب فارغاً وتعود الميزانية كاملة. ولم تُحفظ '
+          'تشكيلتك بعد، فلا شيء يُفقد في الخادم.',
+          style: TextStyle(color: Brand.textMuted, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('تراجع',
+                style: TextStyle(color: Brand.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('فرّغ', style: TextStyle(color: Brand.wrong)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() {
+      _squad = [];
+      _dirty = true;
+    });
+    FantasySounds.play(Sfx.pop);
   }
 
   /// الوايلد كارد لا رجعة فيها — فتُؤكَّد قبل التفعيل.
@@ -767,7 +862,7 @@ class _FantasyScreenState extends State<FantasyScreen> {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
       itemCount: ranks.length,
-      itemBuilder: (_, i) => _RankRow(row: ranks[i]),
+      itemBuilder: (_, i) => _RankRow(row: ranks[i], leagueId: _leagueId),
     );
   }
 }
@@ -1162,13 +1257,25 @@ class _Badge extends StatelessWidget {
 
 class _RankRow extends StatelessWidget {
   final FantasyRankRow row;
-  const _RankRow({required this.row});
+  final int? leagueId;
+  const _RankRow({required this.row, this.leagueId});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: BrandCard(
+        // الصفّ بابٌ إلى تشكيلته: النقاط تقول من فاز، والتشكيلة
+        // تقول لماذا — وهي ما يتعلّم منه من خسر.
+        onTap: row.userId == null || row.isMe
+            ? null
+            : () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => FantasyManagerScreen(
+                    userId: row.userId!,
+                    displayName: row.name,
+                    leagueId: leagueId,
+                  ),
+                )),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
@@ -1355,47 +1462,140 @@ class _SetupInvite extends StatelessWidget {
 ///
 /// الشعار في الأعلى لا في صفحة إعدادات: هو ما يجعل التشكيلة
 /// «فريقي» لا «تشكيلة رقم ٣»، ورؤيته في كل زيارة هي نصف الارتباط.
-class _ClubBar extends StatelessWidget {
+/// شريط الأدوات فوق الملعب: هويةُ فريقك يميناً وأدواتُه يساراً.
+///
+/// **الشعار وحده بلا اسم ولا «تبديل».** النادي لا يتغيّر بعد
+/// اختياره (قاعدةُ لعبة يفرضها الخادم، راجع FANTASY.md): «فريقي»
+/// هوية لا إعداد، ومن يبدّل ناديه كل أسبوع يتبع النجوم لا ناديه
+/// فتذوب القاعدة التي تميّز اللعبة. وزرُّ تبديلٍ يَعِد بما يرفضه
+/// الخادم أسوأ من غيابه.
+///
+/// والاسم محذوف لأن الشعار يقوله: من يرى شعار ناديه يعرفه في
+/// جزء من ثانية، والسطر تحته مساحةٌ تأخذها الأدوات.
+class _Toolbar extends StatelessWidget {
   final String? logoUrl;
-  final String? name;
-  final VoidCallback onChange;
+  final bool canShare;
+  final bool canAutoPick;
+  final bool canClear;
+  final bool canSwitchLeague;
+  final VoidCallback onShare;
+  final VoidCallback onAutoPick;
+  final VoidCallback onClear;
+  final VoidCallback onSwitchLeague;
 
-  const _ClubBar({required this.logoUrl, required this.name, required this.onChange});
+  const _Toolbar({
+    required this.logoUrl,
+    required this.canShare,
+    required this.canAutoPick,
+    required this.canClear,
+    required this.canSwitchLeague,
+    required this.onShare,
+    required this.onAutoPick,
+    required this.onClear,
+    required this.onSwitchLeague,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // المشاركة أيقونةٌ ظاهرة لا بنداً في قائمة: هي الأداة الوحيدة
+    // التي تجلب لاعبين جدداً، وما يُخبّأ في قائمة لا يُضغط.
+    final menu = <PopupMenuEntry<VoidCallback>>[
+      if (canAutoPick)
+        PopupMenuItem(
+          value: onAutoPick,
+          child: const _MenuLine(
+            icon: Icons.auto_awesome_outlined,
+            title: 'تشكيلة تلقائية',
+            note: 'اقتراحٌ تبدّل فيه ثم تحفظه',
+          ),
+        ),
+      if (canClear)
+        PopupMenuItem(
+          value: onClear,
+          child: const _MenuLine(
+            icon: Icons.layers_clear_outlined,
+            title: 'تفريغ الخانات',
+            note: 'قبل أول حفظ — بلا ثمن',
+          ),
+        ),
+      if (canSwitchLeague)
+        PopupMenuItem(
+          value: onSwitchLeague,
+          child: const _MenuLine(
+            icon: Icons.emoji_events_outlined,
+            title: 'فريقٌ في دوري آخر',
+            note: 'لكل دوري تشكيلةٌ مستقلة',
+          ),
+        ),
+    ];
+
     return BrandCard(
-      onTap: onChange,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
           SizedBox(
-            width: 28,
-            height: 28,
+            width: 30,
+            height: 30,
             child: logoUrl == null
-                ? const Icon(Icons.shield_outlined, color: Brand.crown, size: 22)
+                ? const Icon(Icons.shield_outlined, color: Brand.crown, size: 24)
                 : CachedNetworkImage(
                     imageUrl: AppConfig.absoluteUrl(logoUrl!),
                     errorWidget: (_, _, _) => const Icon(Icons.shield_outlined,
-                        color: Brand.crown, size: 22),
+                        color: Brand.crown, size: 24),
                   ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              name ?? 'فريقي',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: Brand.text, fontSize: 14, fontWeight: FontWeight.w700),
-            ),
+          const Spacer(),
+          IconButton(
+            onPressed: canShare ? onShare : null,
+            icon: const Icon(Icons.ios_share, size: 20),
+            color: Brand.textMuted,
+            disabledColor: Brand.borderSoft,
+            tooltip: 'مشاركة صورة التشكيلة',
+            visualDensity: VisualDensity.compact,
           ),
-          const Text('تبديل',
-              style: TextStyle(color: Brand.textFaint, fontSize: 11.5)),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_left, color: Brand.textFaint, size: 18),
+          if (menu.isNotEmpty)
+            PopupMenuButton<VoidCallback>(
+              icon: const Icon(Icons.more_horiz, size: 20),
+              color: Brand.surface,
+              tooltip: 'أدوات',
+              onSelected: (action) => action(),
+              itemBuilder: (_) => menu,
+            ),
         ],
       ),
     );
   }
+}
+
+class _MenuLine extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String note;
+
+  const _MenuLine({
+    required this.icon,
+    required this.title,
+    required this.note,
+  });
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Icon(icon, color: Brand.crown, size: 18),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      color: Brand.text,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+              Text(note,
+                  style: const TextStyle(color: Brand.textFaint, fontSize: 10.5)),
+            ],
+          ),
+        ],
+      );
 }

@@ -557,6 +557,42 @@ class ApiClient {
     }
   }
 
+  /// تشكيلةٌ مقترحة من الخادم — تُعرض ولا تُحفظ.
+  ///
+  /// القواعد كلها هناك (الحصص، الخطة، حدّ النادي، الميزانية)،
+  /// وبناؤها هنا يعني نسخةً ثانية منها تفترق عند أول تعديل فتقترح
+  /// تشكيلةً يرفضها الحفظ.
+  Future<List<FantasyPlayer>> fantasyAutoPick({
+    required int leagueId,
+    required String formation,
+  }) async {
+    try {
+      final res = await _dio.post('/api/fantasy/autopick', data: {
+        'league': leagueId,
+        'formation': formation,
+      });
+      return (((res.data as Map<String, dynamic>)['players'] as List?) ?? const [])
+          .map((p) => FantasyPlayer.fromJson(p as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تشكيلة مدرّبٍ آخر وترتيبه — المجمَّدة لا الحيّة.
+  Future<FantasyManagerView> fantasyManager({
+    required String userId,
+    int? leagueId,
+  }) async {
+    try {
+      final res = await _dio.get('/api/fantasy/manager/$userId',
+          queryParameters: {'league': ?leagueId});
+      return FantasyManagerView.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
   /// تفعيل الوايلد كارد للجولة الجارية — لا تُلغى بعدها.
   Future<void> useWildcard({int? leagueId}) async {
     try {
