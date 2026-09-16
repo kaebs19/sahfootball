@@ -311,7 +311,9 @@ class _FantasyScreenState extends State<FantasyScreen> {
     if (_followRequired) {
       return BrandEmpty(
         icon: Icons.emoji_events_outlined,
-        message: 'تابِع دورياً أولاً — تشكيلتك تُبنى من لاعبيه.',
+        message: '«فريقي» يُلعب في الدوريات المحلية — تابِع أحدها لتبدأ،\n'
+            'فتشكيلتك تُبنى من لاعبيه.',
+        retryLabel: 'تابِع دورياً',
         onRetry: () async {
           await Navigator.of(context)
               .push(MaterialPageRoute(builder: (_) => const LeaguesScreen()));

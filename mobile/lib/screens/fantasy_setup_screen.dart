@@ -227,7 +227,8 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
     if (setup.followRequired) {
       return const BrandEmpty(
         icon: Icons.emoji_events_outlined,
-        message: 'تابِع دورياً أولاً — تشكيلتك تُبنى من لاعبيه.',
+        message: '«فريقي» يُلعب في الدوريات المحلية — تابِع أحدها لتبدأ،\n'
+            'فتشكيلتك تُبنى من لاعبيه.',
       );
     }
 

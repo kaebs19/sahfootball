@@ -143,12 +143,18 @@ class BrandEmpty extends StatelessWidget {
   final Future<void> Function()? onRefresh;
   final VoidCallback? onRetry;
 
+  /// نصّ الزرّ حين لا يكون «إعادة المحاولة» هو ما يفعله فعلاً:
+  /// زرٌّ يقول «أعد المحاولة» ثم يفتح شاشة الدوريات يكذب على من
+  /// ضغطه — والمراجِع في آبل أول من يقرأ الكذبة.
+  final String? retryLabel;
+
   const BrandEmpty({
     super.key,
     required this.icon,
     required this.message,
     this.onRefresh,
     this.onRetry,
+    this.retryLabel,
   });
 
   @override
@@ -177,7 +183,7 @@ class BrandEmpty extends StatelessWidget {
                   borderRadius: BorderRadius.circular(Brand.radiusChip),
                 ),
               ),
-              child: const Text('إعادة المحاولة'),
+              child: Text(retryLabel ?? 'إعادة المحاولة'),
             ),
           ),
         ],

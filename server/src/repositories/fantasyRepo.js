@@ -36,6 +36,24 @@ async function market(leagueId, season, { position, teamId, search, limit = 500 
   return rows;
 }
 
+/**
+ * الدوريات التي لها لاعبون فعلاً — «فريقي» لا تُلعب في غيرها.
+ *
+ * ليس كل دوري في التطبيق دوريَ فانتازي: دوري الأبطال والآسيوية
+ * ندخل فيهما التوقّعات بلا قوائم لاعبين (القوائم تُشترى للدوريات
+ * المحلية وحدها). ومن يتابع دوري الأبطال وحده كان يُعرض عليه أن
+ * يبني فريقاً من سوقٍ فارغ — شاشةٌ تُقرأ عطلاً لا قاعدة.
+ */
+async function leaguesWithPlayers(leagueIds, season) {
+  if (!leagueIds.length) return new Set();
+  const { rows } = await db.query(
+    `SELECT DISTINCT league_id FROM players
+      WHERE league_id = ANY($1) AND season = $2 AND available`,
+    [leagueIds, season]
+  );
+  return new Set(rows.map((r) => r.league_id));
+}
+
 /** اللاعبون المطلوبون بمعرّفاتهم — للتحقّق قبل الحفظ. */
 async function playersByIds(ids) {
   if (!ids.length) return [];
@@ -514,6 +532,7 @@ async function leaderboard(leagueId, season, limit = 100) {
 
 module.exports = {
   market,
+  leaguesWithPlayers,
   planTransaction,
   useChip,
   chipsFor,

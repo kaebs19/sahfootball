@@ -26,11 +26,23 @@ router.use(requireAuth);
  * ومن لا يتابع شيئاً لا تشكيلة له — والجواب دعوةٌ للمتابعة لا
  * قائمةٌ فارغة لا تشرح نفسها.
  */
-async function resolveLeague(req) {
-  const followed = await championRepo.followedIds(req.userId);
+async function playableLeagues(userId) {
+  const followed = await championRepo.followedIds(userId);
   const leagues = (await leagueRepo.findEnabled()).filter(
     (l) => l.in_app && followed.includes(l.id)
   );
+  if (!leagues.length) return [];
+
+  // وذوات اللاعبين وحدها: لا فانتازي في دوريٍ بلا قوائم.
+  const ready = await fantasyRepo.leaguesWithPlayers(
+    leagues.map((l) => l.id),
+    leagues[0].season
+  );
+  return leagues.filter((l) => ready.has(l.id));
+}
+
+async function resolveLeague(req) {
+  const leagues = await playableLeagues(req.userId);
   if (!leagues.length) return null;
   const asked = Number(req.query.league || req.body?.league);
   return leagues.find((l) => l.id === asked) || leagues[0];
@@ -67,10 +79,7 @@ async function openRoundOf(league) {
 // وله في كلٍّ منهما تشكيلة مستقلة — فالشاشة يجب أن تقول له أين
 // بدأ وأين لم يبدأ بعد، لا أن تفتح على أوّلها وتصمت.
 router.get('/setup', async (req, res) => {
-  const followed = await championRepo.followedIds(req.userId);
-  const leagues = (await leagueRepo.findEnabled()).filter(
-    (l) => l.in_app && followed.includes(l.id)
-  );
+  const leagues = await playableLeagues(req.userId);
   if (!leagues.length) return res.json({ ...FOLLOW_REQUIRED, leagues: [], clubs: [] });
 
   const asked = Number(req.query.league);
