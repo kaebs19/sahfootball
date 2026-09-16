@@ -36,6 +36,36 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
   String? _error;
   bool _loading = true;
 
+  /// شبكة الأندية تطول (١٨ نادياً = خمسة صفوف)، فالخطوة الثالثة
+  /// تقع تحت حافة الشاشة. ومن اختار ناديه فلم يرَ بعده شيئاً ظنّ
+  /// أن الرحلة انتهت — قِيس على المستخدم الأول فوقع.
+  ///
+  /// فالشاشة تسوق نفسها إلى ما بعد الاختيار: الخطوة التالية تظهر
+  /// لأن الأولى تمّت، لا لأن أحداً خمّن أن تحتها شيئاً.
+  final _scroll = ScrollController();
+  final _rulesKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _revealRules() {
+    // بعد الإطار: الشبكة تُعاد بناؤها بالاختيار، والسوق قبل ذلك
+    // يقيس ارتفاعاً قديماً.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final box = _rulesKey.currentContext;
+      if (box == null || !_scroll.hasClients) return;
+      Scrollable.ensureVisible(
+        box,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        alignment: 0.1,
+      );
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -119,6 +149,7 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
     }
 
     return ListView(
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         const _Step(number: 1, title: 'اختر الدوري'),
@@ -149,10 +180,11 @@ class _FantasySetupScreenState extends State<FantasySetupScreen> {
           onPick: (id) {
             FantasySounds.play(Sfx.pop);
             setState(() => _club = id);
+            _revealRules();
           },
         ),
 
-        const SizedBox(height: 22),
+        SizedBox(key: _rulesKey, height: 22),
         const _Step(number: 3, title: 'قواعد اللعبة'),
         const SizedBox(height: 8),
         _RulesCard(rules: setup.rules),
