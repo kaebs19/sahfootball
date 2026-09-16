@@ -247,14 +247,25 @@ class _MarketRow extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(player.priceLabel,
-                style: const TextStyle(
-                  color: Brand.crown,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: Brand.displayFont,
-                  fontFeatures: Brand.tabular,
-                )),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // الحركة قبل السعر في القراءة العربية (يمين ← يسار)
+                // تقع بعده — فيُقرأ «٧٫٥ ▲» لا «▲ ٧٫٥».
+                Text(player.priceLabel,
+                    style: const TextStyle(
+                      color: Brand.crown,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: Brand.displayFont,
+                      fontFeatures: Brand.tabular,
+                    )),
+                if (player.priceDelta != 0) ...[
+                  const SizedBox(width: 5),
+                  _DeltaBadge(delta: player.priceDelta),
+                ],
+              ],
+            ),
             Text('${Fmt.number(player.totalPoints)} نقطة',
                 style: const TextStyle(color: Brand.textFaint, fontSize: 10.5)),
           ],
@@ -294,4 +305,43 @@ class _MiniChip extends StatelessWidget {
               )),
         ),
       );
+}
+
+/// شارة حركة السعر — سهمٌ ورقم.
+///
+/// السهم وحده لا يكفي: «ارتفع» جوابٌ ناقص عن «كم؟»، والفرق بين
+/// ٠٫١ و٠٫٣ هو الفرق بين لاعبٍ يُنتبه له ولاعبٍ يشتريه الجميع.
+///
+/// وبلا ذهبي: الهوية تحصره في التاج والنقاط والرتب، وحركةُ سعرٍ
+/// ليست رتبة. الأخضر والأحمر يقولانها بلا استعارة.
+class _DeltaBadge extends StatelessWidget {
+  final double delta;
+  const _DeltaBadge({required this.delta});
+
+  @override
+  Widget build(BuildContext context) {
+    final up = delta > 0;
+    final color = up ? Brand.correct : Brand.wrong;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(up ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+              color: color, size: 13),
+          Text(Fmt.number(delta.abs(), decimals: 1),
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                fontFeatures: Brand.tabular,
+              )),
+        ],
+      ),
+    );
+  }
 }

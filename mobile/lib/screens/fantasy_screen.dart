@@ -40,6 +40,15 @@ class _FantasyScreenState extends State<FantasyScreen> {
   int? _clubTeamId;
   int _totalPoints = 0;
 
+  /// المحفظة كما يقولها الخادم — لا تُحسب هنا.
+  ///
+  /// حسابها محلياً (ميزانية ناقص مجموع الأسعار) كان يعطي رقماً
+  /// آخر بعد أول حركة سعر: البيع يستردّ سعر الشراء ونصف الربح،
+  /// وهذه معلومةٌ لا يملكها التطبيق. ما دامت التشكيلة لم تتغيّر
+  /// نعرض رقم الخادم، وحين تتغيّر نعرض تقديراً معلّماً.
+  double _wallet = 0;
+  double _savedValue = 0;
+
   bool _loading = true;
   bool _saving = false;
   bool _dirty = false;
@@ -88,6 +97,8 @@ class _FantasyScreenState extends State<FantasyScreen> {
         _formation = squad.squad?.formation ?? '4-4-2';
         _clubTeamId = squad.squad?.clubTeamId;
         _totalPoints = squad.squad?.totalPoints ?? 0;
+        _wallet = squad.squad?.budgetLeft ?? market.rules.budget;
+        _savedValue = squad.squad?.squadValue ?? 0;
         _dirty = false;
         _loading = false;
       });
@@ -173,6 +184,8 @@ class _FantasyScreenState extends State<FantasyScreen> {
       setState(() {
         _squad = squad.players;
         _formation = squad.formation;
+        _wallet = squad.budgetLeft;
+        _savedValue = squad.squadValue;
         _saving = false;
         _dirty = false;
       });
@@ -274,8 +287,9 @@ class _FantasyScreenState extends State<FantasyScreen> {
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
       children: [
         _HeaderStats(
-          spent: _spent,
-          budget: _rules.budget,
+          wallet: _dirty ? _rules.budget - _spent : _wallet,
+          value: _dirty ? _spent : _savedValue,
+          estimated: _dirty,
           picked: _squad.length,
           size: _rules.squadSize,
           totalPoints: _totalPoints,
@@ -453,8 +467,109 @@ class _FantasyScreenState extends State<FantasyScreen> {
         ),
         const SizedBox(height: 14),
         for (final row in [...starters, ...bench])
-          _RoundRow(row: row),
+          _RoundRow(row: row, onTap: () => _showBreakdown(row)),
       ],
+    );
+  }
+
+  /// «من أين جاءت هذه النقاط؟» — السطور كما حُسبت يوم الجولة.
+  ///
+  /// من الخادم لا يُعاد حسابها هنا: جدول النقاط يُعدَّل من اللوحة،
+  /// وحسابٌ محلي بجدول اليوم يجعل الشاشة تقول ٩ والخادم ٨ — وهو
+  /// خلافٌ يقرأه اللاعب سرقةً لا خطأً.
+  Future<void> _showBreakdown(FantasyRoundRow row) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Brand.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(Brand.radiusCardLarge)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text(row.player.name,
+                      style: const TextStyle(
+                          color: Brand.text,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  Text(row.player.teamName,
+                      style: const TextStyle(
+                          color: Brand.textMuted, fontSize: 12)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (row.lines.isEmpty)
+                const Text('لم يلعب في هذه الجولة.',
+                    style: TextStyle(color: Brand.textMuted, fontSize: 13))
+              else ...[
+                for (final line in row.lines)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                      children: [
+                        Text(line.label,
+                            style: const TextStyle(
+                                color: Brand.textMuted, fontSize: 13.5)),
+                        const Spacer(),
+                        Text(
+                          '${line.points > 0 ? '+' : ''}${Fmt.number(line.points)}',
+                          style: TextStyle(
+                            color: line.points >= 0 ? Brand.text : Brand.wrong,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: Brand.tabular,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (row.multiplier > 1) ...[
+                  const Divider(color: Brand.borderSoft, height: 20),
+                  Row(
+                    children: [
+                      const Text('شارة الكابتن',
+                          style: TextStyle(color: Brand.crown, fontSize: 13.5)),
+                      const Spacer(),
+                      Text('×${Fmt.number(row.multiplier)}',
+                          style: const TextStyle(
+                              color: Brand.crown,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ],
+              ],
+              const Divider(color: Brand.border, height: 22),
+              Row(
+                children: [
+                  const Text('المجموع',
+                      style: TextStyle(
+                          color: Brand.text,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  Text(Fmt.number(row.points),
+                      style: const TextStyle(
+                        color: Brand.crown,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: Brand.displayFont,
+                        fontFeatures: Brand.tabular,
+                      )),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -482,15 +597,21 @@ class _FantasyScreenState extends State<FantasyScreen> {
 // ── قطع صغيرة ───────────────────────────────────────────────────
 
 class _HeaderStats extends StatelessWidget {
-  final double spent;
-  final double budget;
+  final double wallet;
+  final double value;
+
+  /// الأرقام تقديرية ما دامت التشكيلة غير محفوظة: الخادم وحده
+  /// يعرف عائد البيع (سعر الشراء + نصف الربح).
+  final bool estimated;
+
   final int picked;
   final int size;
   final int totalPoints;
 
   const _HeaderStats({
-    required this.spent,
-    required this.budget,
+    required this.wallet,
+    required this.value,
+    required this.estimated,
     required this.picked,
     required this.size,
     required this.totalPoints,
@@ -498,7 +619,7 @@ class _HeaderStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final left = budget - spent;
+    final left = wallet;
     // بطاقةٌ نحيفة: هذه أرقامٌ تُلمَح لا تُقرأ — يكفي أن تقول
     // «كم بقي» بطرف العين، والملعب تحتها هو ما جاء لأجله. وكل
     // نقطة ارتفاع هنا تُقتطع من الملعب على شاشة صغيرة.
@@ -516,6 +637,14 @@ class _HeaderStats extends StatelessWidget {
             ),
             const _Divider(),
             _Stat(value: '${Fmt.number(picked)}/${Fmt.number(size)}', label: 'اللاعبون'),
+            const _Divider(),
+            // قيمة الفريق = المحفظة + أسعار اللاعبين. هي المقياس
+            // الثاني بعد النقاط: من ينمو فريقه يشتري ما لا يستطيعه
+            // غيره، وإخفاؤها يخفي نصف اللعبة.
+            _Stat(
+              value: Fmt.number(wallet + value, decimals: 1),
+              label: estimated ? 'القيمة ~' : 'قيمة فريقك',
+            ),
             const _Divider(),
             _Stat(value: Fmt.number(totalPoints), label: 'الموسم'),
           ],
@@ -710,13 +839,15 @@ class _MenuItem extends StatelessWidget {
 
 class _RoundRow extends StatelessWidget {
   final FantasyRoundRow row;
-  const _RoundRow({required this.row});
+  final VoidCallback onTap;
+  const _RoundRow({required this.row, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: BrandCard(
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(

@@ -8,7 +8,7 @@ const fantasyMarket = require('../services/fantasyMarket');
 const MARKET_COLUMNS = `
   p.id AS player_id, p.team_id, p.league_id, p.position,
   COALESCE(p.name_ar, p.name_en) AS name,
-  p.photo_url, p.shirt_number, p.price, p.total_points, p.available,
+  p.photo_url, p.shirt_number, p.price, p.price_delta, p.total_points, p.available,
   COALESCE(t.name_ar, t.name_en) AS team_name,
   t.logo_url AS team_logo
 `;

@@ -49,6 +49,12 @@ class FantasyPlayer {
   final String teamName;
   final String? teamLogo;
   final double price;
+
+  /// حركة سعره في الجولة الأخيرة — تُعرض شارةً ▲/▼ بجوار السعر.
+  ///
+  /// السعر وحده يقول «كم يساوي»، والحركة تقول «إلى أين يتّجه»،
+  /// وهي نصف قرار الشراء: من يصعد اشترِه قبل أن يغلو.
+  final double priceDelta;
   final int totalPoints;
 
   // حالته داخل تشكيلتي — لاغية لمن هو في السوق وحده.
@@ -61,6 +67,7 @@ class FantasyPlayer {
     required this.name,
     required this.position,
     required this.price,
+    this.priceDelta = 0,
     this.photoUrl,
     this.teamId,
     this.teamName = '',
@@ -81,6 +88,7 @@ class FantasyPlayer {
         teamLogo: j['team_logo'] as String?,
         // السعر يصل نصّاً من NUMERIC — عمود مالي لا يُرسل عائماً.
         price: double.tryParse('${j['price']}') ?? 0,
+        priceDelta: double.tryParse('${j['price_delta']}') ?? 0,
         totalPoints: (j['total_points'] as int?) ?? 0,
         onBench: j['on_bench'] == true,
         isCaptain: j['is_captain'] == true,
@@ -97,6 +105,7 @@ class FantasyPlayer {
         teamName: teamName,
         teamLogo: teamLogo,
         price: price,
+        priceDelta: priceDelta,
         totalPoints: totalPoints,
         onBench: onBench ?? this.onBench,
         isCaptain: isCaptain ?? this.isCaptain,
@@ -105,6 +114,11 @@ class FantasyPlayer {
 
   /// السعر كما يُعرض: خانة عشرية واحدة بأرقام غربية دائماً.
   String get priceLabel => Fmt.number(price, decimals: 1);
+
+  /// حركة السعر كنصّ بإشارتها — فارغ حين لا حركة.
+  String get deltaLabel => priceDelta == 0
+      ? ''
+      : '${priceDelta > 0 ? '+' : '−'}${Fmt.number(priceDelta.abs(), decimals: 1)}';
 }
 
 class FantasySquad {
@@ -113,6 +127,11 @@ class FantasySquad {
   final int? clubTeamId;
   final String formation;
   final double budgetLeft;
+
+  /// أسعار لاعبيك اليوم. والمحفظة + هذه = **قيمة فريقك** — وهو
+  /// المقياس الثاني بعد النقاط: من ينمو فريقه يشتري ما لا
+  /// يستطيعه غيره.
+  final double squadValue;
   final int freeTransfers;
   final int totalPoints;
   final List<FantasyPlayer> players;
@@ -122,6 +141,7 @@ class FantasySquad {
     required this.formation,
     required this.budgetLeft,
     required this.players,
+    this.squadValue = 0,
     this.name,
     this.clubTeamId,
     this.freeTransfers = 1,
@@ -134,12 +154,16 @@ class FantasySquad {
         clubTeamId: j['club_team_id'] as int?,
         formation: (j['formation'] as String?) ?? '4-4-2',
         budgetLeft: double.tryParse('${j['budget_left']}') ?? 0,
+        squadValue: double.tryParse('${j['squad_value']}') ?? 0,
         freeTransfers: (j['free_transfers'] as int?) ?? 1,
         totalPoints: (j['total_points'] as int?) ?? 0,
         players: ((j['players'] as List?) ?? const [])
             .map((p) => FantasyPlayer.fromJson(p as Map<String, dynamic>))
             .toList(),
       );
+
+  /// قيمة فريقك كاملةً.
+  double get totalValue => budgetLeft + squadValue;
 
   List<FantasyPlayer> get starters =>
       players.where((p) => !p.onBench).toList(growable: false);
@@ -221,6 +245,18 @@ class FantasyRules {
 }
 
 /// صفٌّ في شاشة نقاط الجولة.
+/// سطرٌ واحد من تفصيل النقاط: «هدف ٥».
+class PointLine {
+  final String label;
+  final int points;
+  const PointLine({required this.label, required this.points});
+
+  factory PointLine.fromJson(Map<String, dynamic> j) => PointLine(
+        label: (j['label'] as String?) ?? '',
+        points: (j['points'] as int?) ?? 0,
+      );
+}
+
 class FantasyRoundRow {
   final FantasyPlayer player;
   final int points;
@@ -228,12 +264,16 @@ class FantasyRoundRow {
   final bool autoSubbed;
   final bool onBench;
 
+  /// من أين جاءت نقاطه — كما حُسبت يوم الجولة لا بجدول اليوم.
+  final List<PointLine> lines;
+
   const FantasyRoundRow({
     required this.player,
     required this.points,
     required this.multiplier,
     required this.autoSubbed,
     required this.onBench,
+    this.lines = const [],
   });
 
   factory FantasyRoundRow.fromJson(Map<String, dynamic> j) => FantasyRoundRow(
@@ -242,6 +282,9 @@ class FantasyRoundRow {
         multiplier: (j['multiplier'] as int?) ?? 1,
         autoSubbed: j['auto_subbed'] == true,
         onBench: j['on_bench'] == true,
+        lines: ((j['lines'] as List?) ?? const [])
+            .map((l) => PointLine.fromJson(l as Map<String, dynamic>))
+            .toList(),
       );
 }
 
