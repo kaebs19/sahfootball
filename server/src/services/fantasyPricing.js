@@ -18,17 +18,31 @@ const MAX_PRICE = Number(process.env.FANTASY_MAX_PRICE) || 15.0;
 const PRICE_CURVE = Number(process.env.FANTASY_PRICE_CURVE) || 2.1;
 
 /**
- * المرجع الذي تُقاس عليه الأسعار: المئين ٩٥ لا الأعلى.
+ * المرجع الذي تُقاس عليه الأسعار: أعلى معدّل بين **المنتظمين**.
  *
- * الأعلى رهينةُ شاذّة واحدة — لاعبٌ نزل مباراة واحدة وسجّل هدفين
- * يخرج بمعدّل ١٢ نقطة/مباراة، فيصير هو المقياس ويهبط الدوري كله
- * إلى قاع السلّم بسببه. والمئين ٩٥ يتجاهله ويبقى في يد النجوم
- * الحقيقيين.
+ * وليس المئين ٩٥ — جُرّب وظهر عيبه في السوق: كل من تجاوز المئين
+ * يُقصّ إلى السقف، والمتجاوزون ٥٪ من الدوري لا واحد. فخرج ستة
+ * لاعبي وسط بسعر ١٣ متساوين رغم أن نقاطهم ٤١ و٤٠ و٣٨ و٣٦ —
+ * وتساوي النجوم في السعر يمحو المفاضلة بينهم، وهي أدقّ قرار في
+ * اللعبة كلها.
+ *
+ * والشاذّة التي خشيناها منه — لاعبٌ لعب مباراة وسجّل هدفين —
+ * يحجبها شرط الانتظام لا المئين: من لعب نصف الجولات فأكثر معدّله
+ * حقيقي، ومن لعب أقلّ لا يدخل في تحديد السقف أصلاً (وإن سُعِّر
+ * هو نفسه بعدها).
  */
-function reference(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  if (!sorted.length) return 0;
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+function reference(rows, perGame) {
+  if (!rows.length) return 0;
+
+  // عتبة الانتظام تتحرّك مع الموسم: نصف مباريات أكثر من لعب.
+  // في الجولة الثالثة تعني مباراتين، وفي الثلاثين تعني خمس عشرة.
+  // وعتبةٌ ثابتة (٥ مثلاً) تجعل أول ثلاث جولات بلا مرجع أصلاً.
+  const maxApps = Math.max(...rows.map((r) => r.apps));
+  const threshold = Math.max(2, Math.round(maxApps * 0.5));
+
+  const regular = rows.filter((r) => r.apps >= threshold);
+  const pool = regular.length >= 3 ? regular : rows;
+  return Math.max(...pool.map(perGame), 0);
 }
 
 /**
@@ -130,13 +144,12 @@ async function repriceLeague(leagueId, season) {
   // والأهم أن المقارنة عبر المراكز بلا معنى أصلاً: الخطة تُلزمك
   // بحارس واحد، فأنت تفاضل بين حارسٍ وحارس لا بين حارسٍ ومهاجم.
   // السعر جوابٌ عن «كم يساوي هذا مقارنةً بمن قد يشغل مكانه».
-  const regular = rows.filter((r) => r.apps >= 3);
   const bestByPosition = {};
   for (const position of Object.keys(POSITION_BANDS)) {
-    const inPosition = regular.filter((r) => r.position === position);
-    bestByPosition[position] =
-      reference(inPosition.map(perGame)) ||
-      Math.max(...rows.filter((r) => r.position === position).map(perGame), 0);
+    bestByPosition[position] = reference(
+      rows.filter((r) => r.position === position && r.apps > 0),
+      perGame
+    );
   }
 
   const client = await db.pool.connect();
