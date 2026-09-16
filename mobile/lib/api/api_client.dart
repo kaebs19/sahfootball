@@ -17,6 +17,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../config.dart';
+import '../models/fantasy.dart';
 import '../models/fixture.dart';
 import '../models/group.dart';
 import '../models/leaderboard_entry.dart';
@@ -430,6 +431,117 @@ class ApiClient {
       });
       return (res.data['fixtures'] as List)
           .map((j) => Fixture.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  // ---------------------------- فريقي ----------------------------
+
+  /// سوق اللاعبين مع حدود اللعبة — طلبٌ واحد يكفي لبناء الشاشة.
+  Future<FantasyMarket> fantasyMarket({
+    int? leagueId,
+    String? position,
+    int? teamId,
+    String? search,
+  }) async {
+    try {
+      final res = await _dio.get('/api/fantasy/market', queryParameters: {
+        'league': ?leagueId,
+        'position': ?position,
+        'team': ?teamId,
+        if (search != null && search.isNotEmpty) 'q': search,
+      });
+      return FantasyMarket.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// تشكيلتي — null لمن لم يبنِ واحدة بعد.
+  Future<({FantasySquad? squad, FantasyRules rules, bool followRequired})>
+      fantasySquad({int? leagueId}) async {
+    try {
+      final res = await _dio.get('/api/fantasy/squad', queryParameters: {
+        'league': ?leagueId,
+      });
+      final data = res.data as Map<String, dynamic>;
+      final squad = data['squad'] as Map<String, dynamic>?;
+      return (
+        squad: squad == null ? null : FantasySquad.fromJson(squad),
+        rules: FantasyRules.fromJson(
+          data['rules'] as Map<String, dynamic>?,
+          data['formations'] as List?,
+          data['quota'] as Map<String, dynamic>?,
+        ),
+        followRequired: data['follow_required'] == true,
+      );
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// حفظ التشكيلة كاملة. الخادم يرفض بما يخالف القواعد برسالة
+  /// عربية جاهزة — تُعرض كما هي ولا تُترجم هنا.
+  Future<FantasySquad> saveFantasySquad({
+    required int leagueId,
+    required String formation,
+    required int? clubTeamId,
+    required List<FantasyPlayer> players,
+    String? name,
+  }) async {
+    try {
+      final res = await _dio.put('/api/fantasy/squad', data: {
+        'league': leagueId,
+        'formation': formation,
+        'club_team_id': clubTeamId,
+        'name': ?name,
+        'players': players
+            .map((p) => {
+                  'player_id': p.id,
+                  'on_bench': p.onBench,
+                  'is_captain': p.isCaptain,
+                  'is_vice': p.isVice,
+                })
+            .toList(),
+      });
+      return FantasySquad.fromJson(
+          (res.data as Map<String, dynamic>)['squad'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// نقاط الجولة، لاعباً لاعباً.
+  Future<({String? round, int total, List<FantasyRoundRow> rows})>
+      fantasyRound({int? leagueId, String? round}) async {
+    try {
+      final res = await _dio.get('/api/fantasy/round', queryParameters: {
+        'league': ?leagueId,
+        'round': ?round,
+      });
+      final data = res.data as Map<String, dynamic>;
+      return (
+        round: data['round'] as String?,
+        total: (data['total'] as int?) ?? 0,
+        rows: ((data['players'] as List?) ?? const [])
+            .map((j) => FantasyRoundRow.fromJson(j as Map<String, dynamic>))
+            .toList(),
+      );
+    } on DioException catch (e) {
+      _throwReadable(e);
+    }
+  }
+
+  /// عرش «فريقي» — مستقلٌّ عن عرش التوقّعات.
+  Future<List<FantasyRankRow>> fantasyLeaderboard({int? leagueId}) async {
+    try {
+      final res = await _dio.get('/api/fantasy/leaderboard', queryParameters: {
+        'league': ?leagueId,
+      });
+      return ((res.data['entries'] as List?) ?? const [])
+          .map((j) => FantasyRankRow.fromJson(j as Map<String, dynamic>))
           .toList();
     } on DioException catch (e) {
       _throwReadable(e);

@@ -5,8 +5,8 @@
 // البيانات. نفس سلوك TabView في SwiftUI.
 //
 // ترتيب التبويبات يتبع رحلة المستخدم لا عدد الشاشات: المباريات
-// (يتوقع) ← فريقي (يتابع مبارياته الجارية) ← العرش (يقارن نفسه
-// بالناس) ← ملفي
+// (يتوقع) ← فريقي (يبني تشكيلته ويتابع نقاطها) ← العرش (يقارن
+// نفسه بالناس) ← ملفي
 // (حسابه). وملفي في الطرف كما في كل تطبيق — الطرف هو المكان الذي
 // تبحث فيه اليد عن "أنا" بلا تفكير.
 //
@@ -25,7 +25,7 @@ import '../widgets/brand_mark.dart';
 import '../widgets/ads.dart';
 import '../widgets/guest_gate.dart';
 import 'leaderboard_screen.dart';
-import 'live_screen.dart';
+import 'fantasy_screen.dart';
 import 'group_screen.dart';
 import 'invite_screen.dart';
 import 'matches_screen.dart';
@@ -150,12 +150,12 @@ class HomeShell extends StatelessWidget {
               ? const [
                   MatchesScreen(),
                   GuestGate(
-                    icon: Icons.sensors,
+                    icon: Icons.groups_2_outlined,
                     title: '«فريقي» يحتاج حساباً',
                     message:
-                        'تبويب «فريقي» يعرض ما يحدث لتوقّعك الآن — '
-                        'النتيجة لحظة بلحظة وماذا تعني لنقاطك. '
-                        'سجّل وتوقّع لتكون لك مباراة تتابعها.',
+                        'ابنِ تشكيلتك من لاعبي الدوري: ثلاثة من ناديك '
+                        'ومن شئت معهم، واختر كابتنك واجمع نقاطهم كل '
+                        'جولة. سجّل لتبدأ فريقك.',
                   ),
                   LeaderboardScreen(),
                   GuestGate(
@@ -168,7 +168,7 @@ class HomeShell extends StatelessWidget {
                 ]
               : const [
                   MatchesScreen(),
-                  LiveScreen(),
+                  FantasyScreen(),
                   LeaderboardScreen(),
                   ProfileScreen(),
                 ],
@@ -197,8 +197,10 @@ class HomeShell extends StatelessWidget {
                   label: 'المباريات',
                 ),
                 const NavigationDestination(
-                  icon: Icon(Icons.sensors),
-                  selectedIcon: Icon(Icons.sensors),
+                  // درعٌ لا رمز بثّ: التبويب صار فريقاً يُبنى لا
+                  // مباراةً تُتابع.
+                  icon: Icon(Icons.shield_outlined),
+                  selectedIcon: Icon(Icons.shield),
                   label: 'فريقي',
                 ),
                 const NavigationDestination(

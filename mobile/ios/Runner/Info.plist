@@ -4,15 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<!-- لغة التطبيق المعلنة: العربية. بدونها يكتب App Store في صفحة
-	     التطبيق «اللغات: الإنجليزية» لأن قالب Flutter يورّث en، والنظام
-	     يختار لتنبيهاته ولوحات المفاتيح الافتراضية لغةً ليست لغتنا. -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ar</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>ar</string>
-	</array>
 	<key>CFBundleDisplayName</key>
 	<string>ملك التوقعات</string>
 	<key>CFBundleExecutable</key>
@@ -21,24 +14,9 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
-	<!-- معرّف تطبيق AdMob. تقرؤه حزمة الإعلانات عند الإقلاع قبل أن
-	     يصل أي ردّ من خادمنا، ولهذا هو الشيء الوحيد في منظومة
-	     الإعلانات الذي لا يمكن أن يأتي من الإعدادات — أما وحدات
-	     الإعلانات نفسها فمن السيرفر (راجع premiumService).
-	     ولكل منصّة معرّفها: هذا تطبيق iOS في AdMob، ولأندرويد معرّف
-	     آخر في AndroidManifest. وخلطهما يجعل الإعلانات تتوقف عن
-	     الامتلاء بلا خطأ ظاهر. -->
-	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-8219247197168750~4595664163</string>
-	<!-- شبكات الإسناد (SKAdNetwork): بدونها لا تُنسب التثبيتات
-	     القادمة من إعلاناتك فينخفض عائد الوحدة. القائمة الكاملة في
-	     وثائق AdMob وتطول؛ هذه شبكة جوجل نفسها وهي الأهم. -->
-	<key>SKAdNetworkItems</key>
+	<key>CFBundleLocalizations</key>
 	<array>
-		<dict>
-			<key>SKAdNetworkIdentifier</key>
-			<string>cstr6suwn9.skadnetwork</string>
-		</dict>
+		<string>ar</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>mobile</string>
@@ -48,15 +26,36 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.574556220987-l59ck4rrucs4qo7atngb5nrp74phqo12</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<!-- تصريح التصدير: التطبيق لا يستعمل تشفيراً غير HTTPS المعتاد
-	     (وهو معفى). بلا هذا المفتاح يسأل App Store Connect سؤال
-	     التشفير يدوياً بعد كل رفع ويحجز البناء حتى يُجاب. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-8219247197168750~4595664163</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>نحتاج الوصول لصورك كي تختار صورة ملفك الشخصي أو صورة مجلسك. لا نقرأ غير الصورة التي تختارها.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -97,27 +96,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<!-- الدخول بحساب جوجل: المعرّف المعكوس لعميل iOS — به تعود
-	     رحلة جوجل من المتصفح إلى التطبيق. المعرّف الأصلي (غير
-	     المعكوس) في lib/config.dart. -->
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>com.googleusercontent.apps.574556220987-l59ck4rrucs4qo7atngb5nrp74phqo12</string>
-			</array>
-		</dict>
-	</array>
-	<!-- النشاط الحيّ: النتيجة الجارية على شاشة القفل وفي الجزيرة
-	     الديناميكية (امتداد MatchActivity). بلا المفتاح الأول يرفض
-	     ActivityKit إنشاء أي نشاط، والثاني يسمح بتحديثات متقاربة
-	     (هدفان في دقيقة) بلا خنق من النظام. -->
-	<key>NSSupportsLiveActivities</key>
-	<true/>
-	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
-	<true/>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>نحتاج الوصول لصورك كي تختار صورة ملفك الشخصي أو صورة مجلسك. لا نقرأ غير الصورة التي تختارها.</string>
 </dict>
 </plist>

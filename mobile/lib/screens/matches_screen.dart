@@ -38,6 +38,7 @@ import '../state/league_filter.dart';
 import '../widgets/league_strip.dart';
 import '../widgets/prediction_sheet.dart';
 import 'leagues_screen.dart';
+import 'live_screen.dart';
 import 'match_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
@@ -218,6 +219,11 @@ class _MatchesScreenState extends State<MatchesScreen> {
     // الإعلان في موضعه من التسلسل لا من الأيام.
     var shown = 0;
 
+    // «مباشر» صار هنا لا تبويباً: الجولة الجارية هي مكان المباراة
+    // الجارية بالطبيعة، وتبويبٌ خاصٌّ بها كان يقف فارغاً معظم
+    // الأسبوع. والمدخل يظهر حين يكون فيه ما يُرى فقط.
+    final live = fixtures.where((f) => f.isLive).toList();
+
     return RefreshIndicator(
       onRefresh: _load,
       color: Brand.crown,
@@ -225,6 +231,15 @@ class _MatchesScreenState extends State<MatchesScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
         children: [
+          if (live.isNotEmpty && !_isGuest) ...[
+            const SizedBox(height: 8),
+            _LiveBanner(
+              count: live.length,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LiveScreen()),
+              ),
+            ),
+          ],
           // الإعلان يُدرج بين البطاقات بعدّ المباريات لا بعدّ الأيام:
           // يومٌ فيه مباراة واحدة كان سيضع الإعلان ثانيَ ما تراه
           // العين، ويومٌ فيه عشر يدفعه بعيداً حتى لا يُرى.
@@ -257,6 +272,52 @@ class _MatchesScreenState extends State<MatchesScreen> {
             ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// مدخل «مباشر» — يظهر في شاشة المباريات حين تكون مباراة جارية.
+///
+/// نبضة خضراء لا شارة ساكنة: اللون وحده يقول «الآن»، والحركة هي
+/// الفرق بين معلومةٍ تُقرأ وأخرى تُلاحَظ من طرف العين.
+class _LiveBanner extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _LiveBanner({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: BrandCard(
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Brand.live,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              Fmt.counted(count, 'مباراة جارية الآن', 'مباراتان جاريتان الآن',
+                  'مباريات جارية الآن', 'مباراة جارية الآن'),
+              style: const TextStyle(
+                color: Brand.text,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            const Icon(Icons.chevron_left, color: Brand.textFaint, size: 20),
+          ],
+        ),
       ),
     );
   }

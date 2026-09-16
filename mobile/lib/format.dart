@@ -33,6 +33,20 @@ class Fmt {
   static String date(intl.DateFormat fmt, DateTime when) =>
       digits(fmt.format(when));
 
+  /// رقمٌ للعرض: أرقام غربية دائماً، وبلا كسرٍ إن كان صحيحاً.
+  ///
+  /// «٧» لا «٧٫٠» في أسعار الفانتازي: الصفر بعد الفاصلة ضجيجٌ في
+  /// شبكة من خمسة عشر سعراً، ويظهر حين يعني شيئاً وحده (٧٫٥).
+  static String number(num value, {int decimals = 0}) {
+    final rounded = decimals == 0
+        ? value.round().toString()
+        : value.toStringAsFixed(decimals);
+    final trimmed = rounded.contains('.')
+        ? rounded.replaceFirst(RegExp(r'\.?0+$'), '')
+        : rounded;
+    return digits(trimmed);
+  }
+
   // ── الجموع العربية ────────────────────────────────────────────
   //
   // العربية تصرّف المعدود على أربع صور: واحد، اثنان، ٣–١٠ جمع،
